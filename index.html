@@ -128,8 +128,8 @@
           <div class="feature-icon">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
-          <h3>Pointer Safety at the Type Level</h3>
-          <p>Mutable (<code>*T</code>) and read-only (<code>&T</code>) pointers are distinct types. Functions declare exactly what kind of access they need, and the compiler enforces it.</p>
+          <h3>No Hidden Behavior</h3>
+          <p>Pointers are explicit: <code>*T</code> types, <code>?</code> to take an address, <code>@</code> to dereference. Casts are explicit too (<code>::</code> and <code>:~</code>), so nothing happens that you did not ask for.</p>
         </div>
 
         <div class="feature-card">
