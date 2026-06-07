@@ -492,6 +492,16 @@ code {
   font-weight: 600;
 }
 
+.step-note {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.step-note a {
+  color: var(--magenta);
+}
+
 .code-block {
   background: var(--code-bg);
   border: 1px solid var(--border);
