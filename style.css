@@ -296,9 +296,9 @@ code {
   line-height: 1.6;
 }
 
-/* ── Philosophy ──────────────────────────────────────────── */
+/* ── Why mach ─────────────────────────────────────────────── */
 
-.philosophy {
+.why {
   border-top: 1px solid var(--border);
 }
 
@@ -345,16 +345,11 @@ code {
   color: var(--text-bright);
 }
 
-/* ── Features ────────────────────────────────────────────── */
-
-.features {
-  border-top: 1px solid var(--border);
-}
-
 .features-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
+  margin-top: 3.5rem;
 }
 
 .feature-card {
@@ -391,60 +386,6 @@ code {
 .feature-card code {
   color: var(--magenta);
   background: rgba(255, 0, 255, 0.08);
-}
-
-/* ── Platforms ────────────────────────────────────────────── */
-
-.platforms {
-  border-top: 1px solid var(--border);
-}
-
-.platforms-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-}
-
-.platform-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.75rem 2rem;
-  text-align: center;
-}
-
-.platform-card.active {
-  border-color: var(--magenta);
-  box-shadow: 0 0 15px var(--magenta-glow);
-}
-
-.platform-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.75rem;
-  color: var(--text-dim);
-}
-
-.platform-card.active .platform-status {
-  color: var(--magenta);
-}
-
-.platform-card h3 {
-  font-size: 1.2rem;
-  color: var(--text-bright);
-  margin-bottom: 0.25rem;
-  font-weight: 600;
-}
-
-.platform-card.upcoming h3 {
-  color: var(--text-dim);
-}
-
-.platform-card p {
-  font-size: 0.85rem;
-  color: var(--text-dim);
 }
 
 /* ── Get Started ─────────────────────────────────────────── */
@@ -729,10 +670,6 @@ html.js .copy-btn {
   }
 
   .features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .platforms-grid {
     grid-template-columns: 1fr;
   }
 
