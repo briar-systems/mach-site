@@ -8,6 +8,55 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/mach_32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/mach_16.png">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // enhances the install widget: detects the visitor's OS and wires the selector and copy button.
+    (function () {
+      var root = document.documentElement;
+      root.classList.add("js");
+      var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
+      var os = p.indexOf("win") > -1 ? "windows" : p.indexOf("mac") > -1 ? "macos" : "linux";
+      root.classList.add("os-" + os);
+      function select(next) {
+        root.classList.remove("os-linux", "os-macos", "os-windows");
+        root.classList.add("os-" + next);
+        document.querySelectorAll(".install-os-btn").forEach(function (b) {
+          b.setAttribute("aria-pressed", b.getAttribute("data-os") === next ? "true" : "false");
+        });
+      }
+      document.addEventListener("click", function (e) {
+        var pick = e.target.closest(".install-os-btn");
+        if (pick) {
+          select(pick.getAttribute("data-os"));
+          return;
+        }
+        var copy = e.target.closest(".copy-btn");
+        if (copy) {
+          var label = copy.querySelector(".copy-label");
+          var flash = function (text, ok) {
+            copy.classList.toggle("copied", ok);
+            label.textContent = text;
+            clearTimeout(copy._t);
+            copy._t = setTimeout(function () {
+              copy.classList.remove("copied");
+              label.textContent = "Copy";
+            }, 1500);
+          };
+          if (!navigator.clipboard) {
+            flash("Failed", false);
+            return;
+          }
+          navigator.clipboard.writeText(copy.parentElement.querySelector("code").textContent).then(function () {
+            flash("Copied", true);
+          }, function () {
+            flash("Failed", false);
+          });
+        }
+      });
+      document.addEventListener("DOMContentLoaded", function () {
+        select(os);
+      });
+    })();
+  </script>
 </head>
 <body>
 
@@ -187,13 +236,30 @@
           <div class="step-content">
             <h3>Install mach</h3>
             <p class="step-note">The installer fetches the latest <a href="https://github.com/octalide/mach/releases" target="_blank">release</a> and installs <code>mach</code> to <code>~/.local/bin</code>.</p>
-            <p class="step-note">On Linux:</p>
-            <div class="code-block">
-              <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
-            </div>
-            <p class="step-note">On Windows, run it in PowerShell:</p>
-            <div class="code-block">
-              <pre><code>irm https://machlang.org/install.ps1 | iex</code></pre>
+            <div class="install" id="install">
+              <div class="install-os" role="group" aria-label="Select your operating system">
+                <button type="button" class="install-os-btn" data-os="linux" aria-pressed="false">Linux</button>
+                <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macOS</button>
+                <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">Windows</button>
+              </div>
+              <div class="install-panel" data-os="linux">
+                <p class="step-note install-label">On Linux:</p>
+                <div class="code-block install-cmd">
+                  <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
+                  <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
+                </div>
+              </div>
+              <div class="install-panel" data-os="windows">
+                <p class="step-note install-label">On Windows, run it in PowerShell:</p>
+                <div class="code-block install-cmd">
+                  <pre><code>irm https://machlang.org/install.ps1 | iex</code></pre>
+                  <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
+                </div>
+                <p class="step-note install-hint">Run it in PowerShell.</p>
+              </div>
+              <div class="install-panel install-planned" data-os="macos">
+                <p class="step-note">macOS support is planned.</p>
+              </div>
             </div>
           </div>
         </div>
