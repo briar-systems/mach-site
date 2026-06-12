@@ -1,2 +1,4 @@
 #!/bin/sh
-exec sh -c 'curl -fsSL https://github.com/octalide/mach/releases/latest/download/install.sh | sh'
+url="https://github.com/octalide/mach/releases/latest/download/install.sh"
+script=$(curl -fsSL "$url") || { echo "error: failed to fetch mach installer from $url" >&2; exit 1; }
+printf '%s\n' "$script" | sh
