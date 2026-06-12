@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mach Programming Language</title>
-  <meta name="description" content="Mach is a statically-typed, compiled programming language designed to be simple, explicit, and maintainable.">
+  <meta name="description" content="Mach is a statically-typed, compiled systems language designed to be simple, explicit, and fast.">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/mach_32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/mach_16.png">
   <link rel="stylesheet" href="style.css">
@@ -37,7 +37,7 @@
     <div class="hero-inner">
       <img src="assets/mach_256.png" alt="Mach Logo" class="hero-logo" width="128" height="128">
       <h1>mach</h1>
-      <p class="hero-tagline">A programming language for people who want to know what their code is doing.</p>
+      <p class="hero-tagline">A systems programming language with no hidden behavior.</p>
       <p class="hero-sub">Statically typed. Explicitly designed. No magic.</p>
       <div class="hero-actions">
         <a href="#get-started" class="btn btn-primary">Get Started</a>
@@ -72,12 +72,12 @@
   <section class="section philosophy" id="philosophy">
     <div class="section-inner">
       <h2>Philosophy</h2>
-      <p class="section-lead">Mach is built on the belief that clarity is more valuable than cleverness, and that long-term maintainability outweighs short-term convenience.</p>
+      <p class="section-lead">Every cost is visible in the code that incurs it. What you read is what executes — nothing happens by convention or inference.</p>
       <div class="philosophy-grid">
         <div class="philosophy-col">
           <h3>What Mach Is</h3>
           <ul>
-            <li><strong>Simple</strong> &mdash; easy to learn, read, and maintain</li>
+            <li><strong>Simple</strong> &mdash; deliberately small; easy to learn and read</li>
             <li><strong>Explicit</strong> &mdash; WYSIWYG, always. No hidden behavior, no implicit conversions</li>
             <li><strong>Opinionated</strong> &mdash; one way to do things. The right way is the only way</li>
           </ul>
@@ -105,7 +105,7 @@
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           </div>
           <h3>Zero-Dependency Toolchain</h3>
-          <p>The compiler, build system, test runner, and dependency manager are a single binary with no external dependencies. No LLVM. No libc. Just mach.</p>
+          <p>The compiler, build system, test runner, and dependency manager are a single binary with no external dependencies. No LLVM, no libc, no system linker. Just mach.</p>
         </div>
 
         <div class="feature-card">
@@ -113,7 +113,7 @@
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 2v20"/><path d="M17 2v20"/><path d="M2 12h20"/><path d="M2 7h5"/><path d="M2 17h5"/><path d="M17 7h5"/><path d="M17 17h5"/></svg>
           </div>
           <h3>Manual Memory Management</h3>
-          <p>No garbage collector. Allocator types give you structured control over memory with arena and heap strategies. Scope-based cleanup via <code>fin</code> prevents leaks without runtime overhead.</p>
+          <p>No garbage collector and no hidden allocation. Memory flows through explicit allocators end to end — anything that allocates takes one, and anything that doesn't never will.</p>
         </div>
 
         <div class="feature-card">
@@ -145,7 +145,7 @@
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
           </div>
           <h3>Integrated Tooling</h3>
-          <p>Build, test, and manage dependencies from a single command. The toolchain handles project scaffolding, dependency resolution, and test discovery out of the box.</p>
+          <p>One binary that builds, links, tests, vendors dependencies, and cross-compiles. No external linker, no build system to configure — scaffolding and test discovery are built in.</p>
         </div>
 
       </div>
