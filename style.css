@@ -239,7 +239,6 @@ code {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  text-align: left;
   overflow: hidden;
   box-shadow: 0 4px 40px rgba(0, 0, 0, 0.4);
 }
@@ -714,6 +713,11 @@ html.js .copy-btn {
 }
 
 @media (max-width: 1024px) and (min-width: 769px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
