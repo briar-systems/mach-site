@@ -26,6 +26,12 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
 }
 
 body {
