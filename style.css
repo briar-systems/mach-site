@@ -572,9 +572,6 @@ html.os-windows .install-os-btn[data-os="windows"] {
   margin-bottom: 0.75rem;
 }
 
-.install-panel:last-child {
-  margin-bottom: 0;
-}
 
 /* the planned-OS state is only meaningful once the selector is interactive */
 .install-panel[data-os="macos"] {
