@@ -68,8 +68,7 @@
         <span>mach</span>
       </a>
       <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#platforms">Platforms</a>
+        <a href="#why">Why mach</a>
         <a href="#get-started">Get Started</a>
         <a href="https://github.com/octalide/mach/tree/dev/doc" target="_blank">Docs</a>
         <a href="https://github.com/octalide/mach" target="_blank" class="nav-github" aria-label="GitHub">
@@ -84,13 +83,45 @@
   <!-- Hero -->
   <section class="hero">
     <div class="hero-inner">
-      <img src="assets/mach_256.png" alt="Mach Logo" class="hero-logo" width="128" height="128">
-      <h1>mach</h1>
-      <p class="hero-tagline">A systems programming language with no hidden behavior.</p>
-      <p class="hero-sub">Statically typed. Explicitly designed. No magic.</p>
-      <div class="hero-actions">
-        <a href="#get-started" class="btn btn-primary">Get Started</a>
-        <a href="https://github.com/octalide/mach" target="_blank" class="btn btn-secondary">View Source</a>
+      <div class="hero-identity">
+        <div class="hero-brand">
+          <img src="assets/mach_128.png" alt="" class="hero-brand-icon" width="48" height="48">
+          <h1>mach</h1>
+        </div>
+        <p class="hero-tagline">A systems programming language with no hidden behavior.</p>
+        <p class="hero-sub">Statically typed. Explicitly designed. No magic.</p>
+        <div class="hero-install">
+          <p class="step-note install-intro">Installs the latest <a href="https://github.com/octalide/mach/releases" target="_blank">release</a> to <code>~/.local/bin</code>.</p>
+          <div class="install" id="install">
+            <div class="install-os" role="group" aria-label="Select your operating system">
+              <button type="button" class="install-os-btn" data-os="linux" aria-pressed="false">Linux</button>
+              <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macOS</button>
+              <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">Windows</button>
+            </div>
+            <div class="install-panel" data-os="linux">
+              <p class="step-note install-label">On Linux:</p>
+              <div class="code-block install-cmd">
+                <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
+                <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
+              </div>
+            </div>
+            <div class="install-panel" data-os="windows">
+              <p class="step-note install-label">On Windows, run it in PowerShell:</p>
+              <div class="code-block install-cmd">
+                <pre><code>irm https://machlang.org/install.ps1 | iex</code></pre>
+                <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
+              </div>
+              <p class="step-note install-hint">Run it in PowerShell.</p>
+            </div>
+            <div class="install-panel install-planned" data-os="macos">
+              <p class="step-note">macOS support is planned.</p>
+            </div>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <a href="#get-started" class="btn btn-primary">Get Started</a>
+          <a href="https://github.com/octalide/mach" target="_blank" class="btn btn-secondary">View Source</a>
+        </div>
       </div>
       <div class="hero-code">
         <div class="code-header">
@@ -117,10 +148,10 @@
     </div>
   </section>
 
-  <!-- Philosophy -->
-  <section class="section philosophy" id="philosophy">
+  <!-- Why mach -->
+  <section class="section why" id="why">
     <div class="section-inner">
-      <h2>Philosophy</h2>
+      <h2>Why mach</h2>
       <p class="section-lead">Every cost is visible in the code that incurs it. What you read is what executes — nothing happens by convention or inference.</p>
       <div class="philosophy-grid">
         <div class="philosophy-col">
@@ -140,13 +171,6 @@
           </ul>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- Features -->
-  <section class="section features" id="features">
-    <div class="section-inner">
-      <h2>Features</h2>
       <div class="features-grid">
 
         <div class="feature-card">
@@ -201,31 +225,6 @@
     </div>
   </section>
 
-  <!-- Platforms -->
-  <section class="section platforms" id="platforms">
-    <div class="section-inner">
-      <h2>Platforms</h2>
-      <p class="section-lead">Mach's backend is designed to be modular and target-independent. New platforms are added without modifying the core compiler.</p>
-      <div class="platforms-grid">
-        <div class="platform-card active">
-          <div class="platform-status">Available</div>
-          <h3>Linux</h3>
-          <p>x86_64</p>
-        </div>
-        <div class="platform-card upcoming">
-          <div class="platform-status">Planned</div>
-          <h3>macOS</h3>
-          <p>x86_64 / ARM64</p>
-        </div>
-        <div class="platform-card active">
-          <div class="platform-status">Available</div>
-          <h3>Windows</h3>
-          <p>x86_64</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- Get Started -->
   <section class="section get-started" id="get-started">
     <div class="section-inner">
@@ -233,38 +232,6 @@
       <div class="install-steps">
         <div class="install-step">
           <div class="step-number">1</div>
-          <div class="step-content">
-            <h3>Install mach</h3>
-            <p class="step-note">The installer fetches the latest <a href="https://github.com/octalide/mach/releases" target="_blank">release</a> and installs <code>mach</code> to <code>~/.local/bin</code>.</p>
-            <div class="install" id="install">
-              <div class="install-os" role="group" aria-label="Select your operating system">
-                <button type="button" class="install-os-btn" data-os="linux" aria-pressed="false">Linux</button>
-                <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macOS</button>
-                <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">Windows</button>
-              </div>
-              <div class="install-panel" data-os="linux">
-                <p class="step-note install-label">On Linux:</p>
-                <div class="code-block install-cmd">
-                  <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
-                  <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
-                </div>
-              </div>
-              <div class="install-panel" data-os="windows">
-                <p class="step-note install-label">On Windows, run it in PowerShell:</p>
-                <div class="code-block install-cmd">
-                  <pre><code>irm https://machlang.org/install.ps1 | iex</code></pre>
-                  <button type="button" class="copy-btn" aria-label="Copy command"><span class="copy-label">Copy</span></button>
-                </div>
-                <p class="step-note install-hint">Run it in PowerShell.</p>
-              </div>
-              <div class="install-panel install-planned" data-os="macos">
-                <p class="step-note">macOS support is planned.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="install-step">
-          <div class="step-number">2</div>
           <div class="step-content">
             <h3>Create a project</h3>
             <div class="code-block">
@@ -274,7 +241,7 @@ cd my-app</code></pre>
           </div>
         </div>
         <div class="install-step">
-          <div class="step-number">3</div>
+          <div class="step-number">2</div>
           <div class="step-content">
             <h3>Build and run</h3>
             <div class="code-block">

@@ -26,6 +26,12 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
 }
 
 body {
@@ -151,8 +157,7 @@ code {
 /* ── Hero ────────────────────────────────────────────────── */
 
 .hero {
-  padding: 10rem 2rem 6rem;
-  text-align: center;
+  padding: 9rem 2rem 6rem;
   position: relative;
   overflow: hidden;
 }
@@ -160,39 +165,52 @@ code {
 .hero::before {
   content: "";
   position: absolute;
-  top: -200px;
+  top: -300px;
   left: 50%;
   transform: translateX(-50%);
-  width: 800px;
-  height: 800px;
+  width: 1000px;
+  height: 900px;
   background: radial-gradient(circle, var(--magenta-glow) 0%, transparent 70%);
   pointer-events: none;
 }
 
 .hero-inner {
   position: relative;
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 3.5rem;
+  align-items: center;
 }
 
-.hero-logo {
-  margin-bottom: 1.5rem;
-  filter: drop-shadow(0 0 30px var(--magenta-glow-strong));
+.hero-identity {
+  min-width: 0;
+}
+
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.hero-brand-icon {
+  filter: drop-shadow(0 0 18px var(--magenta-glow-strong));
 }
 
 .hero h1 {
-  font-size: 4rem;
+  font-size: 3.5rem;
   font-weight: 800;
   color: var(--text-bright);
   letter-spacing: -0.02em;
-  margin-bottom: 1rem;
+  line-height: 1;
 }
 
 .hero-tagline {
   font-size: 1.35rem;
   color: var(--text);
-  max-width: 550px;
-  margin: 0 auto 0.5rem;
+  margin-bottom: 0.5rem;
   line-height: 1.5;
 }
 
@@ -202,11 +220,17 @@ code {
   margin-bottom: 2rem;
 }
 
+.hero-install {
+  margin-bottom: 2rem;
+}
+
+.install-intro {
+  margin-bottom: 1rem;
+}
+
 .hero-actions {
   display: flex;
   gap: 1rem;
-  justify-content: center;
-  margin-bottom: 3.5rem;
 }
 
 /* ── Code Block (Hero) ───────────────────────────────────── */
@@ -215,7 +239,6 @@ code {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  text-align: left;
   overflow: hidden;
   box-shadow: 0 4px 40px rgba(0, 0, 0, 0.4);
 }
@@ -296,9 +319,9 @@ code {
   line-height: 1.6;
 }
 
-/* ── Philosophy ──────────────────────────────────────────── */
+/* ── Why mach ─────────────────────────────────────────────── */
 
-.philosophy {
+.why {
   border-top: 1px solid var(--border);
 }
 
@@ -345,16 +368,11 @@ code {
   color: var(--text-bright);
 }
 
-/* ── Features ────────────────────────────────────────────── */
-
-.features {
-  border-top: 1px solid var(--border);
-}
-
 .features-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
+  margin-top: 3.5rem;
 }
 
 .feature-card {
@@ -391,60 +409,6 @@ code {
 .feature-card code {
   color: var(--magenta);
   background: rgba(255, 0, 255, 0.08);
-}
-
-/* ── Platforms ────────────────────────────────────────────── */
-
-.platforms {
-  border-top: 1px solid var(--border);
-}
-
-.platforms-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-}
-
-.platform-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.75rem 2rem;
-  text-align: center;
-}
-
-.platform-card.active {
-  border-color: var(--magenta);
-  box-shadow: 0 0 15px var(--magenta-glow);
-}
-
-.platform-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.75rem;
-  color: var(--text-dim);
-}
-
-.platform-card.active .platform-status {
-  color: var(--magenta);
-}
-
-.platform-card h3 {
-  font-size: 1.2rem;
-  color: var(--text-bright);
-  margin-bottom: 0.25rem;
-  font-weight: 600;
-}
-
-.platform-card.upcoming h3 {
-  color: var(--text-dim);
-}
-
-.platform-card p {
-  font-size: 0.85rem;
-  color: var(--text-dim);
 }
 
 /* ── Get Started ─────────────────────────────────────────── */
@@ -710,6 +674,11 @@ html.js .copy-btn {
     padding: 8rem 1.5rem 4rem;
   }
 
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
   .hero h1 {
     font-size: 2.8rem;
   }
@@ -720,7 +689,7 @@ html.js .copy-btn {
 
   .hero-actions {
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
   }
 
   .philosophy-grid {
@@ -729,10 +698,6 @@ html.js .copy-btn {
   }
 
   .features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .platforms-grid {
     grid-template-columns: 1fr;
   }
 
@@ -748,6 +713,11 @@ html.js .copy-btn {
 }
 
 @media (max-width: 1024px) and (min-width: 769px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
