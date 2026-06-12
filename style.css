@@ -113,7 +113,8 @@ code {
   color: var(--text-bright);
 }
 
-.nav-github {
+.nav-github,
+.nav-discord {
   display: flex;
   align-items: center;
 }
@@ -152,6 +153,18 @@ code {
 .btn-secondary:hover {
   border-color: var(--magenta);
   color: var(--magenta);
+}
+
+.btn-discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1.5rem;
+}
+
+.btn-discord svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ── Hero ────────────────────────────────────────────────── */
@@ -235,14 +248,6 @@ code {
 
 /* ── Code Block (Hero) ───────────────────────────────────── */
 
-.hero-code {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 4px 40px rgba(0, 0, 0, 0.4);
-}
-
 .code-header {
   display: flex;
   align-items: center;
@@ -266,20 +271,6 @@ code {
   color: var(--text-dim);
 }
 
-.hero-code pre {
-  padding: 1.25rem 1.5rem;
-  overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  line-height: 1.7;
-}
-
-.hero-code code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-}
-
 /* Syntax Highlighting */
 .kw { color: var(--magenta); }
 .type { color: #79c0ff; }
@@ -290,7 +281,6 @@ code {
 .alias { color: #ffa657; }
 .param { color: #e0e0e0; }
 .ct { color: #ff7b72; }
-.sh-comment { color: #484f58; }
 
 /* ── Sections ────────────────────────────────────────────── */
 
@@ -319,141 +309,133 @@ code {
   line-height: 1.6;
 }
 
-/* ── Why mach ─────────────────────────────────────────────── */
-
-.why {
-  border-top: 1px solid var(--border);
+.why-statement {
+  max-width: 760px;
+  margin-bottom: 1.5rem;
 }
 
-.philosophy-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3rem;
-}
-
-.philosophy-col h3 {
-  font-size: 1.2rem;
-  color: var(--magenta);
-  margin-bottom: 1rem;
-  font-weight: 600;
-}
-
-.philosophy-col ul {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.philosophy-col li {
+.why-usecase {
+  max-width: 760px;
+  margin-bottom: 3rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--magenta);
   color: var(--text);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  padding-left: 1.2rem;
-  position: relative;
-}
-
-.philosophy-col li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.55em;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--border-light);
-}
-
-.philosophy-col li strong {
-  color: var(--text-bright);
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-  margin-top: 3.5rem;
-}
-
-.feature-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 2rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.feature-card:hover {
-  border-color: var(--magenta);
-  box-shadow: 0 0 20px var(--magenta-glow);
-}
-
-.feature-icon {
-  color: var(--magenta);
-  margin-bottom: 1rem;
-}
-
-.feature-card h3 {
-  font-size: 1.05rem;
-  color: var(--text-bright);
-  margin-bottom: 0.75rem;
-  font-weight: 600;
-}
-
-.feature-card p {
-  font-size: 0.9rem;
-  color: var(--text-dim);
+  font-size: 1rem;
   line-height: 1.6;
 }
 
-.feature-card code {
+.hero-code,
+.code-window {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 40px rgba(0, 0, 0, 0.4);
+}
+
+.hero-code pre,
+.code-window pre {
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.hero-code code,
+.code-window code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.cmt,
+.term-note { color: #6e7681; }
+
+/* ── Why mach: code demonstrations ───────────────────────── */
+
+.demos {
+  border-top: 1px solid var(--border);
+}
+
+.demo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4rem;
+}
+
+.demo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.demo:nth-child(even) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+}
+
+.demo:nth-child(even) .demo-window {
+  order: 2;
+}
+
+.demo-principle {
+  display: block;
+  color: var(--magenta);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.6rem;
+}
+
+.demo-caption p {
+  color: var(--text-dim);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.demo-caption code {
   color: var(--magenta);
   background: rgba(255, 0, 255, 0.08);
 }
 
-/* ── Get Started ─────────────────────────────────────────── */
+/* ── Get Started: terminal session ───────────────────────── */
 
 .get-started {
   border-top: 1px solid var(--border);
 }
 
-.install-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  margin-bottom: 3rem;
+.terminal pre {
+  line-height: 1.8;
 }
 
-.install-step {
-  display: flex;
-  gap: 1.5rem;
-  align-items: flex-start;
-}
-
-.step-number {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid var(--magenta);
+.term-prompt {
   color: var(--magenta);
-  font-weight: 700;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 0.1rem;
+  user-select: none;
 }
 
-.step-content {
-  flex: 1;
-}
-
-.step-content h3 {
-  font-size: 1.05rem;
+.term-cmd {
   color: var(--text-bright);
-  margin-bottom: 0.75rem;
-  font-weight: 600;
+}
+
+.term-out {
+  color: var(--text);
+}
+
+.get-started-next {
+  margin-top: 1.75rem;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1.8;
+}
+
+.get-started-next a {
+  color: var(--magenta);
+  font-weight: 500;
+}
+
+.get-started-next a:hover {
+  color: var(--text-bright);
 }
 
 .step-note {
@@ -618,11 +600,6 @@ html.js .copy-btn {
   margin: 0;
 }
 
-.get-started-links {
-  display: flex;
-  gap: 1rem;
-}
-
 /* ── Footer ──────────────────────────────────────────────── */
 
 .footer {
@@ -662,6 +639,12 @@ html.js .copy-btn {
   color: var(--text-bright);
 }
 
+.footer-discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .footer-license {
   color: var(--text-dim);
   font-size: 0.8rem;
@@ -692,13 +675,18 @@ html.js .copy-btn {
     align-items: flex-start;
   }
 
-  .philosophy-grid {
+  .demo,
+  .demo:nth-child(even) {
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 1.25rem;
   }
 
-  .features-grid {
-    grid-template-columns: 1fr;
+  .demo:nth-child(even) .demo-window {
+    order: 0;
+  }
+
+  .demo-list {
+    gap: 3rem;
   }
 
   .footer-inner {
@@ -707,7 +695,7 @@ html.js .copy-btn {
     text-align: center;
   }
 
-  .nav-links a:not(.nav-github) {
+  .nav-links a:not(.nav-github):not(.nav-discord) {
     display: none;
   }
 }
@@ -718,7 +706,13 @@ html.js .copy-btn {
     gap: 2.5rem;
   }
 
-  .features-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .demo,
+  .demo:nth-child(even) {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .demo:nth-child(even) .demo-window {
+    order: 0;
   }
 }
