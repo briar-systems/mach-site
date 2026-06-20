@@ -1,0 +1,22 @@
+use         std.runtime;
+use parse:  std.text.parse;
+use print:  std.print;
+use result: std.types.result;
+use         std.types.result.Result;
+use         std.types.string.str;
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    # a fallible call returns a value, not a thrown exception
+    val r: Result[u64, str] = parse.parse_u64(argv[1], 10);
+
+    # the error path is visible, so check it before you unwrap
+    if (result.is_err[u64, str](r)) {
+        print.printf("error: {}\n", result.unwrap_err[u64, str](r));
+        ret 1;
+    }
+
+    val limit: u64 = result.unwrap_ok[u64, str](r);
+    print.printf("limit = {}\n", limit);
+    ret 0;
+}

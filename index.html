@@ -137,20 +137,8 @@
           <span class="code-dot"></span>
           <span class="code-filename">main.mach</span>
         </div>
-        <pre><code><span class="kw">use</span>        <span class="mod">std.runtime</span>;
-<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
-
-<span class="kw">fun</span> <span class="fn">fib</span>(<span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span> {
-    <span class="kw">if</span> (n &lt; <span class="num">2</span>) { <span class="kw">ret</span> n; }
-    <span class="kw">ret</span> fib(n - <span class="num">1</span>) + fib(n - <span class="num">2</span>);
-}
-
-<span class="deco">#[symbol(</span><span class="str">"main"</span><span class="deco">)]</span>
-<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
-    print.printf(<span class="str">"hello, mach\n"</span>);
-    print.printf(<span class="str">"fib(10) = {}\n"</span>, fib(<span class="num">10</span>));
-    <span class="kw">ret</span> <span class="num">0</span>;
-}</code></pre>
+        <pre><code data-src="examples/main.mach"></code></pre>
+        <noscript><a class="example-fallback" href="examples/main.mach">View main.mach</a></noscript>
       </div>
     </div>
   </section>
@@ -171,14 +159,8 @@
               <span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span>
               <span class="code-filename">hello.mach</span>
             </div>
-            <pre><code><span class="kw">use</span>        <span class="mod">std.runtime</span>;
-<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
-
-<span class="deco">#[symbol(</span><span class="str">"main"</span><span class="deco">)]</span>
-<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
-    print.<span class="fn">println</span>(<span class="str">"Hello, World!"</span>);
-    <span class="kw">ret</span> <span class="num">0</span>;
-}</code></pre>
+            <pre><code data-src="examples/hello.mach"></code></pre>
+            <noscript><a class="example-fallback" href="examples/hello.mach">View hello.mach</a></noscript>
           </div>
           <div class="demo-caption">
             <span class="demo-principle">No hidden runtime</span>
@@ -192,28 +174,8 @@
               <span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span>
               <span class="code-filename">alloc.mach</span>
             </div>
-            <pre><code><span class="kw">use</span> <span class="alias">alloc</span>:  <span class="mod">std.allocator</span>;
-<span class="kw">use</span> <span class="alias">page</span>:   <span class="mod">std.allocator.page</span>;
-<span class="kw">use</span> <span class="alias">result</span>: <span class="mod">std.types.result</span>;
-<span class="kw">use</span>         <span class="mod">std.types.result.Result</span>;
-<span class="kw">use</span>         <span class="mod">std.types.string.str</span>;
-<span class="kw">use</span>         <span class="mod">std.types.size.usize</span>;
-<span class="kw">use</span>         <span class="mod">std.types.bool.bool</span>;
-
-<span class="cmt"># anything that allocates takes one; anything that doesn't never will</span>
-<span class="kw">fun</span> <span class="fn">scratch</span>(<span class="param">count</span>: <span class="type">usize</span>) <span class="type">Result</span>[<span class="type">bool</span>, <span class="type">str</span>] {
-    <span class="cmt"># create a page-backed allocator, then pass it by hand</span>
-    <span class="kw">var</span> <span class="param">a</span>: <span class="type">alloc.Allocator</span>;
-    page.<span class="fn">make</span>(?a);
-
-    <span class="kw">val</span> <span class="param">r</span>:   <span class="type">Result</span>[*<span class="type">bool</span>, <span class="type">str</span>] = alloc.<span class="fn">allocate</span>[<span class="type">bool</span>](?a, count);
-    <span class="kw">val</span> <span class="param">buf</span>: *<span class="type">bool</span> = result.<span class="fn">unwrap_ok</span>[*<span class="type">bool</span>, <span class="type">str</span>](r);
-
-    <span class="cmt"># ... use buf ...</span>
-
-    <span class="cmt"># the same allocator frees exactly what it allocated</span>
-    <span class="kw">ret</span> alloc.<span class="fn">deallocate</span>[<span class="type">bool</span>](?a, buf, count);
-}</code></pre>
+            <pre><code data-src="examples/alloc.mach"></code></pre>
+            <noscript><a class="example-fallback" href="examples/alloc.mach">View alloc.mach</a></noscript>
           </div>
           <div class="demo-caption">
             <span class="demo-principle">Manual memory</span>
@@ -227,28 +189,8 @@
               <span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span>
               <span class="code-filename">parse.mach</span>
             </div>
-            <pre><code><span class="kw">use</span>         <span class="mod">std.runtime</span>;
-<span class="kw">use</span> <span class="alias">parse</span>:  <span class="mod">std.text.parse</span>;
-<span class="kw">use</span> <span class="alias">print</span>:  <span class="mod">std.print</span>;
-<span class="kw">use</span> <span class="alias">result</span>: <span class="mod">std.types.result</span>;
-<span class="kw">use</span>         <span class="mod">std.types.result.Result</span>;
-<span class="kw">use</span>         <span class="mod">std.types.string.str</span>;
-
-<span class="deco">#[symbol(</span><span class="str">"main"</span><span class="deco">)]</span>
-<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
-    <span class="cmt"># a fallible call returns a value, not a thrown exception</span>
-    <span class="kw">val</span> <span class="param">r</span>: <span class="type">Result</span>[<span class="type">u64</span>, <span class="type">str</span>] = parse.<span class="fn">parse_u64</span>(<span class="param">argv</span>[<span class="num">1</span>], <span class="num">10</span>);
-
-    <span class="cmt"># the error path is visible, so check it before you unwrap</span>
-    <span class="kw">if</span> (result.<span class="fn">is_err</span>[<span class="type">u64</span>, <span class="type">str</span>](r)) {
-        print.<span class="fn">printf</span>(<span class="str">"error: {}\n"</span>, result.<span class="fn">unwrap_err</span>[<span class="type">u64</span>, <span class="type">str</span>](r));
-        <span class="kw">ret</span> <span class="num">1</span>;
-    }
-
-    <span class="kw">val</span> <span class="param">limit</span>: <span class="type">u64</span> = result.<span class="fn">unwrap_ok</span>[<span class="type">u64</span>, <span class="type">str</span>](r);
-    print.<span class="fn">printf</span>(<span class="str">"limit = {}\n"</span>, limit);
-    <span class="kw">ret</span> <span class="num">0</span>;
-}</code></pre>
+            <pre><code data-src="examples/parse.mach"></code></pre>
+            <noscript><a class="example-fallback" href="examples/parse.mach">View parse.mach</a></noscript>
           </div>
           <div class="demo-caption">
             <span class="demo-principle">Errors are values</span>
@@ -262,26 +204,8 @@
               <span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span>
               <span class="code-filename">comptime.mach</span>
             </div>
-            <pre><code><span class="kw">use</span>        <span class="mod">std.runtime</span>;
-<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
-<span class="kw">use</span>        <span class="mod">std.types.string.str</span>;
-
-<span class="cmt"># a variadic pack is a compile-time sequence: no va_list, no boxing</span>
-<span class="kw">fun</span> <span class="fn">show</span>(<span class="param">va</span>: <span class="ct">...</span>) {
-    <span class="cmt"># $each unrolls the body once per argument, at its own type</span>
-    <span class="ct">$each</span> <span class="param">a</span> <span class="ct">in</span> <span class="param">va</span> {
-        <span class="ct">$if</span> (<span class="ct">$type_of</span>(a) == <span class="type">i64</span>) { print.<span class="fn">printf</span>(<span class="str">"int: {}\n"</span>, a); }
-        <span class="ct">$or</span> (<span class="ct">$type_of</span>(a) == <span class="type">str</span>) { print.<span class="fn">printf</span>(<span class="str">"str: {}\n"</span>, a); }
-        <span class="ct">$or</span> { <span class="ct">$error</span>(<span class="str">"no writer for this type"</span>); }
-    }
-}
-
-<span class="deco">#[symbol(</span><span class="str">"main"</span><span class="deco">)]</span>
-<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
-    <span class="cmt"># one call site becomes one monomorphized instance for exactly these types</span>
-    <span class="fn">show</span>(<span class="str">"mach"</span>, <span class="num">42</span>, <span class="str">"no magic"</span>);
-    <span class="kw">ret</span> <span class="num">0</span>;
-}</code></pre>
+            <pre><code data-src="examples/comptime.mach"></code></pre>
+            <noscript><a class="example-fallback" href="examples/comptime.mach">View comptime.mach</a></noscript>
           </div>
           <div class="demo-caption">
             <span class="demo-principle">Comptime, not runtime</span>
@@ -351,5 +275,6 @@
     </div>
   </footer>
 
+  <script src="assets/highlight.js" defer></script>
 </body>
 </html>

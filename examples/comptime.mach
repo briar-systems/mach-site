@@ -1,0 +1,20 @@
+use        std.runtime;
+use print: std.print;
+use        std.types.string.str;
+
+# a variadic pack is a compile-time sequence: no va_list, no boxing
+fun show(va: ...) {
+    # $each unrolls the body once per argument, at its own type
+    $each a in va {
+        $if ($type_of(a) == i64) { print.printf("int: {}\n", a); }
+        $or ($type_of(a) == str) { print.printf("str: {}\n", a); }
+        $or { $error("no writer for this type"); }
+    }
+}
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    # one call site becomes one monomorphized instance for exactly these types
+    show("mach", 42, "no magic");
+    ret 0;
+}

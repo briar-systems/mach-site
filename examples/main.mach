@@ -1,0 +1,14 @@
+use        std.runtime;
+use print: std.print;
+
+fun fib(n: i64) i64 {
+    if (n < 2) { ret n; }
+    ret fib(n - 1) + fib(n - 2);
+}
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    print.printf("hello, mach\n");
+    print.printf("fib(10) = {}\n", fib(10));
+    ret 0;
+}

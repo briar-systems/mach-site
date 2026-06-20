@@ -283,6 +283,21 @@ code {
 .ct { color: #ff7b72; }
 .deco { color: #e3b341; }
 
+/* examples are fetched and highlighted client-side; reserve space to limit
+   the layout shift before the source loads, and offer a plain-file fallback. */
+code[data-src] {
+  display: block;
+  min-height: 13.6em; /* ~8 lines at line-height 1.7 */
+}
+
+.example-fallback {
+  display: inline-block;
+  padding: 1.25rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
 /* Sections */
 
 .section {

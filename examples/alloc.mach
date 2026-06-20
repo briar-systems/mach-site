@@ -1,0 +1,22 @@
+use alloc:  std.allocator;
+use page:   std.allocator.page;
+use result: std.types.result;
+use         std.types.result.Result;
+use         std.types.string.str;
+use         std.types.size.usize;
+use         std.types.bool.bool;
+
+# anything that allocates takes one; anything that doesn't never will
+fun scratch(count: usize) Result[bool, str] {
+    # create a page-backed allocator, then pass it by hand
+    var a: alloc.Allocator;
+    page.make(?a);
+
+    val r:   Result[*bool, str] = alloc.allocate[bool](?a, count);
+    val buf: *bool = result.unwrap_ok[*bool, str](r);
+
+    # ... use buf ...
+
+    # the same allocator frees exactly what it allocated
+    ret alloc.deallocate[bool](?a, buf, count);
+}
