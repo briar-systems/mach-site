@@ -251,10 +251,9 @@
       if (afterIdx > idEnd) emit(esc(src.slice(idEnd, afterIdx)));
       emit(esc(":")); // ':' plain
       i = afterIdx + 1;
-    } else {
-      // path begins at the first identifier; emit it as part of the mod run.
-      i = i;
     }
+    // when not aliased, i remains at the first identifier and the whole
+    // dotted path (starting there) becomes the mod run below.
 
     // dotted path: everything up to ';' is class mod (interior whitespace verbatim).
     var pathStart = i;
