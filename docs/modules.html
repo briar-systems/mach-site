@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Modules</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link active" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Modules</div>
+      <h1>Modules</h1>
+      <p class="lead">A Mach project is a tree of modules rooted at the project's id. Each file is reachable by a dotted path; <code>use</code> imports a name privately and <code>fwd</code> re-exports it on a module's public surface.</p>
+
+      <h2 id="paths">Module paths</h2>
+      <p>Every <code>.mach</code> file under a project's source directory is a module, reachable by a dotted path from the project root. The path separator is <code>.</code>, and each segment mirrors the directory and file name.</p>
+      <table>
+        <thead><tr><th>Project id</th><th>File</th><th>Module path</th></tr></thead>
+        <tbody>
+          <tr><td><code>myproj</code></td><td><code>src/foo/bar.mach</code></td><td><code>myproj.foo.bar</code></td></tr>
+        </tbody>
+      </table>
+      <p>There is no <code>this.</code> self-prefix. Within a project, modules always reference each other by their full project-rooted path, so every reference reads the same regardless of where it appears.</p>
+
+      <h2 id="use">Imports with <code>use</code></h2>
+      <p><code>use</code> brings an external symbol or module into the current scope under a local name. It is a <strong>private</strong> import: the imported name is not exposed to consumers of this module.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">PATH</span>;                   <span class="cmt"># binds the leaf component</span>
+<span class="kw">use</span> <span class="alias">ALIAS</span>: <span class="mod">PATH</span>;            <span class="cmt"># binds ALIAS</span></code></pre>
+      <ul>
+        <li>The alias defaults to the path's leaf component when omitted.</li>
+        <li>One name per line. There is no splat (<code>use foo.*</code> does not exist) and no combined form (<code>use foo.{a, b, c}</code> does not exist).</li>
+      </ul>
+
+      <h3 id="binding">Module vs symbol binding</h3>
+      <p>The resolver binds whatever the path points to. A path ending at a <strong>module</strong> binds the module, and you reach its members with qualified <code>module.member</code> access. A path ending at a <strong>symbol</strong> binds the symbol for bare use. Importing a module does not pull its members into scope unqualified: to use <code>usize</code> bare, import the symbol, not its module.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.types.size</span>;             <span class="cmt"># binds module 'size'; use as size.usize</span>
+<span class="kw">use</span> <span class="alias">sz</span>: <span class="mod">std.types.size</span>;         <span class="cmt"># binds module under 'sz'; use as sz.usize</span>
+<span class="kw">use</span> <span class="mod">std.types.size.usize</span>;       <span class="cmt"># binds symbol 'usize'; use bare as usize</span>
+<span class="kw">use</span> <span class="alias">my_usize</span>: <span class="mod">std.types.size.usize</span>;  <span class="cmt"># binds symbol under 'my_usize'</span></code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A Mach module imports every dependency it directly names, including any reached only through a re-export. There is no shortcut for "my surface uses these transitively; just give me the leaf." The dependency graph stays visible at the top of every file.</p>
+      </div>
+
+      <h2 id="fwd">Re-exports with <code>fwd</code></h2>
+      <p><code>fwd</code> re-exports a symbol or module from another module under this module's public surface. It is the public counterpart to <code>use</code>, and it mirrors <code>use</code>'s grammar exactly.</p>
+      <pre class="code"><code><span class="kw">fwd</span> <span class="mod">PATH</span>;                   <span class="cmt"># re-export under the path leaf</span>
+<span class="kw">fwd</span> <span class="alias">ALIAS</span>: <span class="mod">PATH</span>;            <span class="cmt"># re-export with rename</span></code></pre>
+      <ul>
+        <li><code>fwd</code> always publishes; there is no <code>pub fwd</code> form.</li>
+        <li>One name per line. No splat.</li>
+      </ul>
+      <pre class="code"><code><span class="kw">use</span> <span class="alias">impl</span>: <span class="mod">full.core.data</span>;
+
+<span class="kw">fwd</span> <span class="mod">impl.Point</span>;             <span class="cmt"># re-exports as 'Point'</span>
+<span class="kw">fwd</span> <span class="alias">Pt</span>: <span class="mod">impl.Point</span>;         <span class="cmt"># re-exports as 'Pt'</span></code></pre>
+      <p>A <code>fwd</code> path that ends at a <strong>module</strong> re-exports the whole module as a public module alias, mirroring <code>use</code>'s module binding. A consumer reaches the alias's members with qualified access, chaining through any depth of re-export, including a <code>fwd</code> of another library's <code>fwd</code>.</p>
+      <pre class="code"><code><span class="kw">fwd</span> <span class="mod">demo.alpha</span>;             <span class="cmt"># re-exports module 'alpha'</span>
+<span class="kw">fwd</span> <span class="alias">deep</span>: <span class="mod">demo.deep.beta</span>;   <span class="cmt"># re-exports module under 'deep'</span>
+
+<span class="kw">use</span> <span class="mod">demo.lib</span>;               <span class="cmt"># lib.mach contains: fwd demo.alpha;</span>
+lib.alpha.<span class="fn">answer</span>();         <span class="cmt"># resolves through the module re-export</span></code></pre>
+      <p>As with <code>use</code>, a module alias is not a value; only its members can be named.</p>
+
+      <h2 id="shadow">The shadow-module pattern</h2>
+      <p>A file <code>foo.mach</code> may co-exist with a directory <code>foo/</code>. The file is the <strong>surface</strong> module, the public face of <code>foo</code>. The directory's files are <strong>split</strong> implementations that the surface loads and re-exports.</p>
+      <pre class="code"><code>myproj/
+  foo.mach          <span class="cmt"># surface</span>
+  foo/
+    a.mach          <span class="cmt"># split: myproj.foo.a</span>
+    b.mach          <span class="cmt"># split: myproj.foo.b</span></code></pre>
+      <p>The surface loads each split with <code>use</code> and re-exports its public symbols with <code>fwd</code>. Consumers <code>use myproj.foo</code> and reach symbols through the surface; they never name the split files directly.</p>
+      <pre class="code"><code><span class="cmt"># myproj/foo.mach (surface)</span>
+<span class="kw">use</span> <span class="mod">myproj.foo.a</span>;
+<span class="kw">use</span> <span class="mod">myproj.foo.b</span>;
+
+<span class="kw">fwd</span> <span class="mod">a.X</span>;
+<span class="kw">fwd</span> <span class="mod">b.Y</span>;</code></pre>
+      <p>Two common uses:</p>
+      <ul>
+        <li><strong>Topical splits</strong> - organize a large module by topic; all splits forwarded unconditionally.</li>
+        <li><strong>Multiplatform splits</strong> - one impl per target, selected by <code>$if</code> on <code>$mach.build.os</code> or <code>$mach.build.arch</code>, then aliased under a stable name for consumers.</li>
+      </ul>
+
+      <h2 id="bare">Bare project-id imports</h2>
+      <p>A one-segment <code>use</code>/<code>fwd</code> path equal to a resolvable project id (a dependency's id or the current project's own id) resolves to that project's declared <code>[project].module</code>, the surface file named by the manifest. A library <code>glfw</code> that declares <code>module = "glfw.mach"</code> is imported by its id alone.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">glfw</span>;                    <span class="cmt"># binds glfw's declared [project].module</span></code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A bare import of a project that declares no module is an error, directing you to a full path or to add the manifest key. Longer paths are unaffected.</p>
+      </div>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="visibility.html">Visibility</a> - what <code>pub</code> exposes for <code>use</code> and <code>fwd</code> to reach</li>
+          <li><a href="manifest.html">Manifest</a> - declaring <code>[project].module</code> for bare imports</li>
+          <li><a href="project-layout.html">Project layout</a> - how the source tree maps to module paths</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="records-unions.html"><span class="pn-label">Previous</span><span class="pn-title">Records and unions</span></a><a class="next" href="visibility.html"><span class="pn-label">Next</span><span class="pn-title">Visibility</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#paths">Module paths</a>
+      <a href="#use">Imports with use</a>
+      <a class="sub" href="#binding">Module vs symbol binding</a>
+      <a href="#fwd">Re-exports with fwd</a>
+      <a href="#shadow">The shadow-module pattern</a>
+      <a href="#bare">Bare project-id imports</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

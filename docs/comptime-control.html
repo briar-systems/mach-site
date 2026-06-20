@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Control flow</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link active" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Control flow</div>
+      <h1>Control flow</h1>
+      <p class="lead"><code>$if</code> and <code>$or</code> branch on comptime-evaluable conditions. Only the taken arm is compiled; the discarded arms are never resolved, type-checked, or emitted - unlike runtime <code>if</code> / <code>or</code>, which always generates a branch.</p>
+
+      <h2 id="form">The <code>$if</code> / <code>$or</code> form</h2>
+      <p>A <code>$if</code> chain mirrors runtime <code>if</code> / <code>or</code> in shape, but each gate is a comptime condition and only the selected branch reaches the binary. <code>$or</code> with a condition is an else-if; <code>$or</code> with no condition is the comptime else.</p>
+      <pre class="code"><code><span class="ct">$if</span> (cond) {
+    ...
+}
+<span class="ct">$or</span> (cond) {
+    ...
+}
+<span class="ct">$or</span> {
+    ...                 <span class="cmt"># comptime else</span>
+}</code></pre>
+      <p>Target gating is the most common use: select the right import or backend per build, and leave the rest out of the binary entirely.</p>
+      <pre class="code"><code><span class="ct">$if</span> (<span class="ct">$mach.build.os</span> == <span class="ct">$mach.os.linux</span>) {
+    <span class="kw">use</span> <span class="mod">full.os.linux</span>;
+}
+<span class="ct">$or</span> (<span class="ct">$mach.build.os</span> == <span class="ct">$mach.os.windows</span>) {
+    <span class="kw">use</span> <span class="mod">full.os.windows</span>;
+}
+<span class="ct">$or</span> {
+    <span class="ct">$error</span>(<span class="str">"unsupported OS"</span>);
+}</code></pre>
+
+      <h2 id="conditions">Comptime conditions</h2>
+      <p>The gate must be a comptime expression. Common shapes:</p>
+      <ul>
+        <li><code>$mach.*</code> reads for target and build conditions</li>
+        <li>comparisons of comptime constants (<code>pub val</code> declarations)</li>
+        <li>comparisons of a comptime function parameter - see below</li>
+      </ul>
+      <p>A comptime comparison or arithmetic relates the mathematical values of its operands, exactly as the runtime operators do. A constant in the range 2^63 to 2^64 - 1 carries its true unsigned magnitude, so <code>$if (0xFFFFFFFFFFFFFFFF &gt; 0)</code> is taken, and any cross-sign comparison agrees with the runtime form: <code>$if (X &lt; Y)</code> never selects a branch that <code>if (X &lt; Y)</code> would not.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Comptime arithmetic that overflows the value's range is a compile error, not a silent wrap.</p>
+      </div>
+
+      <h2 id="parameters">Branching on a comptime parameter</h2>
+      <p>A comptime function parameter (<code>$mode: u8</code>) is a compile-time-known argument, fixed per call site. <code>$if</code> / <code>$or</code> may branch on it: the compiler monomorphizes the body once per distinct comptime-argument value, and each instance compiles only the arm its value selects.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">MODE_DOUBLE</span>: <span class="type">u8</span> = <span class="num">0</span>;
+<span class="kw">val</span> <span class="param">MODE_SQUARE</span>: <span class="type">u8</span> = <span class="num">1</span>;
+
+<span class="kw">fun</span> <span class="fn">apply</span>(<span class="ct">$mode</span>: <span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span> {
+    <span class="ct">$if</span> (mode == MODE_DOUBLE) {
+        <span class="kw">ret</span> n + n;
+    }
+    <span class="ct">$or</span> (mode == MODE_SQUARE) {
+        <span class="kw">ret</span> n * n;
+    }
+    <span class="kw">ret</span> <span class="num">0</span>;
+}
+
+<span class="cmt"># apply(MODE_DOUBLE, ..) and apply(MODE_SQUARE, ..) emit two distinct bodies,</span>
+<span class="cmt"># each carrying only its selected arm.</span></code></pre>
+
+      <h3 id="rules">Rules</h3>
+      <ul>
+        <li>The argument bound to a <code>$</code>-parameter must be a compile-time constant at the call site - a literal, a <code>pub val</code>, or another comptime parameter. A runtime value is rejected with <code>comptime argument is not a compile-time constant</code>. Cross-module constants work, whether imported by bare name or as a qualified member (<code>alias.CONST</code>).</li>
+        <li>Each arm gate must itself be comptime-foldable: its identifiers must all be comptime (parameters or constants). A gate that references a runtime local or parameter is rejected.</li>
+        <li>A comptime parameter has no storage, so its address cannot be taken: <code>?$mode</code> is rejected with <code>cannot take the address of a comptime parameter</code>.</li>
+        <li>A comptime-parameter function is a template, not a value - it can only be called, never assigned, passed, or compared. <code>val fp = apply;</code> is rejected with <code>cannot reference a comptime-parameter function as a value</code>.</li>
+        <li>Comptime parameters carry no runtime cost: they are stripped from the lowered signature and ABI, so only the runtime parameters are passed. They may be mixed freely with runtime parameters in any order.</li>
+        <li>An instance is emitted against its declaring module and folds its gates against that module's own comptime constants, so a library can export a comptime-parameter function gated on its own <code>pub val</code>s.</li>
+        <li>Combining a comptime parameter with a generic function (<code>fun f[T]($mode: u8, ...)</code>) is <span class="badge badge-planned">planned</span> - it is reported today with a clear diagnostic.</li>
+      </ul>
+      <p>Because each instance compiles only its taken arm, a comptime parameter can safely gate per-target <code>asm</code> blocks: a register one backend does not recognize lives only in the arm the other backend never compiles.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">load</span>(<span class="ct">$order</span>: <span class="type">Order</span>, <span class="param">ptr</span>: *<span class="type">i64</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">result</span>: <span class="type">i64</span> = <span class="num">0</span>;
+
+    <span class="ct">$if</span> (<span class="ct">$mach.build.arch</span> == <span class="ct">$mach.arch.aarch64</span>) {
+        <span class="ct">$if</span> (order == RELAXED) {
+            <span class="kw">asm</span> aarch64 { ldr {result}, [{ptr}] }
+        }
+        <span class="ct">$or</span> (order == ACQUIRE) {
+            <span class="kw">asm</span> aarch64 { ldar {result}, [{ptr}] }
+        }
+    }
+
+    <span class="kw">ret</span> result;
+}</code></pre>
+
+      <h2 id="discarded">Discarded branches</h2>
+      <p>An untaken <code>$if</code> branch is absent from the compiled output, but what "not taken" means for name resolution depends on what the gate reads.</p>
+      <ul>
+        <li><code>$mach.*</code> or constant gates - the untaken arms are entirely absent and the compiler does not even resolve names inside them. This is what makes per-target <code>asm</code> blocks safe when one arm references registers the other backend has never heard of.</li>
+        <li>comptime-parameter gates - the one exception. Because arm selection happens per call site at monomorphization, name resolution and type checking run over all arms structurally, and only the selected arm is emitted into each instance. Every arm must therefore be independently resolvable and type-checkable.</li>
+        <li><code>$type_of</code> type gates - not an exception. At monomorphization the operand's concrete type is known, so provably-dead arms are pruned and only the selected arm is type-checked and emitted. Each arm may use its value at its own concrete type with no per-arm cast.</li>
+      </ul>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="comptime.html">The comptime channel</a> - <code>$mach.*</code> reads for target and build conditions</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$type_of</code> dispatch and the comptime toolkit</li>
+          <li><a href="statements.html">Statements</a> - the runtime <code>if</code> / <code>or</code> counterpart</li>
+          <li><a href="variadics.html">Variadic packs</a> - <code>$if</code> / <code>$or</code> inside <code>$each</code> bodies</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="intrinsics.html"><span class="pn-label">Previous</span><span class="pn-title">Intrinsics</span></a><a class="next" href="variadics.html"><span class="pn-label">Next</span><span class="pn-title">Variadic packs</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#form">The $if / $or form</a>
+      <a href="#conditions">Comptime conditions</a>
+      <a href="#parameters">Branching on a comptime parameter</a>
+      <a class="sub" href="#rules">Rules</a>
+      <a href="#discarded">Discarded branches</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

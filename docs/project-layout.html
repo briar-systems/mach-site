@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Project layout</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link active" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Start<span class="sep">/</span>Project layout</div>
+      <h1>Project layout</h1>
+      <p class="lead">A mach project is a tree of <code>.mach</code> files under a source directory, anchored by a <code>mach.toml</code> manifest at the root. The project's <code>id</code> is the root of every module path the project exposes.</p>
+
+      <h2 id="source-files">Source files</h2>
+      <p>Source files use the <code>.mach</code> extension. Two conventional entry files name a project's surface:</p>
+      <ul>
+        <li><code>main.mach</code> - executable entry. Defines <code>fun main()</code>.</li>
+        <li><code>lib.mach</code> - library entry. Exposes code for other projects to import; produces no executable.</li>
+      </ul>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">main</span>() {
+    <span class="cmt"># program starts here</span>
+}</code></pre>
+      <p>A project may carry both files. The actual role of an entry is fixed by the artifact table that names it in <code>mach.toml</code>: a <code>[bin.*]</code> links an executable, a <code>[lib.*]</code> produces a library.</p>
+
+      <h2 id="project-root">The project root</h2>
+      <p>Every project has a <code>mach.toml</code> at its root. The compiler finds it by walking up from the working directory until one is seen, so any subcommand run inside the tree resolves the same manifest.</p>
+      <pre class="code"><code>[project]
+id      = <span class="str">"myproj"</span>      <span class="cmt"># root of every module path</span>
+version = <span class="str">"0.1.0"</span>
+src     = <span class="str">"src"</span>         <span class="cmt"># source dir (default "src")</span>
+
+[target.linux]
+isa = <span class="str">"x86_64"</span>
+os  = <span class="str">"linux"</span>
+abi = <span class="str">"sysv64"</span>
+
+[bin.app]
+entry = <span class="str">"main.mach"</span>   <span class="cmt"># executable entry, relative to src</span></code></pre>
+      <p>Only <code>id</code> and <code>version</code> are required. <code>src</code> (default <code>"src"</code>) is where module paths resolve; vendored dependencies live under <code>dep</code> (default <code>"dep"</code>). The full schema - targets, profiles, artifacts, dependencies, output templates - lives on the <a href="manifest.html">Manifest</a> page.</p>
+
+      <h2 id="module-paths">Files map to module paths</h2>
+      <p>The path separator is <code>.</code>. A file at <code>&lt;src&gt;/foo/bar.mach</code> in a project with <code>id = "myproj"</code> is reachable as <code>myproj.foo.bar</code>.</p>
+      <pre class="code"><code>myproj/
+  mach.toml
+  src/
+    main.mach          <span class="cmt"># myproj.main</span>
+    foo/
+      bar.mach         <span class="cmt"># myproj.foo.bar</span></code></pre>
+      <p>There is no <code>this.</code> self-prefix. Within a project, modules always reference each other by their full project-rooted path, so every reference is syntactically uniform no matter where it appears.</p>
+
+      <h2 id="surface-split">Surface and split modules</h2>
+      <p>A file <code>foo.mach</code> may co-exist with a directory <code>foo/</code>. The file is the <strong>surface</strong> module - the public face of <code>foo</code>. The directory holds <strong>split</strong> implementations that the surface loads and re-exports.</p>
+      <pre class="code"><code>src/
+  foo.mach             <span class="cmt"># surface: myproj.foo</span>
+  foo/
+    a.mach             <span class="cmt"># split: myproj.foo.a</span>
+    b.mach             <span class="cmt"># split: myproj.foo.b</span></code></pre>
+      <p>The surface loads each split with <code>use</code> and re-exports its public symbols with <code>fwd</code>. Consumers <code>use myproj.foo</code> and reach symbols through the surface; they never name the split files directly.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">myproj.foo.a</span>;
+<span class="kw">fwd</span> <span class="mod">a.X</span>;             <span class="cmt"># re-export a's public symbol through the surface</span></code></pre>
+      <h3 id="topical-splits">Topical splits</h3>
+      <p>Organize a large module by topic. Every split is forwarded unconditionally, keeping one logical module spread across readable files.</p>
+      <h3 id="multiplatform-splits">Multiplatform splits</h3>
+      <p>Keep one implementation per target and select it with <code><span class="ct">$if</span></code> on <code><span class="ct">$mach.build.os</span></code> or <code><span class="ct">$mach.build.arch</span></code>, so the surface forwards only the split that matches the build.</p>
+
+      <h2 id="bare-imports">Importing a project by id</h2>
+      <p>A one-segment <code>use</code>/<code>fwd</code> path equal to a resolvable project id - a dependency's id or the current project's own - resolves to that project's declared <code>[project].module</code>. A library that sets <code>module = "glfw.mach"</code> is imported by its id instead of by the full path to its surface file.</p>
+      <pre class="code"><code><span class="cmt"># in glfw's manifest</span>
+[project]
+id     = <span class="str">"glfw"</span>
+module = <span class="str">"glfw.mach"</span>   <span class="cmt"># the surface a bare use glfw binds</span></code></pre>
+      <pre class="code"><code><span class="cmt"># in a consumer</span>
+<span class="kw">use</span> <span class="mod">glfw</span>;             <span class="cmt"># binds glfw's [project].module</span></code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A bare import of a project that declares no <code>module</code> is a resolution error naming the fix: import a full path, or add a <code>module</code> key. A declared <code>module</code> that names no file is a manifest error at build start. Longer paths are unaffected, so this is purely additive.</p>
+      </div>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="modules.html">Modules</a> - how files map to dotted module paths</li>
+          <li><a href="manifest.html">Manifest</a> - the full <code>mach.toml</code> schema</li>
+          <li><a href="dependencies.html">Dependencies</a> - vendored deps under the <code>dep</code> dir</li>
+          <li><a href="visibility.html">Visibility</a> - <code>pub</code> and <code>fwd</code> re-exports</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="hello-world.html"><span class="pn-label">Previous</span><span class="pn-title">Hello world</span></a><a class="next" href="types.html"><span class="pn-label">Next</span><span class="pn-title">Types</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#source-files">Source files</a>
+      <a href="#project-root">The project root</a>
+      <a href="#module-paths">Files map to module paths</a>
+      <a href="#surface-split">Surface and split modules</a>
+      <a class="sub" href="#topical-splits">Topical splits</a>
+      <a class="sub" href="#multiplatform-splits">Multiplatform splits</a>
+      <a href="#bare-imports">Importing a project by id</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

@@ -3,22 +3,26 @@
   // the doc map the palette searches (prototype: Overview + Variadics resolve)
   var PAGES = [
     { title: "Overview", group: "Start", url: "index.html" },
-    { title: "Install", group: "Start", url: "#" },
-    { title: "Hello world", group: "Start", url: "#" },
-    { title: "Project layout", group: "Start", url: "#" },
-    { title: "Types", group: "Language", url: "#" },
-    { title: "Values and variables", group: "Language", url: "#" },
-    { title: "Functions", group: "Language", url: "#" },
-    { title: "Modules", group: "Language", url: "#" },
-    { title: "The comptime channel", group: "Comptime", url: "#" },
-    { title: "Intrinsics", group: "Comptime", url: "#" },
-    { title: "Control flow", group: "Comptime", url: "#" },
+    { title: "Install", group: "Start", url: "install.html" },
+    { title: "Hello world", group: "Start", url: "hello-world.html" },
+    { title: "Project layout", group: "Start", url: "project-layout.html" },
+    { title: "Types", group: "Language", url: "types.html" },
+    { title: "Values and variables", group: "Language", url: "values.html" },
+    { title: "Functions", group: "Language", url: "functions.html" },
+    { title: "Expressions", group: "Language", url: "expressions.html" },
+    { title: "Statements", group: "Language", url: "statements.html" },
+    { title: "Records and unions", group: "Language", url: "records-unions.html" },
+    { title: "Modules", group: "Language", url: "modules.html" },
+    { title: "Visibility", group: "Language", url: "visibility.html" },
+    { title: "The comptime channel", group: "Comptime", url: "comptime.html" },
+    { title: "Intrinsics", group: "Comptime", url: "intrinsics.html" },
+    { title: "Control flow", group: "Comptime", url: "comptime-control.html" },
     { title: "Variadic packs", group: "Comptime", url: "variadics.html" },
-    { title: "Decorators", group: "Comptime", url: "#" },
-    { title: "CLI", group: "Tooling", url: "#" },
-    { title: "Manifest", group: "Tooling", url: "#" },
-    { title: "Dependencies", group: "Tooling", url: "#" },
-    { title: "Testing", group: "Tooling", url: "#" }
+    { title: "Decorators", group: "Comptime", url: "decorators.html" },
+    { title: "CLI", group: "Tooling", url: "cli.html" },
+    { title: "Manifest", group: "Tooling", url: "manifest.html" },
+    { title: "Dependencies", group: "Tooling", url: "dependencies.html" },
+    { title: "Testing", group: "Tooling", url: "testing.html" }
   ];
 
   // --- mobile sidebar ---

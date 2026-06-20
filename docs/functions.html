@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Functions</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link active" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Functions</div>
+      <h1>Functions</h1>
+      <p class="lead">A function takes typed arguments, optionally returns a typed value, and runs a body of statements. Beyond the plain form, <code>fun</code> also carries generic type parameters, compile-time value parameters, and a trailing variadic pack.</p>
+
+      <h2 id="declaring">Declaring a function</h2>
+      <p>Every function starts with <code>fun</code>, a name, a parenthesized parameter list, an optional return type, and a brace-delimited body. The return type sits between the parameter list and the body; omit it for a function that returns nothing.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">NAME</span>(args) <span class="type">RET</span> { ... }              <span class="cmt"># function with return type</span>
+<span class="kw">fun</span> <span class="fn">NAME</span>(args) { ... }                  <span class="cmt"># no return type</span>
+<span class="kw">fun</span> <span class="fn">NAME</span>[<span class="type">T</span>](args) <span class="type">RET</span> { ... }           <span class="cmt"># generic over type parameters</span>
+<span class="kw">fun</span> <span class="fn">NAME</span>(<span class="ct">$p</span>: <span class="type">T</span>, args) <span class="type">RET</span> { ... }       <span class="cmt"># comptime value parameter</span>
+<span class="kw">fun</span> <span class="fn">NAME</span>(fixed, <span class="param">va</span>: <span class="ct">...</span>) <span class="type">RET</span> { ... }    <span class="cmt"># variadic pack parameter</span></code></pre>
+      <p>Parameters are written <code>name: Type</code>. A value is returned with <code>ret</code>.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">add</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> {
+    <span class="kw">ret</span> a + b;
+}
+
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">bump</span>() {                        <span class="cmt"># no return value</span>
+    counter = counter + <span class="num">1</span>;
+}</code></pre>
+
+      <h2 id="generics">Generic type parameters</h2>
+      <p>Generic functions take type parameters in brackets, <code>[T]</code>. There are no constraints: any type may be substituted. The compiler monomorphizes a separate instance per unique type instantiation.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">identity</span>[<span class="type">T</span>](<span class="param">value</span>: <span class="type">T</span>) <span class="type">T</span> {
+    <span class="kw">ret</span> value;
+}
+
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">make_pair</span>[<span class="type">T</span>, <span class="type">U</span>](<span class="param">a</span>: <span class="type">T</span>, <span class="param">b</span>: <span class="type">U</span>) <span class="type">Pair</span>[<span class="type">T</span>, <span class="type">U</span>] {
+    <span class="kw">var</span> <span class="param">p</span>: <span class="type">Pair</span>[<span class="type">T</span>, <span class="type">U</span>];
+    p.left  = a;
+    p.right = b;
+    <span class="kw">ret</span> p;
+}</code></pre>
+      <p>Call sites supply the types explicitly in brackets:</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">x</span>: <span class="type">i64</span> = <span class="fn">identity</span>[<span class="type">i64</span>](<span class="num">42</span>);
+<span class="kw">val</span> <span class="param">p</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>] = <span class="fn">make_pair</span>[<span class="type">i64</span>, <span class="type">u8</span>](<span class="num">1</span>, <span class="num">2u8</span>);</code></pre>
+
+      <h2 id="comptime-params">Comptime value parameters</h2>
+      <p>A parameter marked <code>$name: T</code> must be supplied with a value the compiler can resolve at compile time. The body can branch on it with <code>$if</code>, producing different code per call-site instantiation.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">pick_op</span>(<span class="ct">$mode</span>: <span class="type">Mode</span>, <span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> {
+    <span class="ct">$if</span> (mode == MODE_FAST) {
+        <span class="kw">ret</span> a + b;
+    }
+    <span class="ct">$or</span> (mode == MODE_SAFE) {
+        <span class="cmt"># extra logic here</span>
+        <span class="kw">ret</span> a + b;
+    }
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Restriction</span>
+        <p>Comptime value parameters apply to function parameters only - not record fields, and not other contexts.</p>
+      </div>
+
+      <h2 id="variadics">Variadic packs</h2>
+      <p>A trailing named pack parameter, <code>va: ...</code>, accepts a variable number of trailing arguments. Any number of leading fixed parameters may precede it. The compiler monomorphizes the function once per distinct call-site type-list; the pack is consumed by <code>$each a in va</code> at compile time. There is no runtime <code>va_list</code>.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">sum</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> a <span class="kw">in</span> va {
+        t = t + a;
+    }
+    <span class="kw">ret</span> t;
+}
+
+<span class="cmt"># leading fixed params are allowed before the pack</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">bias</span>(<span class="param">base</span>: <span class="type">i64</span>, <span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = base;
+    <span class="ct">$each</span> a <span class="kw">in</span> va { t = t + a; }
+    <span class="kw">ret</span> t;
+}</code></pre>
+      <p><code>va.len</code> folds to the element count, and <code>g(va...)</code> forwards the whole pack to another pack-tailed callee. See the variadic packs reference for the full rules.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="variadics.html">Variadic packs</a> - the full pack parameter reference</li>
+          <li><a href="comptime-control.html">Control flow</a> - <code>$if</code> and <code>$each</code> inside function bodies</li>
+          <li><a href="expressions.html">Expressions</a> - function calls and generic instantiation</li>
+          <li><a href="types.html">Types</a> - the types parameters and returns are written in</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="values.html"><span class="pn-label">Previous</span><span class="pn-title">Values and variables</span></a><a class="next" href="expressions.html"><span class="pn-label">Next</span><span class="pn-title">Expressions</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#declaring">Declaring a function</a>
+      <a href="#generics">Generic type parameters</a>
+      <a href="#comptime-params">Comptime value parameters</a>
+      <a href="#variadics">Variadic packs</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

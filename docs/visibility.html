@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Visibility</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link active" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Visibility</div>
+      <h1>Visibility</h1>
+      <p class="lead">Two declaration modifiers control how a symbol is seen: <code>pub</code> decides what crosses a module boundary, and <code>ext</code> declares a body-less function resolved at link time.</p>
+
+      <h2 id="pub">The <code>pub</code> modifier</h2>
+      <p><code>pub</code> marks a declaration as part of its module's public surface. Other modules that <code>use</code> this module can reference <code>pub</code>-marked symbols by name. A declaration without <code>pub</code> is file-private: only code in the same file can see it.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">add</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> a + b; }
+<span class="kw">fun</span> <span class="fn">helper</span>() { ... }            <span class="cmt"># private: only callable inside this file</span>
+<span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Point</span> { <span class="param">x</span>: <span class="type">i64</span>; <span class="param">y</span>: <span class="type">i64</span>; }
+<span class="kw">pub</span> <span class="kw">val</span> <span class="param">MAX</span>: <span class="type">i64</span> = <span class="num">100</span>;</code></pre>
+      <p>The modifier applies to declarations: <code>fun</code>, <code>rec</code>, <code>uni</code>, <code>def</code>, <code>val</code>, <code>var</code>, and <code>ext fun</code>.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>fwd</code> always publishes and does not take an explicit <code>pub</code> modifier.</p>
+      </div>
+
+      <h2 id="ext">External functions with <code>ext</code></h2>
+      <p><code>ext</code> declares a function with the C ABI as a forward reference: it has no body, and the linker resolves the symbol at link time. Only functions can be <code>ext</code>.</p>
+      <pre class="code"><code><span class="deco">#[<span class="fn">symbol</span>(<span class="str">"write"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;</code></pre>
+      <ul>
+        <li><code>ext fun</code> declarations have no body.</li>
+        <li>The C ABI is the contract: argument and return types must be representable in C.</li>
+      </ul>
+
+      <h3 id="symbol">Overriding the linker name</h3>
+      <p>By default the linker looks up the declared name. The <code>#[symbol("real_name")]</code> decorator overrides it, binding the declaration to a different external symbol.</p>
+
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>There are no body-less functions outside of <code>ext fun</code>. Regular forward declarations do not exist.</p>
+      </div>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="functions.html">Functions</a> - regular function declarations</li>
+          <li><a href="modules.html">Modules</a> - how <code>use</code> reaches public symbols</li>
+          <li><a href="decorators.html">Decorators</a> - <code>#[symbol]</code> and other attributes</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="modules.html"><span class="pn-label">Previous</span><span class="pn-title">Modules</span></a><a class="next" href="comptime.html"><span class="pn-label">Next</span><span class="pn-title">The comptime channel</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#pub">The pub modifier</a>
+      <a href="#ext">External functions with ext</a>
+      <a class="sub" href="#symbol">Overriding the linker name</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>
