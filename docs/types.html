@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Types</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link active" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Types</div>
+      <h1>Types</h1>
+      <p class="lead">Mach ships a small set of compiler-seeded primitive types plus a uniform grammar for building pointers, arrays, and function types out of them. There are no compiler-known aliases: names like <code>bool</code>, <code>usize</code>, and <code>str</code> are stdlib <code>def</code>s.</p>
+
+      <h2 id="scalars">Primitive scalars</h2>
+      <p>Eleven names make up the complete set of primitive types the compiler seeds. Everything else is built on top of them.</p>
+      <table>
+        <thead><tr><th>Family</th><th>Members</th></tr></thead>
+        <tbody>
+          <tr><td>Unsigned int</td><td><code><span class="type">u8</span></code>, <code><span class="type">u16</span></code>, <code><span class="type">u32</span></code>, <code><span class="type">u64</span></code></td></tr>
+          <tr><td>Signed int</td><td><code><span class="type">i8</span></code>, <code><span class="type">i16</span></code>, <code><span class="type">i32</span></code>, <code><span class="type">i64</span></code></td></tr>
+          <tr><td>Float</td><td><code><span class="type">f32</span></code>, <code><span class="type">f64</span></code></td></tr>
+          <tr><td>Untyped pointer</td><td><code><span class="type">ptr</span></code></td></tr>
+        </tbody>
+      </table>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>There is no compiler <code>bool</code>. It is a stdlib alias <code>def bool: u8;</code>, with <code>true</code> and <code>false</code> as stdlib <code>val</code>s (<code>1</code> and <code>0</code>).</p>
+      </div>
+
+      <h2 id="vectors">SIMD vectors <span class="badge badge-planned">planned</span></h2>
+      <p>The planned design extends the primitive numeric types into vectors by appending <code>x&lt;count&gt;</code>.</p>
+      <pre class="code"><code><span class="type">f32x4</span>           <span class="cmt"># 4 lanes of f32</span>
+<span class="type">i32x8</span>           <span class="cmt"># 8 lanes of i32</span>
+<span class="type">u8x16</span>          <span class="cmt"># 16 lanes of u8</span></code></pre>
+      <p>The grammar is <code>&lt;u|i|f&gt;&lt;width&gt;(x&lt;count&gt;)*</code>. Higher dimensions such as <code>f32x4x4</code> are legal grammatically; the compiler ships only the entries its target backends can accelerate.</p>
+      <div class="callout warn">
+        <span class="callout-label">Not yet implemented</span>
+        <p>The compiler does not seed vector types today. A name like <code>f32x4</code> resolves as an ordinary unbound identifier, not a type. The grammar above describes the planned design only.</p>
+      </div>
+
+      <h2 id="pointer">Pointers</h2>
+      <p><code>*T</code> is a pointer to a value of type <code>T</code>. Take an address with <code>?</code> and read through it with <code>@</code>.</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="type">i64</span>;
+<span class="kw">var</span> <span class="param">p</span>: *<span class="type">i64</span> = ?x;       <span class="cmt"># address-of yields a pointer</span>
+<span class="kw">val</span> <span class="param">v</span>: <span class="type">i64</span>  = @p;       <span class="cmt"># dereference reads through it</span></code></pre>
+
+      <h2 id="array">Arrays</h2>
+      <p><code>[N]T</code> is an array of exactly <code>N</code> values of type <code>T</code>. Arrays nest as <code>[N][M]T</code>.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">a</span>: [<span class="num">4</span>]<span class="type">i64</span>    = [<span class="num">4</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>};
+<span class="kw">val</span> <span class="param">g</span>: [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span> = [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span>{ [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>}, [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">3</span>, <span class="num">4</span>} };</code></pre>
+
+      <h2 id="function-type">Function types</h2>
+      <p><code>fun(T1, T2) R</code> is a first-class function-pointer type, usable as a value's type just like any scalar.</p>
+      <pre class="code"><code><span class="kw">def</span> <span class="type">BinOp</span>: <span class="kw">fun</span>(<span class="type">i64</span>, <span class="type">i64</span>) <span class="type">i64</span>;
+<span class="kw">val</span> <span class="param">op</span>: <span class="type">BinOp</span> = add;
+<span class="kw">val</span> <span class="param">r</span>:  <span class="type">i64</span>   = <span class="fn">op</span>(<span class="num">2</span>, <span class="num">3</span>);</code></pre>
+
+      <h2 id="named-types">Named types and aliases</h2>
+      <p><code>rec</code> and <code>uni</code> declarations produce named types. A <code>def</code> introduces an alias for any type, including the constructed forms above.</p>
+      <pre class="code"><code><span class="kw">def</span> <span class="type">Bytes</span>: [<span class="num">16</span>]<span class="type">u8</span>;     <span class="cmt"># Bytes now names an array type</span>
+<span class="kw">def</span> <span class="type">bool</span>: <span class="type">u8</span>;          <span class="cmt"># the stdlib's own bool alias</span></code></pre>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="values.html">Values and variables</a> - <code>def</code> aliases, <code>val</code> constants, and how <code>bool</code> is built</li>
+          <li><a href="records-unions.html">Records and unions</a> - declaring named <code>rec</code> and <code>uni</code> types</li>
+          <li><a href="expressions.html">Expressions</a> - which operations work on each type</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$align_of</code> over any type</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="project-layout.html"><span class="pn-label">Previous</span><span class="pn-title">Project layout</span></a><a class="next" href="values.html"><span class="pn-label">Next</span><span class="pn-title">Values and variables</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#scalars">Primitive scalars</a>
+      <a href="#vectors">SIMD vectors</a>
+      <a href="#pointer">Pointers</a>
+      <a href="#array">Arrays</a>
+      <a href="#function-type">Function types</a>
+      <a href="#named-types">Named types and aliases</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

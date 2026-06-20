@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Intrinsics</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link active" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Intrinsics</div>
+      <h1>Intrinsics</h1>
+      <p class="lead">Intrinsics are compiler-shipped comptime functions. They share the ordinary <code>$name(args)</code> call shape, but their names are reserved and their bodies live in the compiler. The set is closed: adding one requires a compiler change.</p>
+
+      <h2 id="value-intrinsics">Value intrinsics</h2>
+      <p>These fold to a comptime constant unsigned integer. The storage type is whatever the binding declares - Mach has no compiler-known <code>usize</code>.</p>
+      <pre class="code"><code><span class="ct">$size_of</span>(<span class="type">T</span>)             <span class="cmt"># byte size of type T</span>
+<span class="ct">$align_of</span>(<span class="type">T</span>)            <span class="cmt"># byte alignment of type T</span>
+<span class="ct">$offset_of</span>(<span class="type">T</span>, field)    <span class="cmt"># byte offset of T's field</span></code></pre>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_SIZE</span>: <span class="type">i64</span> = <span class="ct">$size_of</span>(<span class="type">Point</span>);
+<span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_X</span>:    <span class="type">i64</span> = <span class="ct">$offset_of</span>(<span class="type">Point</span>, x);</code></pre>
+
+      <h2 id="type-intrinsic">Type intrinsic</h2>
+      <p><code>$type_of(expr)</code> produces a comptime type value: the resolved type of its argument. Type values have no runtime representation; they are meaningful only as operands in comptime type comparisons.</p>
+      <pre class="code"><code><span class="ct">$type_of</span>(expr)          <span class="cmt"># comptime type value of expr</span></code></pre>
+      <p>Compare type values with <code>==</code> or <code>!=</code> inside a <code>$if</code> condition. A bare type name (<code>i64</code>, <code>str</code>, <code>Point</code>) is the other valid operand. The comparison selects one branch at compile time per monomorphization instance - useful for per-element type dispatch inside <code>$each</code> bodies.</p>
+      <pre class="code"><code><span class="ct">$if</span> (<span class="ct">$type_of</span>(arg) == <span class="type">i64</span>) { <span class="fn">write_i64</span>(w, arg); }
+<span class="ct">$or</span> (<span class="ct">$type_of</span>(arg) == <span class="type">str</span>) { <span class="fn">write_str</span>(w, arg); }
+<span class="ct">$or</span> { <span class="ct">$error</span>(<span class="str">"unsupported type"</span>); }</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Provably-dead arms are pruned before type-checking, so each arm uses <code>arg</code> at its own concrete type with no per-arm cast: the <code>str</code> arm above is never checked against a <code>u64</code> element. Only the selected arm is type-checked and emitted.</p>
+      </div>
+
+      <h2 id="fields">Field intrinsic and projection</h2>
+      <p><code>$fields(T)</code> produces a comptime sequence of field descriptors for record or union type <code>T</code>. Each descriptor carries three readable properties.</p>
+      <table>
+        <thead><tr><th>Property</th><th>Type</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><code>f.name</code></td><td><code>*u8</code></td><td>field name as a NUL-terminated string</td></tr>
+          <tr><td><code>f.type</code></td><td>type value</td><td>comptime type value of the field's type</td></tr>
+          <tr><td><code>f.offset</code></td><td>integer</td><td>byte offset of the field in <code>T</code>'s layout</td></tr>
+        </tbody>
+      </table>
+      <p>The sequence is consumed by <code>$each f in $fields(T)</code>. Inside the body, <code>v.[f]</code> projects the concrete field off an instance <code>v</code>. It is an lvalue: readable and writable, including through a pointer receiver.</p>
+      <pre class="code"><code><span class="ct">$fields</span>(<span class="type">T</span>)              <span class="cmt"># comptime field sequence for record/union T</span>
+v.[f]                   <span class="cmt"># comptime field projection: access the field f on v</span></code></pre>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Pair</span> { <span class="param">x</span>: <span class="type">i64</span>; <span class="param">y</span>: <span class="type">i64</span>; }
+
+<span class="kw">fun</span> <span class="fn">sum</span>(<span class="param">p</span>: <span class="type">Pair</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">total</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Pair</span>) {
+        total = total + p.[f];      <span class="cmt"># p.x on iteration 1, p.y on iteration 2</span>
+    }
+    <span class="kw">ret</span> total;
+}</code></pre>
+      <p><code>$each f in $fields(Empty)</code> expands to nothing when <code>T</code> has no fields.</p>
+
+      <h3 id="heterogeneous">Heterogeneous fields</h3>
+      <p>Because each iteration re-types <code>v.[f]</code> to the concrete field type, heterogeneous records work naturally - cast each field as you fold it.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Mixed</span> { <span class="param">a</span>: <span class="type">i64</span>; <span class="param">b</span>: <span class="type">u8</span>; }
+
+<span class="kw">fun</span> <span class="fn">total</span>(<span class="param">m</span>: <span class="type">Mixed</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Mixed</span>) {
+        t = t + m.[f]::<span class="type">i64</span>;     <span class="cmt"># m.a (i64) on iter 1, m.b (u8) cast to i64 on iter 2</span>
+    }
+    <span class="kw">ret</span> t;
+}</code></pre>
+
+      <h3 id="descriptor-reads">Descriptor reads</h3>
+      <p>A descriptor's properties can be read inside the loop body - <code>f.offset</code> for layout math, <code>f.type</code> for type comparisons.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">offsum</span>(<span class="param">m</span>: <span class="type">Mixed</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">s</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Mixed</span>) {
+        s = s + f.offset::<span class="type">i64</span>;    <span class="cmt"># 0 + 8 = 8 for Mixed { a: i64; b: u8; }</span>
+    }
+    <span class="kw">ret</span> s;
+}
+
+<span class="kw">fun</span> <span class="fn">count_i64</span>(<span class="param">m</span>: <span class="type">Mixed</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">n</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Mixed</span>) {
+        <span class="ct">$if</span> (f.type == <span class="type">i64</span>) { n = n + <span class="num">1</span>; }
+        <span class="ct">$or</span> { }
+    }
+    <span class="kw">ret</span> n;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A field literally named <code>type</code> is unaffected: ordinary <code>v.type</code> access still works. The <code>v.[f]</code> projection uses the <code>$each</code> loop variable, which is always a field descriptor, never a regular member.</p>
+      </div>
+
+      <h3 id="nested">Nested $each</h3>
+      <p><code>$each</code> can be nested to walk a record's fields against another's.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">cross</span>(<span class="param">p</span>: <span class="type">Pair</span>, <span class="param">q</span>: <span class="type">Pair</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Pair</span>) {
+        <span class="ct">$each</span> g <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Pair</span>) {
+            t = t + p.[f] * q.[g];
+        }
+    }
+    <span class="kw">ret</span> t;
+}</code></pre>
+
+      <h2 id="each">$each: compile-time unroll</h2>
+      <p><code>$each</code> is a statement form that splices its body once per element of a comptime sequence. There are two sequence forms.</p>
+      <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) { ... }    <span class="cmt"># one iteration per field of T</span>
+<span class="ct">$each</span> a <span class="kw">in</span> va { ... }            <span class="cmt"># one iteration per element of pack va</span></code></pre>
+      <p>It is valid only in statement scope, inside a function body. It is not a loop: the body is duplicated at compile time, not iterated at runtime. Enclosing runtime variables (an index, an accumulator) are shared across all unrolled copies. See <a href="variadics.html">Variadic packs</a> for the pack form.</p>
+
+      <h2 id="diagnostics">Diagnostic intrinsics</h2>
+      <p><code>$error("msg")</code> fails compilation with <code>msg</code> when it is reached on a live path: an unconditional position, or a <code>$if</code> / <code>$or</code> arm the compiler selects. A <code>$error</code> in a discarded arm never fires, so it is the natural total-coverage fallback for a <code>$type_of</code> dispatch: the unhandled-type <code>$or {}</code> arm fails the build at compile time instead of falling through to a runtime error. It is valid in both declaration and statement scope and takes one string-literal message.</p>
+      <pre class="code"><code><span class="ct">$error</span>(<span class="str">"msg"</span>)           <span class="cmt"># fails compilation when reached</span>
+
+<span class="ct">$if</span> (!supported) {
+    <span class="ct">$error</span>(<span class="str">"this target is not supported"</span>);
+}
+
+<span class="ct">$if</span> (<span class="ct">$type_of</span>(arg) == <span class="type">i64</span>) { <span class="fn">write_i64</span>(w, arg); }
+<span class="ct">$or</span> (<span class="ct">$type_of</span>(arg) == <span class="type">str</span>) { <span class="fn">write_str</span>(w, arg); }
+<span class="ct">$or</span> { <span class="ct">$error</span>(<span class="str">"no writer for this argument type"</span>); }    <span class="cmt"># compile error on an unhandled type</span></code></pre>
+      <div class="callout warn">
+        <span class="callout-label">Not yet implemented</span>
+        <p><code>$assert</code> <span class="badge badge-planned">planned</span> parses as a comptime directive but the compiler does not yet evaluate it. It is intended as sugar over <code>$if</code> plus <code>$error</code>: <code>$assert(cond, "msg")</code> is equivalent to <code>$if (!cond) { $error("msg"); }</code>, e.g. <code>$assert($size_of(i64) == 8, "expected 64-bit i64");</code>.</p>
+      </div>
+
+      <h2 id="not-intrinsics">Not provided as intrinsics</h2>
+      <p>Code intrinsics - runtime-instruction emitters like <code>trap</code>, <code>fence</code>, and <code>pause</code> - are not in the compiler-shipped set. They belong in the standard library as functions with per-arch <code>asm</code> bodies.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="comptime.html">The comptime channel</a> - what runs at compile time and how it folds</li>
+          <li><a href="comptime-control.html">Control flow</a> - <code>$if</code> and <code>$or</code> branch selection</li>
+          <li><a href="variadics.html">Variadic packs</a> - <code>$each a in va</code> over argument sequences</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="comptime.html"><span class="pn-label">Previous</span><span class="pn-title">The comptime channel</span></a><a class="next" href="comptime-control.html"><span class="pn-label">Next</span><span class="pn-title">Control flow</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#value-intrinsics">Value intrinsics</a>
+      <a href="#type-intrinsic">Type intrinsic</a>
+      <a href="#fields">Field intrinsic and projection</a>
+      <a class="sub" href="#heterogeneous">Heterogeneous fields</a>
+      <a class="sub" href="#descriptor-reads">Descriptor reads</a>
+      <a class="sub" href="#nested">Nested $each</a>
+      <a href="#each">$each: compile-time unroll</a>
+      <a href="#diagnostics">Diagnostic intrinsics</a>
+      <a href="#not-intrinsics">Not provided as intrinsics</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

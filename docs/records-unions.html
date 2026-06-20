@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Records and unions</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link active" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Records and unions</div>
+      <h1>Records and unions</h1>
+      <p class="lead">A <code>rec</code> is a named collection of typed fields, each with its own storage. A <code>uni</code> overlaps its fields in the same memory. Together they compose every aggregate mach has, including discriminated values.</p>
+
+      <h2 id="records">Records</h2>
+      <p>A <code>rec</code> lays out its fields side by side. Each field has independent storage, and the record's size is the sum of the field sizes plus any padding the compiler inserts for alignment. A record may be generic over type parameters.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">NAME</span> {
+    <span class="param">field1</span>: type;
+    <span class="param">field2</span>: type;
+    <span class="ct">...</span>
+}
+
+<span class="kw">rec</span> <span class="type">NAME</span>[<span class="type">T</span>, <span class="type">U</span>] { ... }      <span class="cmt"># generic over type parameters</span></code></pre>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Point</span> {
+    <span class="param">x</span>: <span class="type">i64</span>;
+    <span class="param">y</span>: <span class="type">i64</span>;
+}
+
+<span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Pair</span>[<span class="type">T</span>, <span class="type">U</span>] {
+    <span class="param">left</span>:  <span class="type">T</span>;
+    <span class="param">right</span>: <span class="type">U</span>;
+}</code></pre>
+
+      <h2 id="construct">Construction and access</h2>
+      <p>A record literal names the type and supplies each field by name. Read a field with <code>.</code>.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">p</span>: <span class="type">Point</span>          = <span class="type">Point</span>{ <span class="param">x</span>: <span class="num">1</span>, <span class="param">y</span>: <span class="num">2</span> };
+<span class="kw">val</span> <span class="param">q</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]  = <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]{ <span class="param">left</span>: <span class="num">5</span>, <span class="param">right</span>: <span class="num">6u8</span> };
+<span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span>            = p.x;            <span class="cmt"># field access via .</span></code></pre>
+
+      <h2 id="layout">Memory layout</h2>
+      <p>By default the compiler may insert padding between fields to satisfy each field's alignment, following the natural C-style rule. The <code>#[align(N)]</code> decorator on a record raises its minimum type alignment to <code>N</code> bytes, where <code>N</code> is a power of two.</p>
+      <pre class="code"><code><span class="deco">#[align(<span class="num">16</span>)]</span>
+<span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Aligned</span> {
+    <span class="param">a</span>: <span class="type">u8</span>;
+    <span class="param">b</span>: <span class="type">i64</span>;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Disabling padding entirely (a <code>packed</code> layout for binary-protocol or on-disk structs) is not yet available. Field-to-field padding always follows the natural alignment rule.</p>
+      </div>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Set a type's alignment with the <code>#[align(N)]</code> decorator.</p>
+      </div>
+
+      <h2 id="unions">Unions</h2>
+      <p>A <code>uni</code> is a collection of named fields that share the same memory. Writing one field overwrites whatever bytes the others held. A union's size is the size of its largest field plus any alignment padding. Unions may be generic.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">uni</span> <span class="type">Number</span> {
+    <span class="param">i</span>: <span class="type">i64</span>;
+    <span class="param">f</span>: <span class="type">f64</span>;
+}
+
+<span class="kw">pub</span> <span class="kw">uni</span> <span class="type">Maybe</span>[<span class="type">T</span>] {
+    <span class="param">some</span>: <span class="type">T</span>;
+    <span class="param">none</span>: <span class="type">u8</span>;
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>The compiler does not track which field of a union is live. Reading a field other than the one last written reinterprets raw bytes; keeping the active field straight is the programmer's responsibility.</p>
+      </div>
+
+      <h2 id="discriminated">Discriminated values</h2>
+      <p>Mach has no tagged-union construct and no pattern-matching dispatch. A discriminated value composes from a <code>rec</code> that carries a discriminator alongside a <code>uni</code> payload.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Value</span> {
+    <span class="param">kind</span>: <span class="type">ValueKind</span>;
+    <span class="param">data</span>: <span class="kw">uni</span> { <span class="param">i</span>: <span class="type">i64</span>; <span class="param">f</span>: <span class="type">f64</span>; }
+}</code></pre>
+      <p>Consumers read <code>kind</code>, then access the matching <code>data</code> field through ordinary <code>if</code>/<code>or</code> chains. The compiler does not verify that <code>kind</code> and <code>data</code> agree; keeping them consistent is the constructor's responsibility.</p>
+      <p>This is deliberate. Tagged unions and <code>match</code>-style dispatch would add significant surface area to the language and compiler for an abstraction the composed form already expresses honestly.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="decorators.html">Decorators</a> - <code>#[align(N)]</code> and the rest of the decorator set</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$offset_of</code> for inspecting layout</li>
+          <li><a href="statements.html">Statements</a> - <code>if</code>/<code>or</code> chains for reading discriminated values</li>
+          <li><a href="types.html">Types</a> - the type system records and unions build on</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="statements.html"><span class="pn-label">Previous</span><span class="pn-title">Statements</span></a><a class="next" href="modules.html"><span class="pn-label">Next</span><span class="pn-title">Modules</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#records">Records</a>
+      <a href="#construct">Construction and access</a>
+      <a href="#layout">Memory layout</a>
+      <a href="#unions">Unions</a>
+      <a href="#discriminated">Discriminated values</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

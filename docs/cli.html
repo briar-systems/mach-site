@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: CLI</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link active" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>CLI</div>
+      <h1>CLI</h1>
+      <p class="lead">The <code>mach</code> binary is the compiler driver. It dispatches on the first argument to a small set of commands - <code>build</code>, <code>run</code>, <code>test</code>, and more - that compile, execute, and manage a project rooted at a <code>mach.toml</code>.</p>
+
+      <h2 id="invocation">Invocation</h2>
+      <pre class="code"><code>mach &lt;command&gt; [options]</code></pre>
+      <p>The compiler dispatches on <code>argv[1]</code>. With no command, or an unknown one, it prints usage and exits non-zero. The project commands - <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code> - take the project root as a <strong>required</strong> positional and walk up from it until a <code>mach.toml</code> is found. A bare invocation with no path is a user error.</p>
+      <p>Flags are matched exactly: <code>--flag value</code> (the value follows in the next argument) or a bare <code>--flag</code> toggle.</p>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>The combined <code>--flag=value</code> form and bundled short flags are <strong>not</strong> recognized. Each flag and its value are separate arguments.</p>
+      </div>
+
+      <h2 id="commands">Commands</h2>
+      <table>
+        <thead><tr><th>Command</th><th>Summary</th></tr></thead>
+        <tbody>
+          <tr><td><code>build</code></td><td>compile the project to objects and (for a <code>[bin.*]</code>) a linked binary</td></tr>
+          <tr><td><code>run</code></td><td>build, then execute the produced binary</td></tr>
+          <tr><td><code>test</code></td><td>build the test binary and run the collected tests</td></tr>
+          <tr><td><code>dep</code></td><td>manage git-backed dependencies (clone, lock, vendor)</td></tr>
+          <tr><td><code>init</code></td><td>scaffold a new project</td></tr>
+          <tr><td><code>doc</code></td><td>generate Markdown reference docs from source doc-comments</td></tr>
+          <tr><td><code>info</code></td><td>print compiler version, build host, and registered target capabilities</td></tr>
+          <tr><td><code>help</code></td><td>print usage; <code>mach help &lt;command&gt;</code> for detail</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="global-flags">Global flags</h2>
+      <p>Read by <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code>, which share one config parser. Passing <code>--verbose</code> and <code>--quiet</code> together is a parse error.</p>
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--verbose</code>, <code>-v</code></td><td>-</td><td>write extra detail (per-stage compile progress) to stderr</td></tr>
+          <tr><td><code>--quiet</code>, <code>-q</code></td><td>-</td><td>suppress non-error output</td></tr>
+          <tr><td><code>--color &lt;mode&gt;</code></td><td>auto, always, never</td><td>color preference (default auto); an unknown mode is a parse error</td></tr>
+          <tr><td><code>--target &lt;name&gt;</code></td><td>target name</td><td>select a declared target; absent, defers to <code>[project].target</code></td></tr>
+          <tr><td><code>--profile &lt;name&gt;</code></td><td>profile name</td><td>select a <code>[profile.&lt;name&gt;]</code> variant; absent, the first declared</td></tr>
+          <tr><td><code>--bin &lt;name&gt;</code></td><td>artifact name</td><td>narrow the build to one <code>[bin.&lt;name&gt;]</code> artifact</td></tr>
+          <tr><td><code>--lib &lt;name&gt;</code></td><td>artifact name</td><td>narrow to one <code>[lib.&lt;name&gt;]</code> artifact (mutually exclusive with <code>--bin</code>)</td></tr>
+          <tr><td><code>-o &lt;path&gt;</code></td><td>path</td><td>override the artifact path, rooted at the project root</td></tr>
+          <tr><td><code>--all-targets</code></td><td>-</td><td>build every declared <code>[target.*]</code>, not just the default</td></tr>
+          <tr><td><code>--emit-asm</code></td><td>-</td><td>emit per-module assembly text (<code>.s</code>); forces the profile's <code>emit_asm</code> on</td></tr>
+          <tr><td><code>--emit-ir</code></td><td>-</td><td>emit per-module SSA IR text (<code>.ir</code>); forces the profile's <code>emit_ir</code> on</td></tr>
+          <tr><td><code>--no-emit-asm</code></td><td>-</td><td>force assembly emission off, overriding the profile</td></tr>
+          <tr><td><code>--no-emit-ir</code></td><td>-</td><td>force IR emission off, overriding the profile</td></tr>
+          <tr><td><code>--verify-ir</code></td><td>-</td><td>run the IR verifier after each optimisation pass</td></tr>
+        </tbody>
+      </table>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>mach dep</code> and <code>mach init</code> do not use the shared config parser; they read only their own flags.</p>
+      </div>
+
+      <h2 id="build">build</h2>
+      <pre class="code"><code>mach build &lt;path&gt; [options]</code></pre>
+      <p>Compiles the project rooted at <code>&lt;path&gt;</code> (for example <code>mach build .</code>). With no <code>--bin</code> or <code>--lib</code>, it builds every declared artifact for the default target and profile. Every reachable module is driven through sema, lower, optimise, and codegen to one relocatable object under the manifest's <code>obj</code> template. For a <code>[bin.*]</code> the objects are linked into the resolved <code>out</code> path; for a <code>[lib.*]</code> (or with <code>--emit obj</code>) the objects are the deliverable and nothing is linked.</p>
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--release</code></td><td>-</td><td>select the release optimisation pipeline</td></tr>
+          <tr><td><code>-O0</code></td><td>-</td><td>force the debug pipeline (overrides <code>--release</code>)</td></tr>
+          <tr><td><code>-O1</code>, <code>-O2</code></td><td>-</td><td>select the release pipeline (both select the same one today)</td></tr>
+          <tr><td><code>--emit &lt;kind&gt;</code></td><td>obj, exe</td><td><code>obj</code> stops at the objects; <code>exe</code> (default) links a binary</td></tr>
+          <tr><td><code>-L &lt;dir&gt;</code></td><td>dir</td><td>add a search directory for <code>-l</code>-resolved inputs; repeatable</td></tr>
+          <tr><td><code>-l &lt;name&gt;</code></td><td>name</td><td>link a named object, archive, or shared library; repeatable</td></tr>
+        </tbody>
+      </table>
+      <p>Plus the global flags. The <code>-O&lt;n&gt;</code> flags override <code>--release</code> when both are present; absent any optimisation flag, the build uses the debug pipeline (the bootstrap-stable default).</p>
+
+      <h3 id="link-inputs">Link inputs</h3>
+      <p><code>ext fun</code> declarations are forward references resolved at link time by external precompiled code - a loose <code>.o</code> object, a static <code>.a</code> archive, or a shared <code>.so</code> library. Inputs come from the command line and from the manifest's merged <code>libs</code> overlay; both sets are linked. An input that resolves to no existing file is a hard error, so a typo never silently drops a dependency.</p>
+      <ul>
+        <li><strong>Explicit input path</strong> - a bare (non-flag) argument that contains a <code>/</code>, ends in <code>.o</code> or <code>.a</code>, or names a <code>.so</code> is treated as an input path. The first non-flag positional after <code>build</code> is the project root and is skipped; the rest are link inputs. A relative path is tried verbatim against the working directory first, then rooted at the project root.</li>
+        <li><strong><code>-l &lt;name&gt;</code></strong> - each <code>-L &lt;dir&gt;</code> is searched for <code>lib&lt;name&gt;.o</code>, <code>&lt;name&gt;.o</code>, <code>lib&lt;name&gt;.a</code>, then <code>&lt;name&gt;.a</code>; if none hit, the same candidates are tried against the working directory. Only if no static object or archive is found does resolution fall back to a shared <code>lib&lt;name&gt;.so</code> (the <code>-L</code> dirs, then the target OS's default and common system library directories).</li>
+        <li><strong><code>-L &lt;dir&gt;</code></strong> - adds a search directory for the resolution above. Both <code>-L</code> and <code>-l</code> may be repeated.</li>
+      </ul>
+      <p>How an input resolves decides static vs dynamic linking. A loose <code>.o</code> or static <code>.a</code> is a <strong>static</strong> input merged into the executable (an archive contributes every member object). A shared <code>.so</code> is a <strong>dynamic</strong> dependency: its <code>DT_SONAME</code> is recorded and undefined <code>ext</code> symbols are bound at load time through an emitted PLT. A static definition always wins over a dynamic import of the same name. <code>-l</code> prefers a static candidate, so the <code>.so</code> fallback applies only when none exists (the common case for system libraries like libc). Manifest <code>libs</code> resolve before CLI inputs, giving a deterministic link order.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Dynamic linking is implemented for the ELF (Linux) and PE (Windows) targets. The Mach-O (Darwin) import path is not yet implemented.</p>
+      </div>
+
+      <h2 id="run">run</h2>
+      <pre class="code"><code>mach run &lt;path&gt; [options] [-- args...]</code></pre>
+      <p>Builds the project at <code>&lt;path&gt;</code> exactly like <code>mach build</code>, then executes the produced binary. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>; the child's exit code becomes this command's exit code. <code>--emit</code> is rejected - running a relocatable object is not meaningful. All other <code>build</code> and global flags apply.</p>
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>execute the binary as <code>&lt;cmd&gt; &lt;binary&gt; &lt;args...&gt;</code> instead of directly</td></tr>
+        </tbody>
+      </table>
+      <p><code>--runner</code> names a host-side launcher for binaries the host cannot exec directly, for example <code>mach run . --target windows --runner wine</code>. <code>&lt;cmd&gt;</code> is a single command name or path (no shell-style word splitting); a bare name is resolved on <code>PATH</code>. Without the flag the binary is exec'd directly, and a launch failure reports exit <code>127</code> when <code>execve</code> rejects the binary, with no auto-detection.</p>
+
+      <h2 id="test">test</h2>
+      <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
+      <p>Builds one standalone executable per <code>test</code> declaration (the test plus the project's transitive code, with a synthesized <code>main</code> calling just that test), then spawns each as a separate process and reports a per-test <code>name file:line PASS|FAIL</code> line. A crashing test reports its signal and the run continues. A test build always links executables, even for a library target.</p>
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--filter &lt;pattern&gt;</code></td><td>pattern</td><td>run only tests whose name contains <code>&lt;pattern&gt;</code></td></tr>
+          <tr><td><code>--list</code></td><td>-</td><td>list the collected tests and exit</td></tr>
+          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt;</code> instead of exec'ing it directly</td></tr>
+        </tbody>
+      </table>
+      <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
+
+      <h2 id="dep">dep</h2>
+      <pre class="code"><code>mach dep &lt;action&gt; [args]</code></pre>
+      <p>Manages the project's dependency tree. A dependency has exactly one source form: a <strong>git</strong> URL plus a ref, acquired into the dep directory with plain git operations, or a <strong>path</strong> to another project tree, materialised as a relative symlink so the build resolves it by the same vendor layout.</p>
+      <table>
+        <thead><tr><th>Action</th><th>Args</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>pull</code></td><td>-</td><td>realise the manifest: clone missing git deps (transitively), link path deps, re-resolve a changed ref, repair drift, write <code>mach.lock</code>. Idempotent.</td></tr>
+          <tr><td><code>update</code></td><td><code>&lt;name&gt;</code> or <code>--all</code></td><td>the only lock-advancer: re-resolve branch refs to current remote tips. Tag/commit refs are a no-op. Never edits the manifest.</td></tr>
+          <tr><td><code>add</code></td><td><code>&lt;name&gt; --git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code></td><td>append a <code>[deps.&lt;name&gt;]</code> stanza, then <code>pull</code>.</td></tr>
+          <tr><td><code>remove</code></td><td><code>&lt;name&gt; [--purge]</code></td><td>drop the entry from <code>mach.toml</code> and <code>mach.lock</code>; <code>--purge</code> also deletes the vendored checkout.</td></tr>
+          <tr><td><code>list</code></td><td>-</td><td>print each entry with its source form, ref, locked commit, and state (synced, missing, drifted, path).</td></tr>
+        </tbody>
+      </table>
+      <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands (<code>pull</code>, <code>update</code>, <code>add</code>) use git, discovered on <code>PATH</code> and invoked with an allowlisted environment. Git's absence is a clean error naming the operation that needed it. The same name required from two different sources or refs is a hard error naming both requirers; there is no version resolution.</p>
+
+      <h3 id="lockfile">Lockfile</h3>
+      <p>The manifest is intent; <code>mach.lock</code> is the record of resolving it. After a <code>pull</code>, <code>mach dep</code> writes a TOML file recording each git dep's <code>url</code>, <code>ref</code>, and resolved <code>commit</code> (path deps have no lock entry).</p>
+      <pre class="code"><code><span class="cmt"># generated by `mach dep pull`; do not edit by hand.</span>
+version = <span class="num">1</span>
+
+[deps.mach-std]
+url = <span class="str">"https://github.com/octalide/mach-std"</span>
+ref = <span class="str">"branch/dev"</span>
+commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></code></pre>
+      <p><code>pull</code> honours the lock except where the manifest ref was edited, where it re-resolves loudly. A checked-out commit that differs from the lock is drift, repaired and reported, never silent. The writer is idempotent: an up-to-date lock is left untouched. Commit <code>mach.lock</code> to pin builds.</p>
+
+      <h2 id="init">init</h2>
+      <pre class="code"><code>mach init [dir] [options]</code></pre>
+      <p>Scaffolds a new project in <code>[dir]</code> (default: the current directory). Writes a complete <code>mach.toml</code> with a <code>[project]</code> block, <code>[target.*]</code> platforms for linux/windows/darwin, one artifact, debug and release profiles, a <code>[deps.mach-std]</code> dependency, a starter source file, and a cloned <code>mach-std</code>. Every collision is checked before any file is written, so a refused init leaves nothing behind.</p>
+      <table>
+        <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--name &lt;name&gt;</code></td><td>name</td><td>project id (default: the directory base name)</td></tr>
+          <tr><td><code>--force</code></td><td>-</td><td>scaffold even when <code>mach.toml</code>, <code>src/main.mach</code>, or <code>src/lib.mach</code> already exists</td></tr>
+          <tr><td><code>--lib</code></td><td>-</td><td>library layout: write <code>src/lib.mach</code> and scaffold a <code>[lib.&lt;id&gt;]</code> artifact (<code>kind = "static"</code>) instead of <code>[bin.&lt;id&gt;]</code></td></tr>
+        </tbody>
+      </table>
+      <p>The first non-flag argument is the target directory. A default binary scaffold links and runs from <code>mach build .</code> without further manifest edits.</p>
+
+      <h2 id="utility">doc, info, and help</h2>
+      <p><strong><code>mach doc &lt;path&gt;</code></strong> loads the module graph and generates Markdown reference docs from source doc-comments - one page per module plus an index. Each <code>pub</code> declaration is paired with the run of <code>#</code> comment lines immediately preceding it. <code>--out &lt;dir&gt;</code> sets the output directory (default <code>doc/api</code>); <code>--target &lt;name&gt;</code> selects a target for module discovery. The hand-written language material is never touched.</p>
+      <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
+      <pre class="code"><code>mach 2.4.1
+host: linux/x86_64
+isa: x86_64 aarch64
+os: linux darwin windows
+abi: sysv win64
+object: elf macho coff</code></pre>
+      <p>The capability lines are read from the binary's target registries, so they report exactly what this build can target. <code>mach info --version</code> prints the version string alone on one line, for tooling.</p>
+      <p><strong><code>mach help [command]</code></strong> prints the top-level usage summary, or - with a known command - that command's detail page. An unknown command prints usage and exits non-zero.</p>
+
+      <h2 id="exit-codes">Exit codes</h2>
+      <p>The commands share a stable convention for scripting:</p>
+      <table>
+        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>success (for <code>test</code>, all tests passed)</td></tr>
+          <tr><td><code>1</code></td><td>user error: missing project path, no <code>mach.toml</code>, unknown target, compile errors, an unresolvable link input (for <code>test</code>, any test failed)</td></tr>
+          <tr><td><code>2</code></td><td>internal error</td></tr>
+        </tbody>
+      </table>
+      <p><code>mach run</code> instead returns the child's exit code on a successful build, falling back to <code>1</code> on a build/user error and <code>2</code> internally.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="manifest.html">Manifest</a> - the <code>mach.toml</code> reference for targets, profiles, and libs</li>
+          <li><a href="dependencies.html">Dependencies</a> - git and path deps managed by <code>mach dep</code></li>
+          <li><a href="testing.html">Testing</a> - the <code>test</code> declaration behind <code>mach test</code></li>
+          <li><a href="project-layout.html">Project layout</a> - the directory shape <code>mach init</code> scaffolds</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="decorators.html"><span class="pn-label">Previous</span><span class="pn-title">Decorators</span></a><a class="next" href="manifest.html"><span class="pn-label">Next</span><span class="pn-title">Manifest</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#invocation">Invocation</a>
+      <a href="#commands">Commands</a>
+      <a href="#global-flags">Global flags</a>
+      <a href="#build">build</a>
+      <a class="sub" href="#link-inputs">Link inputs</a>
+      <a href="#run">run</a>
+      <a href="#test">test</a>
+      <a href="#dep">dep</a>
+      <a class="sub" href="#lockfile">Lockfile</a>
+      <a href="#init">init</a>
+      <a href="#utility">doc, info, and help</a>
+      <a href="#exit-codes">Exit codes</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Hello world</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link active" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Start<span class="sep">/</span>Hello world</div>
+      <h1>Hello world</h1>
+      <p class="lead">A complete mach program in a handful of lines: a couple of imports, an entry point, and one printed line. Every piece is explicit, so nothing runs that you did not write.</p>
+
+      <h2 id="program">The program</h2>
+      <p>This is the whole thing. It imports the runtime and the print module, declares an entry point, prints a line, and returns a zero exit code.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;
+<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
+
+<span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
+    print.<span class="fn">println</span>(<span class="str">"Hello, World!"</span>);
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The examples rely on the standard library as a dependency. Run <code>mach init</code> to scaffold a project wired up to build, or clone the standalone <a href="https://github.com/octalide/mach-sieve" target="_blank">Mach Sieve</a> starting point.</p>
+      </div>
+
+      <h2 id="imports">Imports</h2>
+      <p>Modules are named by full, project-rooted dotted paths. The first line pulls in the standard runtime that every program builds against; it takes no alias because nothing here calls it directly.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;          <span class="cmt"># bring the runtime into the build</span>
+<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;     <span class="cmt"># bind std.print to the short name print</span></code></pre>
+      <p>The <code>use alias: path</code> form binds a short handle to a path. With <code>print</code> bound, the module's symbols are reached through it as <code>print.println</code>. See <a href="modules.html">Modules</a> for path resolution and aliases.</p>
+
+      <h2 id="entry">The entry point</h2>
+      <p>Execution starts at a single function. Its name in source can be anything; what makes it the entry point is the exported symbol and its signature.</p>
+
+      <h3 id="symbol">The symbol decorator</h3>
+      <p><code>#[symbol("main")]</code> exports the function under the symbol <code>main</code>, which is the name the program is entered through. Decorators attach to the declaration that follows them.</p>
+      <pre class="code"><code><span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> { ... }</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Decorators use the <code>#[...]</code> syntax. See <a href="decorators.html">Decorators</a> for the full set.</p>
+      </div>
+
+      <h3 id="args">Arguments and exit code</h3>
+      <p>The entry function takes the argument count <code>argc: i64</code> and the argument vector <code>argv: **u8</code> (a pointer to an array of C-style strings). It returns an <code>i64</code> process exit code, so <code>ret 0;</code> reports success.</p>
+
+      <h2 id="printing">Printing</h2>
+      <p><code>print.println</code> writes its argument followed by a newline. For formatted output, <code>print.printf</code> fills each <code>{}</code> hole in the format string with the next trailing argument, in order, and writes exactly what you give it.</p>
+      <pre class="code"><code>print.<span class="fn">printf</span>(<span class="str">"x = {}\n"</span>, <span class="num">42</span>::<span class="type">i64</span>);   <span class="cmt"># x = 42</span></code></pre>
+      <p>The <code>::i64</code> casts the literal to a concrete type. Because <code>printf</code> writes the string verbatim, include the trailing <code>\n</code> yourself.</p>
+
+      <h2 id="build">Build and run</h2>
+      <p>Build with the same single toolchain that vendors dependencies and links. From the project root:</p>
+      <pre class="code"><code>mach init          <span class="cmt"># scaffold a new project</span>
+mach dep pull      <span class="cmt"># fetch dependencies (std)</span>
+mach build .       <span class="cmt"># compile to out/&lt;target&gt;/bin/</span></code></pre>
+      <p>The compiled binary lands in <code>out/&lt;target&gt;/bin/</code>, where <code>&lt;target&gt;</code> is the selected target name. Run it directly from there. See the <a href="cli.html">CLI</a> reference for the full command set.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="functions.html">Functions</a> - declarations, parameters, and generics</li>
+          <li><a href="modules.html">Modules</a> - dotted paths, use, and aliases</li>
+          <li><a href="cli.html">CLI</a> - build, dependency, and test commands</li>
+          <li><a href="project-layout.html">Project layout</a> - how a project tree maps to modules</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="install.html"><span class="pn-label">Previous</span><span class="pn-title">Install</span></a><a class="next" href="project-layout.html"><span class="pn-label">Next</span><span class="pn-title">Project layout</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#program">The program</a>
+      <a href="#imports">Imports</a>
+      <a href="#entry">The entry point</a>
+      <a class="sub" href="#symbol">The symbol decorator</a>
+      <a class="sub" href="#args">Arguments and exit code</a>
+      <a href="#printing">Printing</a>
+      <a href="#build">Build and run</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

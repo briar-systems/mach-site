@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Statements</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link active" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Statements</div>
+      <h1>Statements</h1>
+      <p class="lead">Statements are the runtime steps that fill function bodies and blocks. Every statement ends with <code>;</code>, except the ones that end with a block <code>{...}</code>.</p>
+
+      <h2 id="if-or">Conditionals: <code>if</code> / <code>or</code></h2>
+      <p>An <code>if</code> head opens a branch chain. Each <code>or (cond) { ... }</code> adds another conditional branch, and a trailing <code>or { ... }</code> with no condition is the catch-all. Every body is a block; there is no brace-less single-statement form.</p>
+      <pre class="code"><code><span class="kw">if</span> (cond) {
+    ...
+}
+<span class="kw">or</span> (cond) {
+    ...
+}
+<span class="kw">or</span> {
+    ...                     <span class="cmt"># final else (no condition)</span>
+}</code></pre>
+
+      <h2 id="for">Loops: <code>for</code></h2>
+      <p>mach has a single condition-driven loop. The body repeats while the condition holds. There is no for-each form.</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">i</span>: <span class="type">i64</span> = <span class="num">0</span>;
+<span class="kw">for</span> (i &lt; <span class="num">10</span>) {
+    i = i + <span class="num">1</span>;
+}</code></pre>
+
+      <h2 id="ret">Returning: <code>ret</code></h2>
+      <p><code>ret expr;</code> returns a value; bare <code>ret;</code> returns from a void function.</p>
+      <pre class="code"><code><span class="kw">ret</span> expr;                   <span class="cmt"># return a value</span>
+<span class="kw">ret</span>;                        <span class="cmt"># return from a void function</span></code></pre>
+
+      <h2 id="brk-cnt">Loop control: <code>brk</code> / <code>cnt</code></h2>
+      <p><code>brk</code> exits the enclosing <code>for</code>; <code>cnt</code> skips to the next iteration.</p>
+      <pre class="code"><code><span class="kw">for</span> (i &lt; <span class="num">10</span>) {
+    <span class="kw">if</span> (i == <span class="num">3</span>) { <span class="kw">cnt</span>; }
+    <span class="kw">if</span> (i == <span class="num">8</span>) { <span class="kw">brk</span>; }
+    i = i + <span class="num">1</span>;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Both are operand-less, so they are keywords only in their bare <code>brk;</code> / <code>cnt;</code> form. The same word followed by anything else is an ordinary identifier: a variable named <code>cnt</code> reads and assigns normally (<code>cnt = x;</code>), even inside a loop that also uses bare <code>cnt;</code> for control flow.</p>
+      </div>
+
+      <h2 id="fin">Deferred cleanup: <code>fin</code></h2>
+      <p><code>fin</code> schedules a statement or block to run when the enclosing scope exits, in reverse order of declaration. It is for cleanup that should happen regardless of how the scope is left.</p>
+      <pre class="code"><code>{
+    <span class="kw">fin</span> counter = counter - <span class="num">1</span>;
+    <span class="kw">fin</span> { counter = counter * <span class="num">2</span>; }
+
+    <span class="cmt"># ... code ...</span>
+}
+<span class="cmt"># at scope exit: fin block runs first, then fin counter = counter - 1</span></code></pre>
+      <p><code>fin</code> takes either a single statement (<code>fin stmt;</code>) or a block (<code>fin { ... }</code>). There is no bare-expression form.</p>
+
+      <h2 id="blocks">Blocks</h2>
+      <p><code>{ ... }</code> introduces a new lexical scope. Statements inside run in order, and a block can stand alone to bound the lifetime of locals.</p>
+      <pre class="code"><code>{
+    <span class="kw">val</span> <span class="param">tmp</span>: <span class="type">i64</span> = <span class="fn">compute</span>();
+    <span class="fn">use_tmp</span>(tmp);
+}</code></pre>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="expressions.html">Expressions</a> - what goes on the right side of <code>=</code> and inside conditions</li>
+          <li><a href="values.html">Values and variables</a> - <code>var</code> and <code>val</code> declarations</li>
+          <li><a href="comptime-control.html">Control flow</a> - the comptime counterparts <code>$if</code> and <code>$each</code></li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="expressions.html"><span class="pn-label">Previous</span><span class="pn-title">Expressions</span></a><a class="next" href="records-unions.html"><span class="pn-label">Next</span><span class="pn-title">Records and unions</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#if-or">Conditionals: if / or</a>
+      <a href="#for">Loops: for</a>
+      <a href="#ret">Returning: ret</a>
+      <a href="#brk-cnt">Loop control: brk / cnt</a>
+      <a href="#fin">Deferred cleanup: fin</a>
+      <a href="#blocks">Blocks</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

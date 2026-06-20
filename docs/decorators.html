@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Decorators</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link active" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Decorators</div>
+      <h1>Decorators</h1>
+      <p class="lead">A decorator is a codegen directive attached to a declaration. It controls how the compiler emits a symbol - its linker name, alignment, section placement, inlining, or PE import routing - and nothing else.</p>
+
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Decorators are codegen-only. Visibility (<code>pub</code> / <code>ext</code>) is a separate concern and is never controlled by a decorator.</p>
+      </div>
+
+      <h2 id="surface">Surface</h2>
+      <p>A decorator is written as an attribute clause. A bare flag takes no arguments; a directive takes comptime-expression arguments.</p>
+      <pre class="code"><code><span class="deco">#[name]</span>            <span class="cmt"># bare flag (e.g. inline)</span>
+<span class="deco">#[name(args)]</span>      <span class="cmt"># directive with comptime-expr arguments</span></code></pre>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>A line comment that begins <code>#[</code> with no space opens an attribute. Write such a comment with a separating space: <code># [...]</code>.</p>
+      </div>
+
+      <h2 id="placement">Placement</h2>
+      <p>Decorators appear before the declaration they target, one per line or space-separated on the same line. They attach to the immediately following declaration only and do not bleed across declarations.</p>
+      <pre class="code"><code><span class="deco">#[inline]</span>
+<span class="deco">#[symbol(<span class="str">"big"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">big</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> { ... }
+
+<span class="deco">#[align(<span class="num">64</span>)]</span> <span class="deco">#[symbol(<span class="str">"g_lit64"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">var</span> <span class="param">g_lit64</span>: <span class="type">u8</span> = <span class="num">7</span>;</code></pre>
+
+      <h2 id="directives">Directives</h2>
+      <p>The directive set is closed; new directives require a compiler change.</p>
+
+      <h3 id="symbol"><code>symbol(str)</code> - linker name</h3>
+      <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it, the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
+      <pre class="code"><code><span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">entry</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> { ... }
+
+<span class="deco">#[symbol(<span class="str">"write"</span>)]</span>
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;</code></pre>
+
+      <h3 id="library"><code>library(str)</code> - PE import routing</h3>
+      <p>Pins an <code>ext</code> import to a specific DLL in the link's dependency set. Applies to <code>ext</code> functions only, and composes with <code>symbol</code> - the import is emitted under the renamed symbol within the named DLL.</p>
+      <pre class="code"><code><span class="deco">#[library(<span class="str">"ws2_32.dll"</span>)]</span> <span class="deco">#[symbol(<span class="str">"WSAStartup"</span>)]</span>
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">wsa_startup</span>(<span class="param">ver</span>: <span class="type">u16</span>, <span class="param">data</span>: *<span class="type">u8</span>) <span class="type">i32</span>;</code></pre>
+      <ul>
+        <li>The named DLL must appear in the manifest's <code>[os.*].libs</code> for the target OS. Pinning to an absent library is a link error, never a silent fallback.</li>
+        <li>Without <code>library</code>, an unattributed PE import binds to the first declared dependency. Every import that belongs to a different DLL needs its own <code>library</code> pin.</li>
+        <li>On ELF (Linux) the loader resolves imports by global search, so <code>library</code> has no effect on the emitted binary; the value is still validated against the link's dependency set.</li>
+      </ul>
+
+      <h3 id="inline"><code>inline</code> - force inlining</h3>
+      <p>Marks a function for inlining at every call site, overriding the compiler's size- and use-count heuristics. Applies to functions only and takes no arguments.</p>
+      <pre class="code"><code><span class="deco">#[inline]</span>
+<span class="kw">fun</span> <span class="fn">fast_path</span>(<span class="param">x</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> x * <span class="num">2</span>; }</code></pre>
+
+      <h3 id="align"><code>align(expr)</code> - alignment override</h3>
+      <p>Sets the alignment of a global variable or a record/union type. <code>expr</code> must be a comptime integer - a literal, or a comptime expression such as <code>$size_of(T)</code> or <code>$align_of(T)</code>.</p>
+      <pre class="code"><code><span class="deco">#[align(<span class="num">64</span>)]</span>
+<span class="kw">pub</span> <span class="kw">var</span> <span class="param">cache_line</span>: <span class="type">u8</span> = <span class="num">0</span>;
+
+<span class="deco">#[align(<span class="ct">$size_of</span>(<span class="type">Pair</span>))]</span>
+<span class="kw">pub</span> <span class="kw">var</span> <span class="param">g_cmp</span>: <span class="type">u8</span> = <span class="num">0</span>;
+
+<span class="deco">#[align(<span class="num">32</span>)]</span>
+<span class="kw">rec</span> <span class="type">Over</span> { <span class="param">a</span>: <span class="type">u8</span>; }</code></pre>
+      <ul>
+        <li>On a <code>var</code> / <code>val</code>, it sets the global's section and address alignment.</li>
+        <li>On a <code>rec</code> or <code>uni</code>, it sets the type's own alignment, inherited by any global of that type.</li>
+        <li>It does not apply to <code>def</code> aliases, which are transparent and have no layout of their own.</li>
+      </ul>
+
+      <h3 id="section"><code>section(str)</code> - object section placement</h3>
+      <p>Places a function or global variable in a named section instead of the default <code>.text</code> / <code>.data</code>. The section is created if absent; cross-section calls and accesses use ordinary relocations.</p>
+      <pre class="code"><code><span class="deco">#[section(<span class="str">".hottext"</span>)]</span> <span class="deco">#[symbol(<span class="str">"f_hot"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">f_hot</span>(<span class="param">x</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> x + <span class="num">1</span>; }
+
+<span class="deco">#[section(<span class="str">".machsec"</span>)]</span> <span class="deco">#[symbol(<span class="str">"g_sec"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">var</span> <span class="param">g_sec</span>: <span class="type">u64</span> = <span class="num">100</span>;</code></pre>
+
+      <h2 id="applicability">Applicability</h2>
+      <p>Each directive targets a fixed set of declaration kinds. The full matrix:</p>
+      <table>
+        <thead>
+          <tr><th>Directive</th><th><code>fun</code></th><th><code>ext fun</code></th><th><code>val</code> / <code>var</code></th><th><code>rec</code> / <code>uni</code></th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>symbol</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>library</code></td><td>no</td><td>yes</td><td>no</td><td>no</td></tr>
+          <tr><td><code>inline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>align</code></td><td>no</td><td>no</td><td>yes</td><td>yes</td></tr>
+          <tr><td><code>section</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
+        </tbody>
+      </table>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="visibility.html">Visibility</a> - <code>pub</code> / <code>ext</code>, the separate concern decorators never touch</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$align_of</code> as <code>align</code> arguments</li>
+          <li><a href="manifest.html">Manifest</a> - the <code>[os.*].libs</code> set a <code>library</code> pin resolves against</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="variadics.html"><span class="pn-label">Previous</span><span class="pn-title">Variadic packs</span></a><a class="next" href="cli.html"><span class="pn-label">Next</span><span class="pn-title">CLI</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#surface">Surface</a>
+      <a href="#placement">Placement</a>
+      <a href="#directives">Directives</a>
+      <a class="sub" href="#symbol">symbol</a>
+      <a class="sub" href="#library">library</a>
+      <a class="sub" href="#inline">inline</a>
+      <a class="sub" href="#align">align</a>
+      <a class="sub" href="#section">section</a>
+      <a href="#applicability">Applicability</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

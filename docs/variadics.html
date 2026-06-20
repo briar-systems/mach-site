@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Variadic packs</title>
+  <meta name="description" content="Variadic packs in mach: compile-time argument sequences consumed with $each.">
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link active" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Variadic packs</div>
+      <h1>Variadic packs</h1>
+      <p class="lead">A trailing <code>va: ...</code> parameter collects a variable number of call-site arguments into a compile-time sequence. The compiler monomorphizes the function once per distinct argument type-list. There is no runtime structure, no <code>va_list</code>, and no <code>any</code>.</p>
+
+      <h2 id="declaring">Declaring a pack</h2>
+      <p>A pack parameter is a named parameter whose type is <code>...</code>. It must be last; any number of fixed, typed parameters may precede it.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">name</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">RetType</span> { ... }
+<span class="kw">fun</span> <span class="fn">name</span>(<span class="param">fixed</span>: <span class="type">T</span>, <span class="param">va</span>: <span class="ct">...</span>) <span class="type">RetType</span> { ... }   <span class="cmt"># leading fixed params are allowed</span></code></pre>
+
+      <h2 id="each">Iterating with <code>$each</code></h2>
+      <p><code>$each a in va</code> unrolls the body once per element, with <code>a</code> bound to the element and re-typed to that element's concrete type per instantiation. This is the only way to consume a pack.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">sum</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> a <span class="kw">in</span> va {
+        t = t + a;
+    }
+    <span class="kw">ret</span> t;
+}
+
+<span class="fn">sum</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>)       <span class="cmt"># 6</span>
+<span class="fn">sum</span>()              <span class="cmt"># 0, the body never runs on an empty pack</span></code></pre>
+      <p>Because each element has its own concrete type at monomorphization, the body can handle a heterogeneous pack by casting each element:</p>
+      <pre class="code"><code><span class="ct">$each</span> a <span class="kw">in</span> va {
+    t = t + a::<span class="type">i64</span>;          <span class="cmt"># cast each element's concrete type to i64</span>
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A <code>$each</code> body is a normal statement block. Runtime variables in the enclosing scope (a cursor, an accumulator) thread across every unrolled iteration: each one reads where the previous left off.</p>
+      </div>
+
+      <h2 id="len">Counting with <code>va.len</code></h2>
+      <p><code>va.len</code> folds to the instance's element count at compile time.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">count</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> { <span class="kw">ret</span> va.len::<span class="type">i64</span>; }
+
+<span class="fn">count</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>)   <span class="cmt"># 3</span></code></pre>
+
+      <h2 id="forwarding">Forwarding a whole pack</h2>
+      <p>Inside a pack instance, <code>g(va...)</code> forwards the whole pack to another pack-tailed function, which is monomorphized for the forwarded type-list.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">outer</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> { <span class="kw">ret</span> <span class="fn">sum</span>(va<span class="ct">...</span>); }</code></pre>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p><code>va...</code> is valid only as the sole trailing argument of a pack-tailed callee. Spreading into a callee with no pack parameter, spreading with other arguments after it, or spreading only part of a pack are all rejected.</p>
+      </div>
+
+      <h2 id="mono">Monomorphization and ABI</h2>
+      <p>A pack-tailed function is compiled once per distinct argument type-list at each call site. Different arities, or the same arity with different types, produce separate instances.</p>
+      <table>
+        <thead><tr><th>Call</th><th>Instance</th></tr></thead>
+        <tbody>
+          <tr><td><code>sum(1, 2, 3)</code></td><td><code>(i64, i64, i64)</code></td></tr>
+          <tr><td><code>sum(10, 20)</code></td><td><code>(i64, i64)</code></td></tr>
+          <tr><td><code>sum(5::u8, 1::u32)</code></td><td><code>(u8, u32)</code></td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <span class="callout-label">Not a stable ABI</span>
+        <p>A pack-tailed function has no single entry point, so it is not a stable-ABI symbol. It cannot be the target of an <code>ext fun</code> or a function pointer shared across compilation units. It is source-level only.</p>
+      </div>
+
+      <h2 id="vformat">Example: vformat</h2>
+      <p>The standard library's <code>vformat</code> is a pack-tailed function. Each <code>$each</code> iteration handles one format argument in order, with <code>$type_of</code> dispatch selecting the right writer per element type.</p>
+      <pre class="code"><code><span class="ct">$each</span> arg <span class="kw">in</span> va {
+    <span class="ct">$if</span> (<span class="ct">$type_of</span>(arg) == <span class="type">str</span>) { <span class="fn">write_str</span>(w, arg); }
+    <span class="ct">$or</span> (<span class="ct">$type_of</span>(arg) == <span class="type">i64</span>) { <span class="fn">write_i64</span>(w, arg); }
+    <span class="ct">$or</span> { <span class="ct">$error</span>(<span class="str">"no writer for this argument type"</span>); }
+}</code></pre>
+      <p>The runtime format cursor threads across all unrolled iterations; the argument sequence is consumed entirely at compile time.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="functions.html">Functions</a> - declarations, generic and comptime parameters</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$type_of</code>, <code>$fields</code>, <code>$each</code></li>
+          <li><a href="comptime-control.html">Control flow</a> - <code>$if</code> and <code>$or</code> inside pack bodies</li>
+        </ul>
+      </div>
+
+      <div class="page-nav">
+        <a class="prev" href="comptime-control.html"><span class="pn-label">Previous</span><span class="pn-title">Control flow</span></a>
+        <a class="next" href="decorators.html"><span class="pn-label">Next</span><span class="pn-title">Decorators</span></a>
+      </div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#declaring">Declaring a pack</a>
+      <a href="#each">Iterating with $each</a>
+      <a href="#len">Counting with va.len</a>
+      <a href="#forwarding">Forwarding a whole pack</a>
+      <a href="#mono">Monomorphization and ABI</a>
+      <a href="#vformat">Example: vformat</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

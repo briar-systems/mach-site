@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Dependencies</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link active" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>Dependencies</div>
+      <h1>Dependencies</h1>
+      <p class="lead">A mach project declares its dependencies in <code>mach.toml</code> and vendors them into a flat <code>dep/</code> tree. <code>mach dep</code> realizes that tree from git or local paths; <code>mach build</code> then resolves everything by vendor layout alone, with no git and no network.</p>
+
+      <h2 id="declaring">Declaring a dependency</h2>
+      <p>Each <code>[deps.&lt;alias&gt;]</code> stanza names a dependency materialized under <code>&lt;dep&gt;/&lt;alias&gt;/</code> (the <code>dep</code> dir, default <code>dep/</code>). A stanza declares exactly one source key: a <code>git</code> URL or a local <code>path</code>.</p>
+      <pre class="code"><code><span class="cmt"># in mach.toml</span>
+[deps.mach-std]
+git = <span class="str">"https://github.com/octalide/mach-std"</span>
+ref = <span class="str">"v0.4.0"</span>
+
+[deps.local-lib]
+path = <span class="str">"../sibling/local-lib"</span></code></pre>
+      <table>
+        <thead><tr><th>Key</th><th>Type</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>git</code></td><td>string</td><td>Git URL cloned into <code>&lt;dep&gt;/&lt;alias&gt;/</code>.</td></tr>
+          <tr><td><code>path</code></td><td>string</td><td>Local path to another project tree, resolved relative to this manifest; never fetched.</td></tr>
+          <tr><td><code>ref</code></td><td>string</td><td>Git ref to check out (with <code>git</code>). Absent means the remote default branch.</td></tr>
+        </tbody>
+      </table>
+      <p>A <code>git</code> ref resolves in one of these forms:</p>
+      <ul>
+        <li><code>tag/&lt;name&gt;</code> - the named tag.</li>
+        <li><code>branch/&lt;name&gt;</code> - the remote-tracking branch tip.</li>
+        <li><code>commit/&lt;name&gt;</code> or a 7-40 char hex SHA - the literal commit.</li>
+        <li>a bare name - auto-detected as a remote branch (tracking its tip), else a literal tag or commit.</li>
+        <li>the empty ref - the remote default branch.</li>
+      </ul>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A registry-style <code>version =</code> key is reserved and rejected. There is no version resolution: dependencies are pinned by git ref or local path, nothing more.</p>
+      </div>
+
+      <h2 id="mach-dep">The mach dep command</h2>
+      <p><code>mach dep &lt;action&gt;</code> manages the tree under <code>&lt;dep&gt;</code>. It reads <code>mach.toml</code> from the current directory directly (it does not walk up to find a project root).</p>
+      <table>
+        <thead><tr><th>Action</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>pull</code></td><td>Realize the manifest: clone missing git deps (transitively), link path deps, re-resolve a changed ref, repair checkout drift, write <code>mach.lock</code>. Idempotent.</td></tr>
+          <tr><td><code>update</code></td><td>The only lock-advancer: re-resolve branch refs to current remote tips. Takes <code>&lt;name&gt;</code> or <code>--all</code>. Tag and commit refs are an immutable no-op; never edits the manifest.</td></tr>
+          <tr><td><code>add</code></td><td>Append a <code>[deps.&lt;name&gt;]</code> stanza to the manifest, then <code>pull</code>. Takes <code>--git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code>.</td></tr>
+          <tr><td><code>remove</code></td><td>Drop the entry from <code>mach.toml</code> and <code>mach.lock</code>; <code>--purge</code> also deletes <code>&lt;dep&gt;/&lt;name&gt;/</code>.</td></tr>
+          <tr><td><code>list</code></td><td>Print each entry with its source form, ref, locked commit, and state (<code>synced</code>, <code>missing</code>, <code>drifted</code>, <code>path</code>).</td></tr>
+        </tbody>
+      </table>
+      <pre class="code"><code><span class="cmt"># add a git dep and vendor it in one step</span>
+mach dep add mach-std --git https://github.com/octalide/mach-std --ref v0.4.0</code></pre>
+      <p>A <strong>git</strong> dep is cloned, then checked out as a detached HEAD at the resolved commit. A <strong>path</strong> dep is never fetched: <code>pull</code> materializes it at <code>&lt;dep&gt;/&lt;alias&gt;/</code> as a relative symlink, so the build reaches it by the same vendor layout as a git dep. Linking is idempotent - a stale link is replaced, a correct one left in place, and a source already living at the vendor location is a no-op. A path pointing at a missing directory, a tree with no <code>mach.toml</code>, or a vendor slot occupied by a real directory is a hard error.</p>
+
+      <h2 id="lockfile">The lockfile</h2>
+      <p>The manifest is intent; <code>mach.lock</code> is the record of resolving it. After a <code>pull</code>, <code>mach dep</code> writes a TOML lock recording each git dep's <code>url</code>, <code>ref</code>, and resolved <code>commit</code>. Path deps carry no pinned content, so they have no lock entry.</p>
+      <pre class="code"><code><span class="cmt"># generated by `mach dep pull`; do not edit by hand.</span>
+version = <span class="num">1</span>
+
+[deps.mach-std]
+url    = <span class="str">"https://github.com/octalide/mach-std"</span>
+ref    = <span class="str">"branch/dev"</span>
+commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></code></pre>
+      <p><code>pull</code> honours the lock except where the manifest ref was edited - there it re-resolves loudly. A checked-out commit that differs from the lock is drift, repaired by <code>pull</code> and reported, never silent. The writer is idempotent: an up-to-date lock is left untouched. Commit <code>mach.lock</code> to pin builds.</p>
+
+      <h2 id="vendor-tree">The flat dep tree</h2>
+      <p>Transitive deps resolve into a <strong>flat</strong> tree: every git dep, direct or transitive, lives at <code>&lt;dep&gt;/&lt;name&gt;/</code>. The build resolves a dependency purely by vendor layout - it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>, and routes any module path whose head segment matches a dep's <code>id</code> into that tree.</p>
+      <p>The same name required from two different sources or refs is a hard error naming both requirers. There is no version reconciliation.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands - <code>pull</code>, <code>update</code>, <code>add</code> - use git, discovered on <code>PATH</code>. Git's absence is a clean error naming the operation that needed it.</p>
+      </div>
+
+      <h2 id="importing">Importing a dependency</h2>
+      <p>Once vendored, a dependency's modules are imported by their full path - the head segment is the dep's <code>[project].id</code>, the rest mirrors its source tree. A dependency that declares a <code>[project].module</code> can also be imported by its bare id alone.</p>
+      <pre class="code"><code><span class="cmt"># in the dependency's manifest:</span>
+[project]
+id     = <span class="str">"glfw"</span>
+module = <span class="str">"glfw.mach"</span>   <span class="cmt"># the surface a bare use binds</span></code></pre>
+      <pre class="code"><code><span class="cmt"># in a consumer:</span>
+<span class="kw">use</span> <span class="mod">glfw</span>;   <span class="cmt"># binds glfw's [project].module</span></code></pre>
+      <p>A bare import of a project that declares no <code>module</code> is a resolution error naming the fix. Longer paths are unaffected, so this is purely additive.</p>
+
+      <h2 id="cascading-libs">Cascading link requirements</h2>
+      <p>A dependency declares its own external link inputs as <code>[target.*].libs</code> (full-tuple) or <code>[os.&lt;name&gt;].libs</code> (os-component) overlays. A consumer inherits every such lib that matches the build it is producing, so a platform link requirement lives once - in the providing dependency's manifest - and out of every consumer.</p>
+      <pre class="code"><code><span class="cmt"># in the dependency's manifest:</span>
+[os.windows]
+libs = [<span class="str">"kernel32.dll"</span>]   <span class="cmt"># linked into every windows build, this dep's and any consumer's</span></code></pre>
+      <p>Matching is by tuple or component equality; target <em>names</em> are local to each manifest. Across dependencies the order is topological, then declaration order, and the union is deduplicated by name. See the manifest's link-input merge law for the full overlay rules.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="manifest.html">Manifest</a> - the full <code>mach.toml</code> reference, including <code>[deps.*]</code> and link overlays</li>
+          <li><a href="cli.html">CLI</a> - every <code>mach</code> command, including <code>mach dep</code> actions</li>
+          <li><a href="modules.html">Modules</a> - how source files map to importable module paths</li>
+          <li><a href="project-layout.html">Project layout</a> - where <code>dep/</code> and the manifest live in a project</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="manifest.html"><span class="pn-label">Previous</span><span class="pn-title">Manifest</span></a><a class="next" href="testing.html"><span class="pn-label">Next</span><span class="pn-title">Testing</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#declaring">Declaring a dependency</a>
+      <a href="#mach-dep">The mach dep command</a>
+      <a href="#lockfile">The lockfile</a>
+      <a href="#vendor-tree">The flat dep tree</a>
+      <a href="#importing">Importing a dependency</a>
+      <a href="#cascading-libs">Cascading link requirements</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

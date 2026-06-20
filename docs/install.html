@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Install</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link active" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Start<span class="sep">/</span>Install</div>
+      <h1>Install</h1>
+      <p class="lead">Install the latest mach release with a single command, grab a precompiled binary, or build the self-hosted compiler from source. There are no external toolchain dependencies to install first.</p>
+
+      <h2 id="quick">Quick install</h2>
+      <p>The one-line installer fetches the latest release for your platform.</p>
+      <p>On Unix and macOS:</p>
+      <pre class="code"><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
+      <p>On Windows (PowerShell):</p>
+      <pre class="code"><code>irm https://machlang.org/install.ps1 | iex</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The docs read like a pamphlet, not a bible, and assume you know basic programming concepts from other languages. Skim the language reference alongside this guide as you go.</p>
+      </div>
+
+      <h2 id="installer">What the installer does</h2>
+      <p>Each script verifies the download against the release <code>SHA256SUMS</code> before installing, then drops the <code>mach</code> binary into a per-user location.</p>
+      <table>
+        <thead><tr><th>Platform</th><th>Install location</th></tr></thead>
+        <tbody>
+          <tr><td>Unix / macOS</td><td><code>~/.local/bin</code></td></tr>
+          <tr><td>Windows</td><td><code>%LOCALAPPDATA%\mach\bin</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="binaries">Precompiled binaries</h2>
+      <p>Precompiled binaries for each release are available directly on the <a href="https://github.com/octalide/mach/releases" target="_blank">releases page</a>. Download the archive for your target and place the <code>mach</code> binary on your <code>PATH</code> if you prefer not to use the installer.</p>
+
+      <h2 id="from-source">Build from source</h2>
+      <p>Mach builds itself, so compiling from source needs an existing <code>mach</code> installation. Install a release first, then clone, pull dependencies, and build.</p>
+      <pre class="code"><code>git clone https://github.com/octalide/mach
+cd mach
+mach dep pull
+mach build .</code></pre>
+      <p>The compiler is written to <code>out/&lt;target&gt;/bin/mach</code>, where <code>&lt;target&gt;</code> is the selected target name.</p>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>Because mach is self-hosted, there is no bootstrap path without a working <code>mach</code> binary. Use the quick installer or a precompiled binary to get the first compiler, then build from source.</p>
+      </div>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="hello-world.html">Hello world</a> - write, build, and run your first program</li>
+          <li><a href="project-layout.html">Project layout</a> - scaffold a project with <code>mach init</code></li>
+          <li><a href="cli.html">CLI</a> - the <code>mach</code> command-line reference</li>
+          <li><a href="dependencies.html">Dependencies</a> - what <code>mach dep pull</code> vendors</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="index.html"><span class="pn-label">Previous</span><span class="pn-title">Overview</span></a><a class="next" href="hello-world.html"><span class="pn-label">Next</span><span class="pn-title">Hello world</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#quick">Quick install</a>
+      <a href="#installer">What the installer does</a>
+      <a href="#binaries">Precompiled binaries</a>
+      <a href="#from-source">Build from source</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

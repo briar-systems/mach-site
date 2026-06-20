@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: The comptime channel</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link active" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>The comptime channel</div>
+      <h1>The comptime channel</h1>
+      <p class="lead">The <code>$</code> prefix opens the comptime channel, the compiler-owned namespace a program reads at compile time. It is read-only: <code>$</code> selects and expands, it never executes or mutates. Conditional compilation, intrinsics, and target queries all ride one of its shapes.</p>
+
+      <h2 id="shapes">The shapes</h2>
+      <p>The parser tells the shapes apart by structure, so a name never has to be looked up to know what kind of read it is.</p>
+      <table>
+        <thead><tr><th>Shape</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>$mach.*</code> / <code>$project.*</code> / <code>$bin.*</code></td><td>rooted compiler-owned read (compiler to developer)</td></tr>
+          <tr><td><code>$sym(args)</code></td><td>comptime function call (an intrinsic)</td></tr>
+          <tr><td><code>$if</code>, <code>$or</code></td><td>comptime control flow</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><code>$&lt;root&gt;.&lt;path&gt;</code> reads into a compiler-owned tree. The roots <code>mach</code>, <code>project</code>, and <code>bin</code> are reserved at the top of <code>$</code>; user symbols cannot collide with them.</li>
+        <li><code>$ident(args)</code> is a comptime call; the closed compiler-intrinsic set lives here.</li>
+        <li><code>$if</code> / <code>$or</code> are comptime branches, structurally distinct from runtime <code>if</code> / <code>or</code>.</li>
+      </ul>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Per-declaration codegen attributes (symbol rename, library pin, inline, align, section) are written as <code>#[...]</code> decorators, not <code>$</code>-comptime shapes. See <a href="decorators.html">Decorators</a>.</p>
+      </div>
+
+      <h2 id="roots">Compiler-owned roots</h2>
+      <p>Three rooted trees carry the read-only facts a build exposes. <code>$mach.*</code> (the active build and compiler identity) has its own section below; <code>$project.*</code> and <code>$bin.*</code> read project metadata and the current artifact, one member at a time:</p>
+      <table>
+        <thead><tr><th>Read</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><code>$project.id</code></td><td>project id, from <code>[project]</code></td></tr>
+          <tr><td><code>$project.name</code></td><td>project name</td></tr>
+          <tr><td><code>$project.description</code></td><td>project description</td></tr>
+          <tr><td><code>$project.version</code></td><td>whole version string, e.g. <code>"2.0.0"</code></td></tr>
+          <tr><td><code>$project.version.major</code></td><td>major version component (folded integer)</td></tr>
+          <tr><td><code>$project.version.minor</code></td><td>minor version component</td></tr>
+          <tr><td><code>$project.version.patch</code></td><td>patch version component</td></tr>
+          <tr><td><code>$project.target.os</code></td><td>selected target os string, e.g. <code>"linux"</code></td></tr>
+          <tr><td><code>$project.target.arch</code></td><td>selected target arch string, e.g. <code>"x86_64"</code></td></tr>
+          <tr><td><code>$project.target.abi</code></td><td>selected target abi string, e.g. <code>"sysv64"</code></td></tr>
+          <tr><td><code>$bin.name</code></td><td>the artifact (build unit) being built</td></tr>
+        </tbody>
+      </table>
+      <p>The <code>$project.target.*</code> reads carry the manifest's declared string spellings, distinct from the numeric tags used for <code>$mach.build.*</code> comparison. The flat <code>$project.version</code> string and its structured <code>major</code>, <code>minor</code>, and <code>patch</code> components are all available.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">ver</span>: <span class="type">str</span> = <span class="ct">$project.version</span>;                 <span class="cmt"># "2.0.0", from [project].version</span>
+<span class="ct">$if</span> (<span class="ct">$project.target.os</span> == <span class="str">"windows"</span>) { ... }    <span class="cmt"># the declared os string</span></code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A root field the manifest does not declare (for example <code>$project.description</code> or <code>$bin.name</code> on a v1 manifest with no artifact stanza) reports the read as unavailable rather than folding to an empty string.</p>
+      </div>
+
+      <h2 id="mach">The <code>$mach.*</code> namespace</h2>
+      <p>The <code>$mach.*</code> subtree is the compiler's view of the world: the resolved build context, the compiler identity, and source position. Every read is a comptime constant.</p>
+      <div class="callout note">
+        <span class="callout-label">Implementation status</span>
+        <p>Live today: <code>$mach.build.os</code>, <code>$mach.build.arch</code>, <code>$mach.build.abi</code>, <code>$mach.build.pointer_width</code>, <code>$mach.build.mode</code>, the tag tables, <code>$mach.version</code> (with its components), <code>$mach.compiler.name</code>, and <code>$mach.compiler.version</code>. Reserved stubs: <code>$mach.build.timestamp</code>, <code>$mach.build.host</code>, <code>$mach.build.git.*</code>, <code>$mach.project.*</code>, and <code>$mach.source.*</code>. Reading a stub is a compile error ("not yet available").</p>
+      </div>
+
+      <h3 id="build"><code>$mach.build.*</code> - what we build for</h3>
+      <p>The resolved active build's facts. <code>os</code>, <code>arch</code>, <code>abi</code>, and <code>mode</code> share the numeric tag space of <code>$mach.{os,arch,abi,mode}.*</code>, so a comparison is a plain integer compare.</p>
+      <pre class="code"><code><span class="ct">$mach.build.os</span>                  <span class="cmt"># compared against $mach.os.* tags</span>
+<span class="ct">$mach.build.arch</span>                <span class="cmt"># compared against $mach.arch.* tags</span>
+<span class="ct">$mach.build.abi</span>                 <span class="cmt"># compared against $mach.abi.* tags</span>
+<span class="ct">$mach.build.pointer_width</span>       <span class="cmt"># integer count of bytes</span>
+<span class="ct">$mach.build.mode</span>                <span class="cmt"># compared against $mach.mode.* tags</span></code></pre>
+      <p>A bare <code>$mach.build.&lt;name&gt;</code> that names none of the reserved facts resolves to the manifest comptime define of that name, or is a compile error when no such define was declared.</p>
+
+      <h3 id="version-compiler">Version and compiler identity</h3>
+      <pre class="code"><code><span class="ct">$mach.version</span>                   <span class="cmt"># the version string, e.g. "2.0.0"</span>
+<span class="ct">$mach.version.major</span>             <span class="cmt"># integer component (minor, patch too)</span>
+<span class="ct">$mach.compiler.name</span>             <span class="cmt"># compiler identity</span>
+<span class="ct">$mach.compiler.version</span>          <span class="cmt"># same value as $mach.version</span></code></pre>
+
+      <h3 id="tags">Tag tables</h3>
+      <p>The <code>$mach.{os,arch,abi,mode}.*</code> tables exist for path-value comparison against the resolved build. The lists are closed and grow only when backend support lands; an unrecognized tag name is a compile error, never a silent fold.</p>
+      <pre class="code"><code><span class="ct">$mach.os.linux</span>
+<span class="ct">$mach.os.darwin</span>
+<span class="ct">$mach.os.windows</span>
+<span class="ct">$mach.os.freestanding</span>
+
+<span class="ct">$mach.arch.x86_64</span>
+<span class="ct">$mach.arch.aarch64</span>
+
+<span class="ct">$mach.abi.sysv</span>
+<span class="ct">$mach.abi.win64</span>
+<span class="ct">$mach.abi.aapcs64</span>
+
+<span class="ct">$mach.mode.debug</span>
+<span class="ct">$mach.mode.release</span></code></pre>
+
+      <h2 id="comparison">Comparing tags</h2>
+      <p>Tag comparisons are path-value, with no <code>.id</code> suffix or unwrapping. Both sides share one numeric space, so the comparison is an ordinary integer compare.</p>
+      <pre class="code"><code><span class="ct">$if</span> (<span class="ct">$mach.build.os</span> == <span class="ct">$mach.os.linux</span>) { ... }
+<span class="ct">$if</span> (<span class="ct">$mach.build.arch</span> == <span class="ct">$mach.arch.x86_64</span>) { ... }</code></pre>
+
+      <h2 id="runtime">Folding into runtime values</h2>
+      <p>A <code>$mach.*</code> read can initialize a runtime binding; the compiler folds the right-hand side at compile time.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">val</span> <span class="param">IS_LINUX</span>: <span class="type">u8</span>   = <span class="ct">$mach.build.os</span> == <span class="ct">$mach.os.linux</span>;
+<span class="kw">pub</span> <span class="kw">val</span> <span class="param">COMPILER</span>: <span class="type">*u8</span>  = <span class="ct">$mach.compiler.name</span>;</code></pre>
+
+      <h2 id="bare-ident">The bare <code>$ident</code> is rejected</h2>
+      <p>A standalone bare <code>$ident</code> such as <code>$mode</code> or <code>$foo</code> is none of the shapes above. A comptime parameter is referenced by its bare name (no <code>$</code>); every comptime path is rooted. The rule applies identically in a <code>$if</code> gate and in value position, with sema and lowering deferring to the evaluator's single verdict.</p>
+      <div class="callout note">
+        <span class="callout-label">Diagnostic</span>
+        <p>comptime parameters are referenced without <code>$</code>; comptime paths are rooted: <code>$mach</code>, <code>$project</code>, <code>$bin</code></p>
+      </div>
+
+      <h2 id="not-in-channel">Not in the channel</h2>
+      <ul>
+        <li>No reflection via a <code>$&lt;Type&gt;.*</code> subtree. Types are not first-class comptime values.</li>
+        <li>No decl-attached prefix sugar; <code>$inline pub fun ...</code> does not exist. Use <code>#[...]</code> decorators instead.</li>
+        <li>No comptime function definitions, and no comptime loops.</li>
+        <li>No bare <code>$ident</code>.</li>
+      </ul>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code>, <code>$assert</code>, and the comptime call set</li>
+          <li><a href="comptime-control.html">Control flow</a> - <code>$if</code> / <code>$or</code> gates over these reads</li>
+          <li><a href="decorators.html">Decorators</a> - <code>#[...]</code> codegen attributes</li>
+          <li><a href="manifest.html">Manifest</a> - the <code>[project]</code> and target stanzas feeding <code>$project.*</code></li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="visibility.html"><span class="pn-label">Previous</span><span class="pn-title">Visibility</span></a><a class="next" href="intrinsics.html"><span class="pn-label">Next</span><span class="pn-title">Intrinsics</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#shapes">The shapes</a>
+      <a href="#roots">Compiler-owned roots</a>
+      <a href="#mach">The $mach.* namespace</a>
+      <a href="#build" class="sub">$mach.build.*</a>
+      <a href="#version-compiler" class="sub">Version and compiler identity</a>
+      <a href="#tags" class="sub">Tag tables</a>
+      <a href="#comparison">Comparing tags</a>
+      <a href="#runtime">Folding into runtime values</a>
+      <a href="#bare-ident">The bare $ident is rejected</a>
+      <a href="#not-in-channel">Not in the channel</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

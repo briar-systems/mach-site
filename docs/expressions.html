@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Expressions</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link active" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Expressions</div>
+      <h1>Expressions</h1>
+      <p class="lead">Expressions evaluate to values. They appear on the right of a binding, as conditions, and as call arguments.</p>
+
+      <h2 id="names">Names</h2>
+      <p>A bare identifier references a name in scope. Module-qualified names use the dot path.</p>
+      <pre class="code"><code>counter        <span class="cmt"># local or module-level binding</span>
+core.add       <span class="cmt"># symbol from module core</span></code></pre>
+
+      <h2 id="literals">Literals</h2>
+      <p>The primitive literal forms are numeric, char, string, and <code>nil</code>.</p>
+      <pre class="code"><code><span class="num">42</span>         <span class="cmt"># numeric literal</span>
+<span class="str">'a'</span>        <span class="cmt"># char literal</span>
+<span class="str">"hello"</span>    <span class="cmt"># string literal</span>
+nil        <span class="cmt"># the nil value</span></code></pre>
+
+      <h2 id="composite">Composite literals</h2>
+      <p>A type name followed by a brace-delimited initializer builds a record, array, or union value. For generics, the type arguments appear in brackets before the body.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">p</span>:    <span class="type">Point</span>         = <span class="type">Point</span>{ <span class="param">x</span>: <span class="num">1</span>, <span class="param">y</span>: <span class="num">2</span> };
+<span class="kw">val</span> <span class="param">a</span>:    [<span class="num">3</span>]<span class="type">i64</span>        = [<span class="num">3</span>]<span class="type">i64</span>{ <span class="num">10</span>, <span class="num">20</span>, <span class="num">30</span> };
+<span class="kw">val</span> <span class="param">u</span>:    <span class="type">Number</span>        = <span class="type">Number</span>{ <span class="param">i</span>: <span class="num">99</span> };
+<span class="kw">val</span> <span class="param">pair</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>] = <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]{ <span class="param">left</span>: <span class="num">5</span>, <span class="param">right</span>: <span class="num">6u8</span> };</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Not yet implemented</span>
+        <p>Vector literals such as <code>f32x4{ ... }</code> follow the same shape but depend on the SIMD vector types, which are not yet implemented. See <a href="types.html">Types</a>.</p>
+      </div>
+
+      <h2 id="access">Field and index access</h2>
+      <p>A field is read with the dot, an array element with a bracketed index.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">x</span>:     <span class="type">i64</span> = p.x;     <span class="cmt"># record field</span>
+<span class="kw">val</span> <span class="param">first</span>: <span class="type">i64</span> = <span class="param">a</span>[<span class="num">0</span>];    <span class="cmt"># array index</span></code></pre>
+
+      <h2 id="calls">Function calls</h2>
+      <p>A call applies a function to a parenthesized argument list.</p>
+      <pre class="code"><code><span class="fn">add</span>(<span class="num">2</span>, <span class="num">3</span>)</code></pre>
+
+      <h3 id="generic-calls">Generic calls</h3>
+      <p>Type arguments for a generic function appear in brackets before the call parentheses.</p>
+      <pre class="code"><code><span class="fn">identity</span>[<span class="type">i64</span>](<span class="num">42</span>)     <span class="cmt"># generic call: type args in [ ]</span></code></pre>
+
+      <h3 id="variadic-calls">Variadic calls</h3>
+      <p>A variadic call passes extra trailing arguments past the fixed parameters.</p>
+      <pre class="code"><code><span class="fn">sum</span>(<span class="num">3</span>, <span class="num">10i64</span>, <span class="num">20i64</span>, <span class="num">30i64</span>)</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Not yet implemented</span>
+        <p>Variadic call sites parse, but the callee-side <code>va_list</code> machinery is not yet implemented. See <a href="functions.html">Functions</a>. For the compile-time alternative, see <a href="variadics.html">Variadic packs</a>.</p>
+      </div>
+
+      <h3 id="comptime-args">Comptime arguments</h3>
+      <p>A comptime argument is passed positionally, just like a runtime argument. The function signature decides whether a given argument must be comptime-knowable.</p>
+      <pre class="code"><code><span class="fn">checked_add</span>(MODE_FAST, <span class="num">1</span>, <span class="num">2</span>)    <span class="cmt"># MODE_FAST is comptime-knowable</span></code></pre>
+
+      <h2 id="operators">Operators</h2>
+      <p>Operators combine expressions into larger expressions. Precedence follows the usual C-family conventions.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = a + b * c;    <span class="cmt"># * binds tighter than +</span></code></pre>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="statements.html">Statements</a> - how expressions appear inside statements</li>
+          <li><a href="functions.html">Functions</a> - declarations, generic and comptime parameters</li>
+          <li><a href="types.html">Types</a> - record, array, union, and vector types</li>
+          <li><a href="values.html">Values and variables</a> - bindings and literal forms</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="functions.html"><span class="pn-label">Previous</span><span class="pn-title">Functions</span></a><a class="next" href="statements.html"><span class="pn-label">Next</span><span class="pn-title">Statements</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#names">Names</a>
+      <a href="#literals">Literals</a>
+      <a href="#composite">Composite literals</a>
+      <a href="#access">Field and index access</a>
+      <a href="#calls">Function calls</a>
+      <a class="sub" href="#generic-calls">Generic calls</a>
+      <a class="sub" href="#variadic-calls">Variadic calls</a>
+      <a class="sub" href="#comptime-args">Comptime arguments</a>
+      <a href="#operators">Operators</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Manifest</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link active" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>Manifest</div>
+      <h1>Manifest</h1>
+      <p class="lead">Every mach project has a <code>mach.toml</code> at its root: the complete, readable statement of what the project builds - its identity, target platforms, artifacts, build variants, and dependencies. The compiler finds it by walking up from the working directory, so any subcommand run inside a project tree resolves the same manifest.</p>
+
+      <h2 id="schema">The schema</h2>
+      <p>The manifest separates the three orthogonal axes of a build: <em>what</em> is built (the <code>[bin.*]</code> / <code>[lib.*]</code> artifacts), <em>where</em> it runs (the <code>[target.*]</code> platforms), and <em>where</em> outputs land (the path templates). Repetition between axes is eliminated by the build engine's cartesian product, never restated in the file. Nothing is inferred: every value resolves from a stanza present in the file.</p>
+      <pre class="code"><code>[project]
+id      = <span class="str">"demo"</span>            <span class="cmt"># required: root of every module path the project exposes</span>
+version = <span class="str">"0.1.0"</span>           <span class="cmt"># required</span>
+src     = <span class="str">"src"</span>             <span class="cmt"># source dir (default "src")</span>
+dep     = <span class="str">"dep"</span>             <span class="cmt"># vendored-dependency dir (default "dep")</span>
+target  = <span class="str">"native"</span>          <span class="cmt"># default target selector (default "native")</span>
+out     = <span class="str">"out/{target}/{profile}/bin/{name}{ext}"</span>  <span class="cmt"># artifact path template</span>
+obj     = <span class="str">"out/{target}/{profile}/obj"</span>              <span class="cmt"># object dir template</span>
+ir      = <span class="str">"out/{target}/{profile}/ir"</span>               <span class="cmt"># IR-dump dir template</span>
+asm     = <span class="str">"out/{target}/{profile}/asm"</span>              <span class="cmt"># ASM-dump dir template</span>
+tests   = <span class="str">"out/{target}/{profile}/test/{name}"</span>      <span class="cmt"># per-test executable template</span>
+<span class="cmt"># optional metadata: name, description, license, authors</span>
+
+[target.linux]             <span class="cmt"># a platform: a fully-spelled tuple, nothing inferred</span>
+isa = <span class="str">"x86_64"</span>
+os  = <span class="str">"linux"</span>
+abi = <span class="str">"sysv64"</span>
+
+[target.windows]
+isa     = <span class="str">"x86_64"</span>
+os      = <span class="str">"windows"</span>
+abi     = <span class="str">"win64"</span>
+ext     = <span class="str">".exe"</span>           <span class="cmt"># artifact extension (default "")</span>
+libs    = [<span class="str">"kernel32.dll"</span>] <span class="cmt"># platform link overlay, inherited by every artifact</span>
+defines = []               <span class="cmt"># per-target comptime defines</span>
+
+[os.windows]               <span class="cmt"># os-component link overlay (any windows target)</span>
+libs = [<span class="str">"kernel32.dll"</span>]    <span class="cmt"># inherited by every windows build, yours and consumers'</span>
+
+[bin.hello]                <span class="cmt"># an executable artifact, named by its table key</span>
+entry = <span class="str">"hello.mach"</span>       <span class="cmt"># entry source, relative to the src dir (required)</span>
+
+[lib.core]                 <span class="cmt"># a library artifact</span>
+entry = <span class="str">"lib.mach"</span>
+kind  = <span class="str">"static"</span>           <span class="cmt"># "static" (default) | "shared"</span>
+
+[bin.hello.target.windows] <span class="cmt"># a per-cell exception refining one artifact-target pair</span>
+entry = <span class="str">"hello_win.mach"</span>   <span class="cmt"># overrides the artifact's entry for this target only</span>
+libs  = [<span class="str">"user32.dll"</span>]     <span class="cmt"># appended to the merged link overlay</span>
+
+[profile.debug]            <span class="cmt"># a build variant</span>
+opt = <span class="num">0</span>                    <span class="cmt"># 0 (none) | 1 (standard) | 2 (aggressive)</span>
+
+[profile.release]
+opt      = <span class="num">2</span>
+emit_ir  = true            <span class="cmt"># emit per-module IR for this profile (default false)</span>
+emit_asm = false           <span class="cmt"># emit per-module assembly for this profile</span>
+
+[deps.mach-std]            <span class="cmt"># a dependency: exactly one of git|path, plus ref for git</span>
+git = <span class="str">"https://github.com/octalide/mach-std"</span>
+ref = <span class="str">"v0.4.0"</span></code></pre>
+
+      <h2 id="project"><code>[project]</code></h2>
+      <p>Project identity and the path roots everything else resolves against.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Req</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>yes</td><td>-</td><td>Root segment of every module path the project exposes. A file at <code>&lt;src&gt;/foo/bar.mach</code> is reachable as <code>&lt;id&gt;.foo.bar</code>.</td></tr>
+          <tr><td><code>version</code></td><td>yes</td><td>-</td><td>Project version. Read by the <code>$project.version</code> comptime root.</td></tr>
+          <tr><td><code>module</code></td><td>no</td><td>-</td><td>Src-relative path a bare <code>use &lt;id&gt;</code> / <code>fwd &lt;id&gt;</code> resolves to (see Bare project-id imports). Never inferred.</td></tr>
+          <tr><td><code>src</code></td><td>no</td><td><code>"src"</code></td><td>Source root, relative to the project root. Module paths resolve under it.</td></tr>
+          <tr><td><code>dep</code></td><td>no</td><td><code>"dep"</code></td><td>Vendored-dependency root. Each dep lives at <code>&lt;dep&gt;/&lt;alias&gt;/</code>.</td></tr>
+          <tr><td><code>target</code></td><td>no</td><td><code>"native"</code></td><td>Default target when <code>--target</code> is not passed. <code>native</code> matches the host.</td></tr>
+          <tr><td><code>out</code></td><td>no</td><td><code>out/{target}/{profile}/bin/{name}{ext}</code></td><td>Artifact path template (see Path templates).</td></tr>
+          <tr><td><code>obj</code></td><td>no</td><td><code>out/{target}/{profile}/obj</code></td><td>Per-module object tree template.</td></tr>
+          <tr><td><code>ir</code></td><td>no</td><td><code>out/{target}/{profile}/ir</code></td><td>Per-module IR-dump template (used when emission is on).</td></tr>
+          <tr><td><code>asm</code></td><td>no</td><td><code>out/{target}/{profile}/asm</code></td><td>Per-module assembly-dump template.</td></tr>
+          <tr><td><code>tests</code></td><td>no</td><td><code>out/{target}/{profile}/test/{name}</code></td><td>Per-test executable template for <code>mach test</code>.</td></tr>
+        </tbody>
+      </table>
+      <p>Optional metadata read by the <code>$project.*</code> comptime roots but not the build: <code>name</code>, <code>description</code>, <code>license</code>, <code>authors</code>.</p>
+
+      <h2 id="targets">Targets</h2>
+      <p>Each <code>[target.&lt;name&gt;]</code> declares a selector you pass to <code>--target &lt;name&gt;</code> (or set as <code>[project].target</code>). At least one target must be declared. A target is a fully-spelled platform tuple; nothing is inferred from another key.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Req</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>isa</code></td><td>yes</td><td>-</td><td>Instruction-set architecture. Read by <code>$project.target.arch</code>.</td></tr>
+          <tr><td><code>os</code></td><td>yes</td><td>-</td><td>Operating system. Read by <code>$project.target.os</code>.</td></tr>
+          <tr><td><code>abi</code></td><td>yes</td><td>-</td><td>Application binary interface (e.g. <code>sysv64</code>, <code>win64</code>). Read by <code>$project.target.abi</code>.</td></tr>
+          <tr><td><code>ext</code></td><td>no</td><td><code>""</code></td><td>Artifact filename extension expanded by <code>{ext}</code> (e.g. <code>".exe"</code>).</td></tr>
+          <tr><td><code>libs</code></td><td>no</td><td><code>[]</code></td><td>Platform link overlay inherited by every artifact built for this target (see Link inputs).</td></tr>
+          <tr><td><code>defines</code></td><td>no</td><td><code>[]</code></td><td>Per-target comptime defines. Each is <code>NAME</code> (a <code>true</code> flag) or <code>NAME=VALUE</code>, readable as <code>$mach.build.NAME</code>.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>native</code> is a reserved name: declaring <code>[target.native]</code> is an error. It is a selector that resolves to a declared target, not a target itself.</p>
+      </div>
+      <h3 id="recognized-tuples">Recognized isa / os values</h3>
+      <table>
+        <thead><tr><th>Value</th><th>Axis</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><code>x86_64</code></td><td>isa</td><td>Supported - the only fully working ISA today.</td></tr>
+          <tr><td><code>aarch64</code></td><td>isa</td><td>Recognized; an ISA vtable exists, but codegen is not yet validated end-to-end.</td></tr>
+          <tr><td><code>linux</code></td><td>os</td><td>Supported - the primary host and target.</td></tr>
+          <tr><td><code>windows</code></td><td>os</td><td>Supported as a cross-compilation target (PE/COFF, Win64 ABI).</td></tr>
+          <tr><td><code>darwin</code></td><td>os</td><td>Recognized; vtables exist, but the toolchain is not yet validated end-to-end.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="artifacts">Artifacts</h2>
+      <p>Every artifact is declared explicitly and named by its table key. A <code>[bin.&lt;name&gt;]</code> links an executable; a <code>[lib.&lt;name&gt;]</code> produces a library. The name drives <code>{name}</code> in the output templates and is read by <code>$bin.name</code>.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Applies</th><th>Req</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>entry</code></td><td>bin, lib</td><td>yes</td><td>-</td><td>Entry source, relative to the project <code>src</code> dir. The entry module's FQN is <code>&lt;id&gt;.&lt;entry without .mach&gt;</code>, with <code>/</code> turned into <code>.</code>.</td></tr>
+          <tr><td><code>kind</code></td><td>lib</td><td>no</td><td><code>"static"</code></td><td><code>"static"</code> leaves the per-module objects as the deliverable; <code>"shared"</code> produces a shared library.</td></tr>
+          <tr><td><code>out</code></td><td>bin, lib</td><td>no</td><td>project <code>out</code></td><td>Per-artifact override of the path template.</td></tr>
+          <tr><td><code>libs</code></td><td>bin, lib</td><td>no</td><td><code>[]</code></td><td>Per-artifact link inputs, merged into the link overlay.</td></tr>
+          <tr><td><code>defines</code></td><td>bin, lib</td><td>no</td><td><code>[]</code></td><td>Per-artifact comptime defines.</td></tr>
+        </tbody>
+      </table>
+      <h3 id="per-cell">Per-cell exceptions</h3>
+      <p>A <code>[bin.&lt;name&gt;.target.&lt;t&gt;]</code> table refines one artifact for one target. It may override <code>entry</code> and <code>out</code>, and append <code>libs</code> / <code>defines</code> at the highest precedence level. An unset key inherits the artifact's value.</p>
+
+      <h2 id="profiles">Profiles</h2>
+      <p>A <code>[profile.&lt;name&gt;]</code> is a build variant. The optimization level and the debug-emission toggles live here because they are variant concerns.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>opt</code></td><td>(debug)</td><td>Optimization level: <code>0</code> (none beyond the always-on pipeline), <code>1</code> (standard), or <code>2</code> (aggressive). Any other value is a manifest error.</td></tr>
+          <tr><td><code>emit_ir</code></td><td><code>false</code></td><td>Write per-module IR dumps under the <code>ir</code> template for this profile.</td></tr>
+          <tr><td><code>emit_asm</code></td><td><code>false</code></td><td>Write per-module assembly dumps under the <code>asm</code> template for this profile.</td></tr>
+        </tbody>
+      </table>
+      <p>A CLI <code>-O0</code> / <code>-O1</code> / <code>-O2</code> / <code>--release</code> flag overrides the selected profile's <code>opt</code> per invocation, and <code>--emit-ir</code> / <code>--emit-asm</code> / <code>--no-emit-ir</code> / <code>--no-emit-asm</code> override the emission toggles. Absent <code>--profile</code> / <code>--release</code>, the first declared profile is used; with no profile declared, a <code>debug</code> default (no optimization, no emission) applies.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>1</code> and <code>2</code> currently select the same pass set; <code>2</code> is where future loop and vectorization work lands.</p>
+      </div>
+
+      <h2 id="dependencies">Dependencies</h2>
+      <p>Each <code>[deps.&lt;alias&gt;]</code> names a dependency materialised under <code>&lt;dep&gt;/&lt;alias&gt;/</code>. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>. A module path whose head matches a dep's <code>id</code> resolves into that dep's tree. A stanza declares exactly one source key.</p>
+      <table>
+        <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>git</code></td><td>Git URL to clone into <code>&lt;dep&gt;/&lt;alias&gt;/</code>.</td></tr>
+          <tr><td><code>path</code></td><td>Local path to another project tree, resolved relative to this manifest; never fetched. <code>mach dep pull</code> materialises it at the vendor location as a relative symlink.</td></tr>
+          <tr><td><code>ref</code></td><td>Git ref to check out (with <code>git</code>): <code>tag/&lt;name&gt;</code>, <code>branch/&lt;name&gt;</code>, a bare tag or branch, or a commit SHA. An absent ref means the remote default branch.</td></tr>
+        </tbody>
+      </table>
+      <p>A git dep is pinned to a resolved commit in <code>mach.lock</code>; a path dep has no pinned content, so it carries no lock entry. <code>mach dep</code> performs only plain git operations, so a checkout you also commit as a submodule composes naturally; mach never invokes <code>git submodule</code>. <code>mach dep pull</code> is idempotent: a stale link is replaced, a correct one is left untouched, and a source already at the vendor location is a no-op.</p>
+      <div class="callout note">
+        <span class="callout-label">Restriction</span>
+        <p>A registry-style <code>version =</code> key is reserved and rejected. Cloning, lockfile handling, and transitive resolution are covered in <a href="dependencies.html">Dependencies</a>.</p>
+      </div>
+
+      <h2 id="link-inputs">Link inputs</h2>
+      <p>A <code>libs</code> entry - at the target, artifact, or per-cell level - is either an explicit path (a <code>.o</code> object, a <code>.a</code> archive, or a <code>.so</code> shared library, project-root-relative or absolute) or a bare <code>-l</code>-style name resolved at link time to <code>lib&lt;name&gt;.o</code> / <code>&lt;name&gt;.o</code> / <code>lib&lt;name&gt;.a</code> / <code>&lt;name&gt;.a</code>, then a shared <code>lib&lt;name&gt;.so</code>.</p>
+      <p>Loose <code>.o</code> objects and static <code>.a</code> archives link <strong>statically</strong> (an <code>.a</code> contributes every member object); a shared <code>.so</code> is recorded as a <strong>dynamic</strong> dependency. The overlays merge target &lt; artifact &lt; per-cell, deduplicated by name, and join every <code>mach build</code> / <code>run</code> / <code>test</code> link alongside any CLI <code>-L</code> / <code>-l</code> / object arguments.</p>
+      <h3 id="os-overlays">OS overlays and cascading</h3>
+      <p>An <code>[os.&lt;name&gt;]</code> overlay scopes a link requirement to a single tuple component - the operating system - rather than a full <code>(isa, os, abi)</code> tuple. A build matches iff its target's <code>os</code> equals <code>&lt;name&gt;</code>.</p>
+      <pre class="code"><code>[os.windows]
+libs = [<span class="str">"kernel32.dll"</span>]   <span class="cmt"># linked into every windows build, this project's and any consumer's</span></code></pre>
+      <p>A dependency declares its own link requirements as <code>[target.*].libs</code> (full-tuple) or <code>[os.&lt;name&gt;].libs</code> (os-component) overlays, and a consumer inherits every such lib that matches the build it is producing. So a platform link requirement lives once, in the providing dependency's manifest, and out of every consumer. Matching is by tuple/component equality; target <em>names</em> are local to each manifest.</p>
+      <div class="callout note">
+        <span class="callout-label">Restriction</span>
+        <p>The single-component <code>[isa.&lt;name&gt;]</code> and <code>[abi.&lt;name&gt;]</code> overlays are reserved: declaring either is an error until a real case demands them.</p>
+      </div>
+
+      <h2 id="bare-imports">Bare project-id imports</h2>
+      <p>A one-segment <code>use</code> / <code>fwd</code> path equal to a resolvable project id - a dependency's <code>[project].id</code>, or the current project's own id - resolves to that project's declared <code>[project].module</code>. So a library that sets <code>module = "glfw.mach"</code> is imported as <code>use glfw;</code> instead of by the full path to its surface file. Longer paths are unaffected, so this is purely additive.</p>
+      <pre class="code"><code><span class="cmt"># in glfw's manifest:</span>
+[project]
+id     = <span class="str">"glfw"</span>
+module = <span class="str">"glfw.mach"</span>   <span class="cmt"># the surface a bare use glfw; binds</span></code></pre>
+      <pre class="code"><code><span class="cmt"># in a consumer:</span>
+<span class="kw">use</span> <span class="mod">glfw</span>;              <span class="cmt"># binds the glfw module (glfw's [project].module)</span></code></pre>
+      <p>A bare import of a project that declares no <code>module</code> is a resolution error naming the fix. A declared <code>module</code> that names no file is a manifest error at build start, whether or not anything imports it.</p>
+
+      <h2 id="path-templates">Path templates</h2>
+      <p>Output paths come only from the declared templates, expanded over four variables:</p>
+      <ul>
+        <li><code>{target}</code> - the resolved target name (never the literal <code>native</code>).</li>
+        <li><code>{profile}</code> - the selected profile name.</li>
+        <li><code>{name}</code> - the artifact name.</li>
+        <li><code>{ext}</code> - the target's <code>ext</code> (the empty string by default).</li>
+      </ul>
+      <p>Manifest paths are always <code>/</code>-separated and normalized to the host separator at the filesystem boundary, so the same manifest is portable; a literal <code>\</code> is a hard error. Two artifacts that resolve to the same <code>out</code> path collide and fail at build start.</p>
+      <p>The <code>tests</code> template expands the same way, except <code>{name}</code> is the per-test name. <code>mach test</code> substitutes it per test as <code>&lt;index&gt;-&lt;sanitized label&gt;</code>: the zero-based collection index keeps the name unique and stable, and every label byte outside <code>[A-Za-z0-9._-]</code> becomes <code>_</code>. A test labeled <code>"parses empty input"</code> collected third lands at <code>out/linux/debug/test/2-parses_empty_input</code>.</p>
+
+      <h2 id="build-matrix">The build matrix</h2>
+      <p>A build cell is one artifact times one target times one profile.</p>
+      <ul>
+        <li><code>mach build .</code> builds every declared <code>[bin.*]</code> / <code>[lib.*]</code> for the default target and profile. <code>--all-targets</code> crosses every artifact with every declared target. <code>--bin &lt;name&gt;</code> / <code>--lib &lt;name&gt;</code> narrow to one artifact; <code>--target &lt;name&gt;</code> selects a target; <code>--profile &lt;name&gt;</code> (with <code>--release</code> sugar) selects a profile.</li>
+        <li><code>mach run .</code> and <code>mach test .</code> build exactly one artifact; with several declared and no <code>--bin</code> / <code>--lib</code>, they ask you to pick one, naming every candidate.</li>
+      </ul>
+      <h3 id="native">native target resolution</h3>
+      <p><code>native</code> resolves the host's <code>(isa, os)</code> tuple against the <strong>declared</strong> targets only - never a synthesized tuple. Exactly one host match is chosen; several matching tuples is an ambiguity error naming the candidates; no match warns and falls back to the first declared target, so cross-only projects still build on a foreign host.</p>
+
+      <h2 id="example">Annotated example</h2>
+      <p>The compiler's own manifest builds one binary for two targets, keeping its output paths flat (no <code>{profile}</code> segment) so released paths stay stable.</p>
+      <pre class="code"><code>[project]
+id      = <span class="str">"mach"</span>          <span class="cmt"># module-path root: this project's code is mach.*</span>
+name    = <span class="str">"Mach Compiler"</span> <span class="cmt"># metadata</span>
+version = <span class="str">"1.3.0"</span>
+src     = <span class="str">"src"</span>           <span class="cmt"># sources under ./src</span>
+dep     = <span class="str">"dep"</span>           <span class="cmt"># vendored deps under ./dep</span>
+target  = <span class="str">"native"</span>        <span class="cmt"># default target: the host-matching tuple below</span>
+out     = <span class="str">"out/{target}/bin/{name}{ext}"</span>  <span class="cmt"># e.g. out/linux/bin/mach</span>
+obj     = <span class="str">"out/{target}/obj"</span>
+tests   = <span class="str">"out/{target}/test/{name}"</span>
+
+[target.linux]
+isa = <span class="str">"x86_64"</span>
+os  = <span class="str">"linux"</span>
+abi = <span class="str">"sysv64"</span>
+
+[target.windows]
+isa  = <span class="str">"x86_64"</span>
+os   = <span class="str">"windows"</span>
+abi  = <span class="str">"win64"</span>
+ext  = <span class="str">".exe"</span>            <span class="cmt"># the windows artifact is out/windows/bin/mach.exe</span>
+libs = [<span class="str">"kernel32.dll"</span>]  <span class="cmt"># the windows platform link requirement</span>
+
+[bin.mach]
+entry = <span class="str">"main.mach"</span>      <span class="cmt"># entry module mach.main, at src/main.mach</span>
+
+[deps.mach-std]
+git = <span class="str">"https://github.com/octalide/mach-std"</span>
+ref = <span class="str">"branch/dev"</span></code></pre>
+      <p><code>mach build .</code> (no <code>--target</code>) selects <code>linux</code> because <code>[project].target = "native"</code> resolves to the host-matching tuple, compiles <code>src/main.mach</code> and its transitive imports - including modules from <code>mach-std</code> vendored at <code>dep/mach-std/</code> - into objects under <code>out/linux/obj/</code>, and links <code>out/linux/bin/mach</code>. The dependency is realized by <code>mach dep pull</code> from the manifest pin, and the build then resolves it purely by that vendor path: no git at build time.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="dependencies.html">Dependencies</a> - vendoring, mach.lock, and the dep resolver</li>
+          <li><a href="cli.html">CLI</a> - the mach command-line reference</li>
+          <li><a href="modules.html">Modules</a> - how files map to module paths</li>
+          <li><a href="project-layout.html">Project layout</a> - src, lib.mach, and main.mach</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="cli.html"><span class="pn-label">Previous</span><span class="pn-title">CLI</span></a><a class="next" href="dependencies.html"><span class="pn-label">Next</span><span class="pn-title">Dependencies</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#schema">The schema</a>
+      <a href="#project">[project]</a>
+      <a href="#targets">Targets</a>
+      <a href="#artifacts">Artifacts</a>
+      <a class="sub" href="#per-cell">Per-cell exceptions</a>
+      <a href="#profiles">Profiles</a>
+      <a href="#dependencies">Dependencies</a>
+      <a href="#link-inputs">Link inputs</a>
+      <a class="sub" href="#os-overlays">OS overlays and cascading</a>
+      <a href="#bare-imports">Bare project-id imports</a>
+      <a href="#path-templates">Path templates</a>
+      <a href="#build-matrix">The build matrix</a>
+      <a class="sub" href="#native">native target resolution</a>
+      <a href="#example">Annotated example</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

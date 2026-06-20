@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Testing</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link active" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>Testing</div>
+      <h1>Testing</h1>
+      <p class="lead">A <code>test</code> is a named block of statements the runner can execute on its own. Tests live inline with the code they exercise, and <code>mach test</code> collects every one across the project, builds it, and runs it.</p>
+
+      <h2 id="declaring">Declaring a test</h2>
+      <p>A test is a declaration at module scope - the same level as <code>fun</code>, <code>rec</code>, and <code>val</code>. It takes no parameters and is not callable from ordinary code; it exists only for the runner to invoke.</p>
+      <pre class="code"><code><span class="kw">test</span> <span class="str">"label"</span> { ... }</code></pre>
+      <p>The label is <strong>required</strong> and must be a string literal - not an identifier or a bare word. The body is an ordinary block that may use anything in scope in the enclosing module, just like a function body.</p>
+      <pre class="code"><code><span class="kw">test</span> <span class="str">"date: is_leap_year"</span> {
+    <span class="kw">if</span> (!<span class="fn">is_leap_year</span>(<span class="num">2000</span>)) { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">1900</span>))  { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">2023</span>))  { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">ret</span> <span class="num">0</span>;
+}
+
+<span class="kw">test</span> <span class="str">"log: nil message does not crash"</span> {
+    <span class="fn">debug</span>(nil);
+    <span class="fn">info</span>(nil);
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A <code>pub</code> modifier is syntactically accepted before <code>test</code> but carries no meaning - a test is never part of a module's public surface.</p>
+      </div>
+
+      <h2 id="result">Reporting pass and fail</h2>
+      <p>Each <code>test</code> lowers to a zero-parameter, <code>i32</code>-returning function, and its return value is read as a process-style status. There are no built-in assertion intrinsics; a test signals failure by returning non-zero, typically by returning early from a failed check.</p>
+      <pre class="code"><code><span class="kw">ret</span> <span class="num">0</span>;     <span class="cmt"># pass</span>
+<span class="kw">ret</span> <span class="num">1</span>;     <span class="cmt"># fail - any non-zero ret is a failure</span></code></pre>
+      <p>Falling off the end of a body returns <code>0</code> (the default terminator for a non-void function), so a body that never returns explicitly is treated as a pass. The compiler attaches no special meaning to particular non-zero codes.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The <code>0</code> = pass, non-zero = fail convention is the runner's interpretation of each exit status, not a rule enforced by the type system. Some older standard-library tests are inconsistent and even return <code>1</code> on success. When writing new tests, prefer <code>ret 0</code> for pass and a non-zero <code>ret</code> for failure.</p>
+      </div>
+
+      <h2 id="collection">Where tests live</h2>
+      <p>Tests are not tied to a single file. Write <code>test "..." { }</code> declarations directly in the relevant <code>src/</code> module, or group them under <code>src/test/</code>. The runner discovers every test across every module in the build automatically - there is no separate corpus project.</p>
+      <p>Because the build includes dependencies, every <code>test</code> in a dependency is collected too.</p>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>A project that depends on a library whose tests do not follow the <code>0</code> = pass convention will see those tests reported as failures. Use <code>--filter</code> to scope a run to your own tests while a dependency's suite is being reconciled.</p>
+      </div>
+
+      <h2 id="running">Running with mach test</h2>
+      <p><code>mach test</code> builds one standalone executable per <code>test</code> declaration - the test plus the project's transitive code, with a synthesized <code>main</code> calling just that test - then spawns each as a separate process and reports a per-test line.</p>
+      <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
+      <p>Each executed test prints a <code>name file:line PASS|FAIL</code> line. A crashing test reports its signal and the run continues. A test build always links executables, even for a library target.</p>
+
+      <h3 id="selecting">Selecting and listing</h3>
+      <table>
+        <thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>--filter &lt;pattern&gt;</code></td><td>run only tests whose name contains <code>&lt;pattern&gt;</code></td></tr>
+          <tr><td><code>--list</code></td><td>list the collected tests and exit, running nothing</td></tr>
+          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt;</code> instead of exec'ing it directly</td></tr>
+        </tbody>
+      </table>
+      <pre class="code"><code>mach test .                 <span class="cmt"># build and run every test</span>
+mach test . --filter date   <span class="cmt"># only tests whose name contains date</span>
+mach test . --list          <span class="cmt"># enumerate tests, run nothing</span></code></pre>
+      <p>The <code>build</code> and global flags apply too. <code>--runner</code> names a host-side launcher for foreign-target tests the host cannot exec directly, e.g. <code>mach test . --target windows --runner wine</code>. Without it, a test the host cannot launch reports <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, or <code>FAIL(spawn)</code> when the spawn itself fails - with no auto-detection.</p>
+
+      <h3 id="exit">Exit codes</h3>
+      <ul>
+        <li><code>0</code> - every test that ran passed.</li>
+        <li><code>1</code> - at least one test failed (also returned when a test binary is killed by a signal).</li>
+        <li><code>2</code> - a build or internal error before the tests could run.</li>
+      </ul>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="cli.html">CLI</a> - the full <code>mach</code> command surface, including <code>mach test</code></li>
+          <li><a href="functions.html">Functions</a> - a test body is checked like a function body</li>
+          <li><a href="statements.html">Statements</a> - <code>if</code>, <code>ret</code>, and the blocks a test body uses</li>
+          <li><a href="project-layout.html">Project layout</a> - where <code>src/</code> modules and tests live</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="dependencies.html"><span class="pn-label">Previous</span><span class="pn-title">Dependencies</span></a><span></span></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#declaring">Declaring a test</a>
+      <a href="#result">Reporting pass and fail</a>
+      <a href="#collection">Where tests live</a>
+      <a href="#running">Running with mach test</a>
+      <a class="sub" href="#selecting">Selecting and listing</a>
+      <a class="sub" href="#exit">Exit codes</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>

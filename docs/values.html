@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Values and variables</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version">v2.4.1</span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link active" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Values and variables</div>
+      <h1>Values and variables</h1>
+      <p class="lead">Bindings introduce named values. <code>val</code> is immutable, <code>var</code> is mutable, and both require an explicit type - mach has no type inference.</p>
+
+      <h2 id="declaring">Declaring bindings</h2>
+      <p>A binding names a value with a declared type. <code>val</code> is constant once set; <code>var</code> can be reassigned. Every form pins the type in the declaration.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">NAME</span>: <span class="type">TYPE</span> = EXPR;              <span class="cmt"># immutable; initializer required</span>
+<span class="kw">var</span> <span class="param">NAME</span>: <span class="type">TYPE</span>;                     <span class="cmt"># mutable; default-initialized</span>
+<span class="kw">var</span> <span class="param">NAME</span>: <span class="type">TYPE</span> = EXPR;              <span class="cmt"># mutable; explicit initializer</span></code></pre>
+
+      <h2 id="mutability">Mutability and defaults</h2>
+      <p>A <code>val</code> always carries an initializer and cannot be reassigned. A <code>var</code> may omit its initializer, in which case it is default-initialized (zeroed), and it can be written to afterward.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">pi</span>: <span class="type">f64</span> = <span class="num">3.14159</span>;
+<span class="kw">val</span> <span class="param">n</span>:  <span class="type">i64</span> = <span class="num">42</span>;
+
+<span class="kw">var</span> <span class="param">counter</span>: <span class="type">i64</span> = <span class="num">0</span>;
+<span class="kw">var</span> <span class="param">buf</span>:     [<span class="num">256</span>]<span class="type">u8</span>;               <span class="cmt"># default-initialized to zero</span>
+
+counter = counter + <span class="num">1</span>;              <span class="cmt"># var is reassignable</span></code></pre>
+
+      <h2 id="scope">Scope and exports</h2>
+      <p>Both forms work at module top level and inside function bodies. Inside a function, a binding is local to its enclosing block. At module top level, <code>pub</code> exports it:</p>
+      <ul>
+        <li><code>pub val NAME</code> exports the constant.</li>
+        <li><code>pub var NAME</code> exports the variable as a writable global.</li>
+      </ul>
+
+      <h2 id="inference">No type inference</h2>
+      <p>Every binding declares its type. An untyped numeric literal is checked <em>against</em> the binding's declared type; it never participates in inferring that type.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = <span class="num">42</span>;                    <span class="cmt"># ok - 42 conforms to i64</span>
+<span class="kw">val</span> <span class="param">x</span>      = <span class="num">42</span>;                    <span class="cmt"># ERROR - no type to check against</span></code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>When the surrounding context does not constrain a literal's type, give it a typed suffix such as <code>42i64</code>.</p>
+      </div>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="types.html">Types</a> - the type grammar used in the annotation</li>
+          <li><a href="visibility.html">Visibility</a> - how <code>pub</code> exports bindings</li>
+          <li><a href="functions.html">Functions</a> - parameters and return values</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="types.html"><span class="pn-label">Previous</span><span class="pn-title">Types</span></a><a class="next" href="functions.html"><span class="pn-label">Next</span><span class="pn-title">Functions</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#declaring">Declaring bindings</a>
+      <a href="#mutability">Mutability and defaults</a>
+      <a href="#scope">Scope and exports</a>
+      <a href="#inference">No type inference</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="docs.js" defer></script>
+</body>
+</html>
