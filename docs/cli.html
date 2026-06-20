@@ -186,10 +186,6 @@
           <tr><td><code>list</code></td><td>-</td><td>print each entry with its source form, ref, locked commit, and state (synced, missing, drifted, path).</td></tr>
         </tbody>
       </table>
-      <div class="callout changed">
-        <span class="callout-label">Renamed</span>
-        <p><code>sync</code> is the pre-<code>pull</code> name, kept one cycle as a hidden alias that prints a deprecation note and runs <code>pull</code>.</p>
-      </div>
       <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands (<code>pull</code>, <code>update</code>, <code>add</code>) use git, discovered on <code>PATH</code> and invoked with an allowlisted environment. Git's absence is a clean error naming the operation that needed it. The same name required from two different sources or refs is a hard error naming both requirers; there is no version resolution.</p>
 
       <h3 id="lockfile">Lockfile</h3>

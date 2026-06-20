@@ -98,6 +98,9 @@ ext     = <span class="str">".exe"</span>           <span class="cmt"># artifact
 libs    = [<span class="str">"kernel32.dll"</span>] <span class="cmt"># platform link overlay, inherited by every artifact</span>
 defines = []               <span class="cmt"># per-target comptime defines</span>
 
+[os.windows]               <span class="cmt"># os-component link overlay (any windows target)</span>
+libs = [<span class="str">"kernel32.dll"</span>]    <span class="cmt"># inherited by every windows build, yours and consumers'</span>
+
 [bin.hello]                <span class="cmt"># an executable artifact, named by its table key</span>
 entry = <span class="str">"hello.mach"</span>       <span class="cmt"># entry source, relative to the src dir (required)</span>
 

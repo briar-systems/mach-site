@@ -106,9 +106,9 @@
         <span class="callout-label">Note</span>
         <p>Disabling padding entirely (a <code>packed</code> layout for binary-protocol or on-disk structs) is not yet available. Field-to-field padding always follows the natural alignment rule.</p>
       </div>
-      <div class="callout changed">
-        <span class="callout-label">Changed in v2.0.0</span>
-        <p>The legacy <code>$NAME.align = N;</code> and <code>$NAME.packed = true;</code> attribute setters were removed. Use the <code>#[align(N)]</code> decorator instead.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Set a type's alignment with the <code>#[align(N)]</code> decorator.</p>
       </div>
 
       <h2 id="unions">Unions</h2>

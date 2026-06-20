@@ -85,24 +85,30 @@
         <li><code>$ident(args)</code> is a comptime call; the closed compiler-intrinsic set lives here.</li>
         <li><code>$if</code> / <code>$or</code> are comptime branches, structurally distinct from runtime <code>if</code> / <code>or</code>.</li>
       </ul>
-      <div class="callout changed">
-        <span class="callout-label">Changed in v2.0.0</span>
-        <p>Per-declaration codegen attributes (symbol rename, library pin, inline, align, section) are written as <code>#[...]</code> decorators, not <code>$</code>-comptime shapes. The legacy <code>$sym.attr = value</code> attribute setters were removed in v2.0.0. See <a href="decorators.html">Decorators</a>.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Per-declaration codegen attributes (symbol rename, library pin, inline, align, section) are written as <code>#[...]</code> decorators, not <code>$</code>-comptime shapes. See <a href="decorators.html">Decorators</a>.</p>
       </div>
 
       <h2 id="roots">Compiler-owned roots</h2>
-      <p>Three rooted trees carry the read-only facts a build exposes: the active build and compiler identity (<code>$mach.*</code>), the project metadata (<code>$project.*</code>), and the artifact being built (<code>$bin.*</code>).</p>
+      <p>Three rooted trees carry the read-only facts a build exposes. <code>$mach.*</code> (the active build and compiler identity) has its own section below; <code>$project.*</code> and <code>$bin.*</code> read project metadata and the current artifact, one member at a time:</p>
       <table>
-        <thead><tr><th>Root</th><th>Reads</th></tr></thead>
+        <thead><tr><th>Read</th><th>Value</th></tr></thead>
         <tbody>
-          <tr><td><code>$mach.*</code></td><td>resolved build os/arch/abi/mode, pointer width, compiler identity</td></tr>
-          <tr><td><code>$project.{id,version,name,description}</code></td><td>project metadata from <code>[project]</code></td></tr>
-          <tr><td><code>$project.version.{major,minor,patch}</code></td><td>structured version components</td></tr>
-          <tr><td><code>$project.target.{os,arch,abi}</code></td><td>the selected target's declared tuple, as strings</td></tr>
-          <tr><td><code>$bin.name</code></td><td>the build unit being built</td></tr>
+          <tr><td><code>$project.id</code></td><td>project id, from <code>[project]</code></td></tr>
+          <tr><td><code>$project.name</code></td><td>project name</td></tr>
+          <tr><td><code>$project.description</code></td><td>project description</td></tr>
+          <tr><td><code>$project.version</code></td><td>whole version string, e.g. <code>"2.0.0"</code></td></tr>
+          <tr><td><code>$project.version.major</code></td><td>major version component (folded integer)</td></tr>
+          <tr><td><code>$project.version.minor</code></td><td>minor version component</td></tr>
+          <tr><td><code>$project.version.patch</code></td><td>patch version component</td></tr>
+          <tr><td><code>$project.target.os</code></td><td>selected target os string, e.g. <code>"linux"</code></td></tr>
+          <tr><td><code>$project.target.arch</code></td><td>selected target arch string, e.g. <code>"x86_64"</code></td></tr>
+          <tr><td><code>$project.target.abi</code></td><td>selected target abi string, e.g. <code>"sysv64"</code></td></tr>
+          <tr><td><code>$bin.name</code></td><td>the artifact (build unit) being built</td></tr>
         </tbody>
       </table>
-      <p><code>$project.target.*</code> carries the manifest's declared string spellings (<code>"linux"</code>, <code>"x86_64"</code>, <code>"sysv64"</code>), distinct from the numeric tags used for <code>$mach.build.*</code> comparison. Flat <code>$project.version</code> is the whole version string; the structured <code>$project.version.{major,minor,patch}</code> folds its integer components. Both are available.</p>
+      <p>The <code>$project.target.*</code> reads carry the manifest's declared string spellings, distinct from the numeric tags used for <code>$mach.build.*</code> comparison. The flat <code>$project.version</code> string and its structured <code>major</code>, <code>minor</code>, and <code>patch</code> components are all available.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">ver</span>: <span class="type">str</span> = <span class="ct">$project.version</span>;                 <span class="cmt"># "2.0.0", from [project].version</span>
 <span class="ct">$if</span> (<span class="ct">$project.target.os</span> == <span class="str">"windows"</span>) { ... }    <span class="cmt"># the declared os string</span></code></pre>
       <div class="callout note">
@@ -114,7 +120,7 @@
       <p>The <code>$mach.*</code> subtree is the compiler's view of the world: the resolved build context, the compiler identity, and source position. Every read is a comptime constant.</p>
       <div class="callout note">
         <span class="callout-label">Implementation status</span>
-        <p>Live: the build facts <code>$mach.build.{os,arch,abi,pointer_width,mode}</code>, the tag tables, <code>$mach.version</code> (and its components), and <code>$mach.compiler.{name,version}</code>. Reserved stubs: <code>$mach.build.{timestamp,host}</code>, <code>$mach.build.git.*</code>, <code>$mach.project.*</code>, and <code>$mach.source.*</code>. Reading a stub is a compile error ("not yet available").</p>
+        <p>Live today: <code>$mach.build.os</code>, <code>$mach.build.arch</code>, <code>$mach.build.abi</code>, <code>$mach.build.pointer_width</code>, <code>$mach.build.mode</code>, the tag tables, <code>$mach.version</code> (with its components), <code>$mach.compiler.name</code>, and <code>$mach.compiler.version</code>. Reserved stubs: <code>$mach.build.timestamp</code>, <code>$mach.build.host</code>, <code>$mach.build.git.*</code>, <code>$mach.project.*</code>, and <code>$mach.source.*</code>. Reading a stub is a compile error ("not yet available").</p>
       </div>
 
       <h3 id="build"><code>$mach.build.*</code> - what we build for</h3>
@@ -134,10 +140,20 @@
 
       <h3 id="tags">Tag tables</h3>
       <p>The <code>$mach.{os,arch,abi,mode}.*</code> tables exist for path-value comparison against the resolved build. The lists are closed and grow only when backend support lands; an unrecognized tag name is a compile error, never a silent fold.</p>
-      <pre class="code"><code><span class="ct">$mach.os.linux</span>   <span class="ct">$mach.os.darwin</span>   <span class="ct">$mach.os.windows</span>   <span class="ct">$mach.os.freestanding</span>
-<span class="ct">$mach.arch.x86_64</span>   <span class="ct">$mach.arch.aarch64</span>
-<span class="ct">$mach.abi.sysv</span>   <span class="ct">$mach.abi.win64</span>   <span class="ct">$mach.abi.aapcs64</span>
-<span class="ct">$mach.mode.debug</span>   <span class="ct">$mach.mode.release</span></code></pre>
+      <pre class="code"><code><span class="ct">$mach.os.linux</span>
+<span class="ct">$mach.os.darwin</span>
+<span class="ct">$mach.os.windows</span>
+<span class="ct">$mach.os.freestanding</span>
+
+<span class="ct">$mach.arch.x86_64</span>
+<span class="ct">$mach.arch.aarch64</span>
+
+<span class="ct">$mach.abi.sysv</span>
+<span class="ct">$mach.abi.win64</span>
+<span class="ct">$mach.abi.aapcs64</span>
+
+<span class="ct">$mach.mode.debug</span>
+<span class="ct">$mach.mode.release</span></code></pre>
 
       <h2 id="comparison">Comparing tags</h2>
       <p>Tag comparisons are path-value, with no <code>.id</code> suffix or unwrapping. Both sides share one numeric space, so the comparison is an ordinary integer compare.</p>

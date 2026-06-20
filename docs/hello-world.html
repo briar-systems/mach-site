@@ -110,10 +110,6 @@
       <p><code>print.println</code> writes its argument followed by a newline. For formatted output, <code>print.printf</code> fills each <code>{}</code> hole in the format string with the next trailing argument, in order, and writes exactly what you give it.</p>
       <pre class="code"><code>print.<span class="fn">printf</span>(<span class="str">"x = {}\n"</span>, <span class="num">42</span>::<span class="type">i64</span>);   <span class="cmt"># x = 42</span></code></pre>
       <p>The <code>::i64</code> casts the literal to a concrete type. Because <code>printf</code> writes the string verbatim, include the trailing <code>\n</code> yourself.</p>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>mach uses <code>{}</code> placeholders, not C-style <code>%d</code>. Holes are filled positionally by the trailing arguments.</p>
-      </div>
 
       <h2 id="build">Build and run</h2>
       <p>Build with the same single toolchain that vendors dependencies and links. From the project root:</p>

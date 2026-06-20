@@ -74,9 +74,11 @@
       <p>An <code>if</code> head opens a branch chain. Each <code>or (cond) { ... }</code> adds another conditional branch, and a trailing <code>or { ... }</code> with no condition is the catch-all. Every body is a block; there is no brace-less single-statement form.</p>
       <pre class="code"><code><span class="kw">if</span> (cond) {
     ...
-} <span class="kw">or</span> (cond) {
+}
+<span class="kw">or</span> (cond) {
     ...
-} <span class="kw">or</span> {
+}
+<span class="kw">or</span> {
     ...                     <span class="cmt"># final else (no condition)</span>
 }</code></pre>
 

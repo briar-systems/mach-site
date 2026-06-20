@@ -68,7 +68,7 @@
 
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Variadic packs</div>
-      <h1>Variadic packs <span class="badge badge-new">since v1.7</span></h1>
+      <h1>Variadic packs</h1>
       <p class="lead">A trailing <code>va: ...</code> parameter collects a variable number of call-site arguments into a compile-time sequence. The compiler monomorphizes the function once per distinct argument type-list. There is no runtime structure, no <code>va_list</code>, and no <code>any</code>.</p>
 
       <h2 id="declaring">Declaring a pack</h2>
@@ -121,7 +121,7 @@
           <tr><td><code>sum(5::u8, 1::u32)</code></td><td><code>(u8, u32)</code></td></tr>
         </tbody>
       </table>
-      <div class="callout changed">
+      <div class="callout warn">
         <span class="callout-label">Not a stable ABI</span>
         <p>A pack-tailed function has no single entry point, so it is not a stable-ABI symbol. It cannot be the target of an <code>ext fun</code> or a function pointer shared across compilation units. It is source-level only.</p>
       </div>

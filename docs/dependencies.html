@@ -115,10 +115,6 @@ path = <span class="str">"../sibling/local-lib"</span></code></pre>
       <pre class="code"><code><span class="cmt"># add a git dep and vendor it in one step</span>
 mach dep add mach-std --git https://github.com/octalide/mach-std --ref v0.4.0</code></pre>
       <p>A <strong>git</strong> dep is cloned, then checked out as a detached HEAD at the resolved commit. A <strong>path</strong> dep is never fetched: <code>pull</code> materializes it at <code>&lt;dep&gt;/&lt;alias&gt;/</code> as a relative symlink, so the build reaches it by the same vendor layout as a git dep. Linking is idempotent - a stale link is replaced, a correct one left in place, and a source already living at the vendor location is a no-op. A path pointing at a missing directory, a tree with no <code>mach.toml</code>, or a vendor slot occupied by a real directory is a hard error.</p>
-      <div class="callout changed">
-        <span class="callout-label">Deprecated</span>
-        <p><code>sync</code> is the former name for <code>pull</code>, kept one cycle as a hidden alias that prints a deprecation note and runs <code>pull</code>. Use <code>mach dep pull</code>.</p>
-      </div>
 
       <h2 id="lockfile">The lockfile</h2>
       <p>The manifest is intent; <code>mach.lock</code> is the record of resolving it. After a <code>pull</code>, <code>mach dep</code> writes a TOML lock recording each git dep's <code>url</code>, <code>ref</code>, and resolved <code>commit</code>. Path deps carry no pinned content, so they have no lock entry.</p>

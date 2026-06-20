@@ -139,7 +139,8 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
 <span class="kw">fun</span> <span class="fn">count_i64</span>(<span class="param">m</span>: <span class="type">Mixed</span>) <span class="type">i64</span> {
     <span class="kw">var</span> <span class="param">n</span>: <span class="type">i64</span> = <span class="num">0</span>;
     <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Mixed</span>) {
-        <span class="ct">$if</span> (f.type == <span class="type">i64</span>) { n = n + <span class="num">1</span>; } <span class="ct">$or</span> { }
+        <span class="ct">$if</span> (f.type == <span class="type">i64</span>) { n = n + <span class="num">1</span>; }
+        <span class="ct">$or</span> { }
     }
     <span class="kw">ret</span> n;
 }</code></pre>

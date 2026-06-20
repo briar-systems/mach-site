@@ -79,10 +79,6 @@
       <p>A decorator is written as an attribute clause. A bare flag takes no arguments; a directive takes comptime-expression arguments.</p>
       <pre class="code"><code><span class="deco">#[name]</span>            <span class="cmt"># bare flag (e.g. inline)</span>
 <span class="deco">#[name(args)]</span>      <span class="cmt"># directive with comptime-expr arguments</span></code></pre>
-      <div class="callout changed">
-        <span class="callout-label">Changed in v2.4.0</span>
-        <p>The backtick form <code>`name(args)`</code> existed through v2.3.0 and was removed in v2.4.0; a backtick at decorator position is now a migration error. <code>#[...]</code> is the only decorator surface. The older <code>$sym.attr = value;</code> setter was removed in v2.0.0, so a stray <code>=</code> after a comptime directive is a parse error too.</p>
-      </div>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
         <p>A line comment that begins <code>#[</code> with no space opens an attribute. Write such a comment with a separating space: <code># [...]</code>.</p>
