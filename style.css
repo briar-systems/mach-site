@@ -175,18 +175,6 @@ code {
   overflow: hidden;
 }
 
-.hero::before {
-  content: "";
-  position: absolute;
-  top: -300px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 1000px;
-  height: 900px;
-  background: radial-gradient(circle, var(--magenta-glow) 0%, transparent 70%);
-  pointer-events: none;
-}
-
 .hero-inner {
   position: relative;
   max-width: 1100px;
@@ -244,6 +232,10 @@ code {
 .hero-actions {
   display: flex;
   gap: 1rem;
+}
+
+.hero-actions .btn-docs {
+  margin-left: auto;
 }
 
 /* Code Block (Hero) */
@@ -689,6 +681,10 @@ html.js .copy-btn {
   .hero-actions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .hero-actions .btn-docs {
+    margin-left: 0;
   }
 
   .demo,
