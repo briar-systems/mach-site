@@ -732,3 +732,183 @@ html.js .copy-btn {
     order: 0;
   }
 }
+
+/* Cross-compilation: target reel */
+
+.xc {
+  border-top: 1px solid var(--border);
+}
+
+.xc-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 2.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+/* base (no-JS): a plain readable list */
+.xc-reel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.reel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.reel-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.reel-name::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--text-dim);
+  flex: none;
+}
+
+.reel-item[data-status="supported"] .reel-name::before { background: #7ee787; }
+.reel-item[data-status="planned"]   .reel-name::before { background: #ffa657; }
+.reel-item[data-status="roadmap"]   .reel-name::before { background: #3a3a3a; }
+
+.reel-tuple {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+  padding-left: 1.2rem;
+}
+
+.xc-selector { display: none; }
+
+/* JS-enhanced: the 3D reel */
+.js .xc-reel {
+  position: relative;
+  height: 300px;
+  perspective: 760px;
+  outline: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%);
+}
+
+.js .xc-reel-list {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-style: preserve-3d;
+}
+
+.js .reel-item {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 60px;
+  margin-top: -30px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  backface-visibility: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.55s ease;
+}
+
+.js .reel-tuple { padding-left: 0; }
+
+.js .reel-item.is-active .reel-name { color: var(--text-bright); }
+.js .reel-item.is-active[data-status="supported"] .reel-name { color: #7ee787; }
+.js .reel-item.is-active[data-status="planned"]   .reel-name { color: #ffa657; }
+
+.js .xc-selector {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 60px;
+  margin-top: -30px;
+  pointer-events: none;
+  border-top: 1px solid var(--magenta);
+  border-bottom: 1px solid var(--magenta);
+  box-shadow: 0 0 26px var(--magenta-glow), inset 0 0 26px var(--magenta-glow);
+}
+
+.js .xc-selector::before,
+.js .xc-selector::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  margin-top: -5px;
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+}
+
+.js .xc-selector::before { left: 8px;  border-left-color: var(--magenta); }
+.js .xc-selector::after  { right: 8px; border-right-color: var(--magenta); }
+
+/* the synced build panel */
+.xc-panel {
+  align-self: stretch;
+}
+
+.xc-panel pre {
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.75;
+}
+
+.xc-cmd { border-bottom: 1px solid var(--border); }
+
+.xc-target,
+.xc-out { color: var(--magenta); font-weight: 600; }
+
+.xc-status { color: #6e7681; }
+.xc-status[data-status="supported"] { color: #7ee787; }
+.xc-status[data-status="planned"]   { color: #ffa657; }
+.xc-status[data-status="roadmap"]   { color: #6e7681; }
+
+.toml-head { color: var(--magenta); }
+.toml-key  { color: var(--text); }
+
+@keyframes xc-flash {
+  from { background: var(--magenta-glow-strong); }
+  to   { background: transparent; }
+}
+
+@keyframes xc-fade {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.is-swap { animation: xc-flash 0.6s ease; border-radius: 3px; }
+.xc-stanza.is-fade code { animation: xc-fade 0.45s ease; }
+
+@media (max-width: 768px) {
+  .xc-stage { grid-template-columns: 1fr; gap: 1.75rem; }
+  .js .xc-reel { height: 240px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js .reel-item { transition: none; }
+  .is-swap,
+  .xc-stanza.is-fade code { animation: none; }
+}

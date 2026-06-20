@@ -71,6 +71,7 @@
       </a>
       <div class="nav-links">
         <a href="#why">Why mach</a>
+        <a href="#targets">Targets</a>
         <a href="#get-started">Get Started</a>
         <a href="https://github.com/octalide/mach/tree/main/doc" target="_blank">Docs</a>
         <a href="https://github.com/octalide/mach" target="_blank" class="nav-github" aria-label="GitHub">
@@ -217,6 +218,41 @@
     </div>
   </section>
 
+  <!-- Cross-compilation: target reel -->
+  <section class="section xc" id="targets">
+    <div class="section-inner">
+      <h2>Write once, deploy everywhere.</h2>
+      <p class="section-lead">One toolchain targets them all. The same single binary cross-compiles to every platform you declare. No cross-toolchains to install, no external linker; you just add another <code>[target]</code> to your manifest.</p>
+
+      <div class="xc-stage">
+        <div class="xc-reel" role="listbox" aria-label="Build targets" tabindex="0">
+          <ul class="xc-reel-list">
+            <li class="reel-item" role="option" data-target="linux"       data-tuple="x86_64 / linux / sysv64"    data-status="supported"><span class="reel-name">linux</span><span class="reel-tuple">x86_64 / linux / sysv64</span></li>
+            <li class="reel-item" role="option" data-target="windows"     data-tuple="x86_64 / windows / win64"   data-status="supported"><span class="reel-name">windows</span><span class="reel-tuple">x86_64 / windows / win64</span></li>
+            <li class="reel-item" role="option" data-target="linux-arm64" data-tuple="aarch64 / linux / aapcs64"  data-status="planned"><span class="reel-name">linux-arm64</span><span class="reel-tuple">aarch64 / linux / aapcs64</span></li>
+            <li class="reel-item" role="option" data-target="macos"       data-tuple="aarch64 / darwin / aapcs64" data-status="planned"><span class="reel-name">macos</span><span class="reel-tuple">aarch64 / darwin / aapcs64</span></li>
+            <li class="reel-item" role="option" data-target="wasm"        data-tuple="wasm32 / wasi / wasi"       data-status="roadmap"><span class="reel-name">wasm</span><span class="reel-tuple">wasm32 / wasi / wasi</span></li>
+            <li class="reel-item" role="option" data-target="riscv64"     data-tuple="riscv64 / linux / lp64"     data-status="roadmap"><span class="reel-name">riscv64</span><span class="reel-tuple">riscv64 / linux / lp64</span></li>
+          </ul>
+          <div class="xc-selector" aria-hidden="true"></div>
+        </div>
+
+        <div class="xc-panel code-window">
+          <div class="code-header">
+            <span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span>
+            <span class="code-filename">mach.toml</span>
+          </div>
+          <pre class="xc-cmd"><code><span class="term-prompt">$</span> <span class="term-cmd">mach build . --target <span class="xc-target">linux</span></span>
+<span class="xc-status" data-status="supported"># linked -&gt; out/<span class="xc-out">linux</span>/bin/app</span></code></pre>
+          <pre class="xc-stanza"><code data-stanza><span class="toml-head">[target.linux]</span>
+<span class="toml-key">isa</span> = <span class="str">"x86_64"</span>
+<span class="toml-key">os</span>  = <span class="str">"linux"</span>
+<span class="toml-key">abi</span> = <span class="str">"sysv64"</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Get Started: terminal session -->
   <section class="section get-started" id="get-started">
     <div class="section-inner">
@@ -276,5 +312,6 @@
   </footer>
 
   <script src="assets/highlight.js" defer></script>
+  <script src="assets/targets.js" defer></script>
 </body>
 </html>
