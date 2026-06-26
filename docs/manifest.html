@@ -152,7 +152,7 @@ ref = <span class="str">"v0.4.0"</span></code></pre>
           <tr><td><code>isa</code></td><td>yes</td><td>-</td><td>Instruction-set architecture. Read by <code>$project.target.arch</code>.</td></tr>
           <tr><td><code>os</code></td><td>yes</td><td>-</td><td>Operating system. Read by <code>$project.target.os</code>.</td></tr>
           <tr><td><code>abi</code></td><td>yes</td><td>-</td><td>Application binary interface (e.g. <code>sysv64</code>, <code>win64</code>). Read by <code>$project.target.abi</code>.</td></tr>
-          <tr><td><code>of</code></td><td>no</td><td>(os default)</td><td>Object format, selected by name (e.g. <code>"raw"</code>). Omit to derive it from the <code>os</code> (<code>linux</code> &rarr; <code>elf</code>, <code>windows</code> &rarr; <code>coff</code>, <code>darwin</code> &rarr; <code>macho</code>, <code>freestanding</code> &rarr; <code>raw</code>).</td></tr>
+          <tr><td><code>of</code></td><td>no</td><td>(os default)</td><td>Object format, selected by name (e.g. <code>"raw"</code>). Omit to derive it from the <code>os</code> default (see the recognized values below).</td></tr>
           <tr><td><code>ext</code></td><td>no</td><td><code>""</code></td><td>Artifact filename extension expanded by <code>{ext}</code> (e.g. <code>".exe"</code>).</td></tr>
           <tr><td><code>libs</code></td><td>no</td><td><code>[]</code></td><td>Platform link overlay inherited by every artifact built for this target (see Link inputs).</td></tr>
           <tr><td><code>defines</code></td><td>no</td><td><code>[]</code></td><td>Per-target comptime defines. Each is <code>NAME</code> (a <code>true</code> flag) or <code>NAME=VALUE</code>, readable as <code>$mach.build.NAME</code>.</td></tr>
