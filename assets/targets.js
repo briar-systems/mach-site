@@ -22,12 +22,13 @@
 
   // the [target.<name>] stanza shown for each target
   var STANZA = {
-    "linux":       '[target.linux]\nisa = "x86_64"\nos  = "linux"\nabi = "sysv64"',
-    "windows":     '[target.windows]\nisa  = "x86_64"\nos   = "windows"\nabi  = "win64"\next  = ".exe"\nlibs = ["kernel32.dll"]',
-    "linux-arm64": '[target.linux-arm64]\nisa = "aarch64"\nos  = "linux"\nabi = "aapcs64"',
-    "macos":       '[target.macos]\nisa = "aarch64"\nos  = "darwin"\nabi = "aapcs64"',
-    "wasm":        '[target.wasm]\nisa = "wasm32"\nos  = "wasi"\nabi = "wasi"',
-    "riscv64":     '[target.riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64"'
+    "linux":        '[target.linux]\nisa = "x86_64"\nos  = "linux"\nabi = "sysv64"',
+    "windows":      '[target.windows]\nisa  = "x86_64"\nos   = "windows"\nabi  = "win64"\next  = ".exe"\nlibs = ["kernel32.dll"]',
+    "freestanding": '[target.freestanding]\nisa = "x86_64"\nos  = "freestanding"\nabi = "sysv64"\nof  = "raw"',
+    "linux-arm64":  '[target.linux-arm64]\nisa = "aarch64"\nos  = "linux"\nabi = "aapcs64"',
+    "macos":        '[target.macos]\nisa = "aarch64"\nos  = "darwin"\nabi = "aapcs64"',
+    "wasm":         '[target.wasm]\nisa = "wasm32"\nos  = "wasi"\nabi = "wasi"',
+    "riscv64":      '[target.riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64"'
   };
 
   function esc(s) {

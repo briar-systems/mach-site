@@ -73,13 +73,10 @@
       <h2 id="source-files">Source files</h2>
       <p>Source files use the <code>.mach</code> extension. Two conventional entry files name a project's surface:</p>
       <ul>
-        <li><code>main.mach</code> - executable entry. Defines <code>fun main()</code>.</li>
+        <li><code>main.mach</code> - executable entry.</li>
         <li><code>lib.mach</code> - library entry. Exposes code for other projects to import; produces no executable.</li>
       </ul>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">main</span>() {
-    <span class="cmt"># program starts here</span>
-}</code></pre>
-      <p>A project may carry both files. The actual role of an entry is fixed by the artifact table that names it in <code>mach.toml</code>: a <code>[bin.*]</code> links an executable, a <code>[lib.*]</code> produces a library.</p>
+      <p>These names are convention only: the compiler never looks for a function called <code>main</code>. An entry is simply the source file a <code>[bin.*]</code> or <code>[lib.*]</code> artifact names with its <code>entry</code> key; what marks a function as the program's entry point is its exported symbol and signature, covered in <a href="hello-world.html">Hello world</a>. The artifact table fixes the role - a <code>[bin.*]</code> links an executable, a <code>[lib.*]</code> produces a library. A project may carry both files.</p>
 
       <h2 id="project-root">The project root</h2>
       <p>Every project has a <code>mach.toml</code> at its root. The compiler finds it by walking up from the working directory until one is seen, so any subcommand run inside the tree resolves the same manifest.</p>
