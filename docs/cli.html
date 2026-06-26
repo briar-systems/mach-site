@@ -15,7 +15,7 @@
       <img src="../assets/mach_32.png" alt="" width="22" height="22">
       <span>mach</span><span class="brand-docs">docs</span>
     </a>
-    <span class="badge badge-version">v2.6.0</span>
+    <span class="badge badge-version"></span>
     <div class="topbar-spacer"></div>
     <button class="search-trigger" aria-label="Search the docs">
       <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
@@ -215,7 +215,7 @@ commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></co
       <h2 id="utility">doc, info, and help</h2>
       <p><strong><code>mach doc &lt;path&gt;</code></strong> loads the module graph and generates Markdown reference docs from source doc-comments - one page per module plus an index. Each <code>pub</code> declaration is paired with the run of <code>#</code> comment lines immediately preceding it. <code>--out &lt;dir&gt;</code> sets the output directory (default <code>doc/api</code>); <code>--target &lt;name&gt;</code> selects a target for module discovery. The hand-written language material is never touched.</p>
       <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
-      <pre class="code"><code>mach 2.6.0
+      <pre class="code"><code>mach <span data-mach-version></span>
 host: linux/x86_64
 isa: x86_64 aarch64
 os: linux darwin windows freestanding
@@ -276,6 +276,7 @@ object: elf coff macho raw</code></pre>
     </div>
   </div>
 
+  <script src="../assets/version.js" defer></script>
   <script src="docs.js" defer></script>
 </body>
 </html>
