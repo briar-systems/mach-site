@@ -14,6 +14,7 @@
     { title: "Records and unions", group: "Language", url: "records-unions.html" },
     { title: "Modules", group: "Language", url: "modules.html" },
     { title: "Visibility", group: "Language", url: "visibility.html" },
+    { title: "External functions", group: "Language", url: "ext-fun.html" },
     { title: "The comptime channel", group: "Comptime", url: "comptime.html" },
     { title: "Intrinsics", group: "Comptime", url: "intrinsics.html" },
     { title: "Control flow", group: "Comptime", url: "comptime-control.html" },
