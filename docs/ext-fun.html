@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: External functions</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version"></span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/octalide/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+          <a class="nav-link active" href="ext-fun.html">External functions</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>External functions</div>
+      <h1>External functions</h1>
+      <p class="lead">mach's foreign function interface (FFI) is a single declaration form: <code>ext fun</code>. It declares a body-less function with the C ABI - a forward reference the linker resolves at link time. Declare the foreign symbol, call it like any other function, and supply its definition (a C object, archive, or shared library) when you build. This is the only body-less function form mach allows.</p>
+
+      <h2 id="grammar">Grammar</h2>
+      <p>An <code>ext fun</code> is a function signature with no body. The declaration ends with a semicolon instead of a block.</p>
+      <pre class="code"><code><span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">NAME</span>(args) RET;</code></pre>
+      <ul>
+        <li>No body block - the declaration ends with a semicolon.</li>
+        <li>Argument and return types must be representable in C.</li>
+        <li><code>pub ext fun</code> exposes the import to other modules; without <code>pub</code> it is file-private.</li>
+      </ul>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;
+
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">strlen</span>(<span class="param">s</span>: *<span class="type">u8</span>) <span class="type">i64</span>;             <span class="cmt"># private, file-local</span></code></pre>
+
+      <h2 id="abi">The C ABI boundary</h2>
+      <p>The C ABI is the contract at the boundary: every argument and return type must be representable in C, and values are passed exactly as the target's C calling convention dictates. mach's fixed-width scalars and pointers correspond directly to their C counterparts.</p>
+      <ul>
+        <li><code>i8</code> through <code>i64</code> and <code>u8</code> through <code>u64</code> are the sized C integers.</li>
+        <li><code>f32</code> and <code>f64</code> are C <code>float</code> and <code>double</code>.</li>
+        <li><code>*T</code> and <code>**T</code> are C pointers; a C-style string is a <code>*u8</code>.</li>
+      </ul>
+      <p>The exact calling convention is the one declared for the target (for example <code>sysv64</code> on Linux or <code>win64</code> on Windows). See <a href="manifest.html#targets">Manifest</a> for how a target's <code>abi</code> is set.</p>
+
+      <h2 id="symbol">Renaming the linker symbol</h2>
+      <p>By default the linker looks up the declared name. The <code>#[symbol("real_name")]</code> decorator overrides it, binding the declaration to a different external symbol.</p>
+      <pre class="code"><code><span class="deco">#[<span class="fn">symbol</span>(<span class="str">"write"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;</code></pre>
+      <p>Two common reasons to rename:</p>
+      <ul>
+        <li>The C name (such as <code>write</code>) would shadow other things in your namespace.</li>
+        <li>The target decorates symbol names in its ABI and you need to match the decorated form.</li>
+      </ul>
+
+      <h2 id="library">Library attribution</h2>
+      <p>On a format that attributes each import to a specific dependency - the PE (Windows) import directory - the <code>#[library("...")]</code> decorator pins an <code>ext</code> import to the DLL that exports it.</p>
+      <pre class="code"><code><span class="deco">#[<span class="fn">library</span>(<span class="str">"ws2_32.dll"</span>)]</span>
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">WSAStartup</span>(<span class="param">ver</span>: <span class="type">u16</span>, <span class="param">data</span>: *<span class="type">u8</span>) <span class="type">i32</span>;</code></pre>
+      <ul>
+        <li>The named DLL must appear in the target's <code>[os.*].libs</code> dependency set. Pinning to an absent library is a link error, never a silent fallback.</li>
+        <li>An import with no <code>library</code> is unattributed; on PE it binds to the first declared dependency. Pin every import that belongs to a different DLL.</li>
+        <li>On ELF (Linux) the loader resolves imports by global search, so <code>library</code> has no effect on the emitted binary; the value is still validated against the dependency set.</li>
+      </ul>
+      <p><code>library</code> composes with <code>symbol</code>: the rename sets the imported symbol's name, <code>library</code> sets the DLL it is imported from.</p>
+      <pre class="code"><code><span class="cmt"># imported as `socket` from ws2_32.dll, called as `ws2_socket` in mach.</span>
+<span class="deco">#[<span class="fn">library</span>(<span class="str">"ws2_32.dll"</span>)]</span> <span class="deco">#[<span class="fn">symbol</span>(<span class="str">"socket"</span>)]</span>
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">ws2_socket</span>(<span class="param">af</span>: <span class="type">i32</span>, <span class="param">kind</span>: <span class="type">i32</span>, <span class="param">proto</span>: <span class="type">i32</span>) <span class="type">i64</span>;</code></pre>
+
+      <h2 id="linking">Linking the definition</h2>
+      <p>An <code>ext fun</code> is only a forward reference. Its definition is supplied at link time, either <strong>statically</strong> by a precompiled object or archive or <strong>dynamically</strong> by a shared library bound at load time. Provide those inputs to <code>mach build</code> on the command line or through the manifest. An undefined <code>ext</code> symbol that no input resolves is a link error, so a typo never silently drops a dependency.</p>
+      <pre class="code"><code>mach build . path/to/libfoo.a        <span class="cmt"># static archive (every member is pulled)</span>
+mach build . -L build/libs -l foo    <span class="cmt"># search dir + name</span>
+mach build . -l c                    <span class="cmt"># link libc dynamically</span></code></pre>
+      <p>The same inputs live in the manifest's <code>libs</code> overlay, merged with the command-line inputs:</p>
+      <pre class="code"><code><span class="kw">[target.linux]</span>
+<span class="param">libs</span> = [<span class="str">"build/libs/libfoo.a"</span>, <span class="str">"c"</span>]</code></pre>
+      <p>A loose <code>.o</code> object or static <code>.a</code> archive is a static input merged into the binary; a shared <code>.so</code> is a dynamic dependency whose undefined <code>ext</code> symbols bind at load time through an emitted PLT. A static definition always wins over a same-named dynamic import. Dynamic linking is implemented for the ELF (Linux) and PE (Windows) targets; the Mach-O (Darwin) import path is not yet implemented.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The link-input resolution rules - explicit paths, <code>-l</code>/<code>-L</code> search order, and static-vs-dynamic selection - are documented once on the <a href="cli.html#link-inputs">CLI</a> page, and the manifest overlay on the <a href="manifest.html#link-inputs">Manifest</a> page.</p>
+      </div>
+
+      <h2 id="example">A worked example</h2>
+      <p>This program imports two libc functions, calls them, and prints a line to standard output. <code>strlen</code> measures the message and <code>libc_write</code> (the renamed <code>write</code>) writes it to file descriptor <code>1</code>.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;
+
+<span class="deco">#[<span class="fn">symbol</span>(<span class="str">"write"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;
+
+<span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">strlen</span>(<span class="param">s</span>: *<span class="type">u8</span>) <span class="type">i64</span>;
+
+<span class="deco">#[<span class="fn">symbol</span>(<span class="str">"main"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
+    <span class="kw">val</span> <span class="param">msg</span>: *<span class="type">u8</span> = <span class="str">"hello from ffi\n"</span>;
+    <span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = <span class="fn">strlen</span>(msg);
+    <span class="fn">libc_write</span>(<span class="num">1</span>, msg, n);
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
+      <p>libc supplies both symbols, so link it dynamically. The result is a dynamically-linked binary that binds <code>write</code> and <code>strlen</code> at load time.</p>
+      <pre class="code"><code>mach build . -l c     <span class="cmt"># resolves the ext imports against libc.so</span></code></pre>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="visibility.html#ext">Visibility</a> - <code>pub</code> and <code>ext</code> modifiers</li>
+          <li><a href="decorators.html#symbol">Decorators</a> - the <code>symbol</code> and <code>library</code> directives</li>
+          <li><a href="cli.html#link-inputs">CLI</a> - external link inputs and resolution</li>
+          <li><a href="manifest.html#link-inputs">Manifest</a> - the <code>libs</code> link overlay</li>
+          <li><a href="functions.html">Functions</a> - regular function declarations</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="visibility.html"><span class="pn-label">Previous</span><span class="pn-title">Visibility</span></a><a class="next" href="comptime.html"><span class="pn-label">Next</span><span class="pn-title">The comptime channel</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#grammar">Grammar</a>
+      <a href="#abi">The C ABI boundary</a>
+      <a href="#symbol">Renaming the linker symbol</a>
+      <a href="#library">Library attribution</a>
+      <a href="#linking">Linking the definition</a>
+      <a href="#example">A worked example</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="../assets/version.js" defer></script>
+  <script src="docs.js" defer></script>
+</body>
+</html>
