@@ -169,6 +169,7 @@ ref = <span class="str">"v0.4.0"</span></code></pre>
         <tbody>
           <tr><td><code>x86_64</code></td><td>isa</td><td>Supported - the only fully working ISA today.</td></tr>
           <tr><td><code>aarch64</code></td><td>isa</td><td>Recognized; an ISA vtable exists, but codegen is not yet validated end-to-end.</td></tr>
+          <tr><td><code>riscv64</code></td><td>isa</td><td>Recognized; full RV64 codegen (selection, encoder, relocations) byte-verified against llvm and run under qemu. Cross-compile only - no <code>mach-std</code> riscv64 runtime yet, so no hosted toolchain.</td></tr>
           <tr><td><code>linux</code></td><td>os</td><td>Supported - the primary host and target.</td></tr>
           <tr><td><code>windows</code></td><td>os</td><td>Supported as a cross-compilation target (PE/COFF, Win64 ABI).</td></tr>
           <tr><td><code>darwin</code></td><td>os</td><td>Recognized; vtables exist, but the toolchain is not yet validated end-to-end.</td></tr>

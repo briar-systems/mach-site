@@ -5,7 +5,7 @@
   "use strict";
 
   // the one place a release bumps the advertised mach version.
-  var MACH_VERSION = "2.6.0";
+  var MACH_VERSION = "2.7.0";
 
   function apply() {
     Array.prototype.forEach.call(
