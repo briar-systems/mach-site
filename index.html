@@ -251,13 +251,18 @@
                                     Run it in PowerShell.
                                 </p>
                             </div>
-                            <div
-                                class="install-panel install-planned"
-                                data-os="macos"
-                            >
-                                <p class="step-note">
-                                    macOS support is planned.
-                                </p>
+                            <div class="install-panel" data-os="macos">
+                                <p class="step-note install-label">On macOS (Apple Silicon):</p>
+                                <div class="code-block install-cmd">
+                                    <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
+                                    <button
+                                        type="button"
+                                        class="copy-btn"
+                                        aria-label="Copy command"
+                                    >
+                                        <span class="copy-label">Copy</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -480,7 +485,7 @@
                                 role="option"
                                 data-target="linux-arm64"
                                 data-tuple="aarch64 / linux / aapcs64"
-                                data-status="planned"
+                                data-status="supported"
                             >
                                 <span class="reel-name">linux-arm64</span
                                 ><span class="reel-tuple"
@@ -492,7 +497,7 @@
                                 role="option"
                                 data-target="macos"
                                 data-tuple="aarch64 / darwin / aapcs64"
-                                data-status="planned"
+                                data-status="supported"
                             >
                                 <span class="reel-name">macos</span
                                 ><span class="reel-tuple"
