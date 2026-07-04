@@ -13,7 +13,7 @@ fun tally(args: ...) i64 {
     $each arg in args {
         # $type_of picks genuinely different handling per element type
         $if ($type_of(arg) == i64)   { sum = sum + arg; }
-        $or ($type_of(arg) == Point) { sum = arg.x + arg.y; }
+        $or ($type_of(arg) == Point) { sum = sum + arg.x + arg.y; }
         $or                          { $error("tally: unsupported type"); }
     }
     ret sum;
