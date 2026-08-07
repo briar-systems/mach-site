@@ -71,12 +71,49 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Secrecy</div>
       <h1>Secrecy</h1>
-      <p class="lead"><code>^T</code> marks a type as carrying secret data. Sema tracks secrecy as an information-flow discipline: secret data may move and be stored, but it may never reach a position a classical leakage model observes - a branch, a memory address, or a variable-latency instruction.</p>
+      <p class="lead">A program can give away a password it never prints. Writing <code>^</code> in front of a type marks a value as secret, and the compiler then refuses to build code that would leak it - and keeps refusing all the way through optimization.</p>
 
       <div class="callout warn">
         <span class="callout-label">Experimental preview</span>
         <p>The constant-time support is incomplete and unaudited, and a proven secret-disclosure path is still open. Read <a href="#assurance">Assurance</a> before relying on any of this. <strong>Do not build production cryptography on it at this version.</strong></p>
       </div>
+
+      <h2 id="why">What this is for</h2>
+      <p>Say you check a password by comparing it one character at a time, and stop at the first character that does not match. That is the obvious way to write it, and it is correct - it never prints the password, never logs it, and returns nothing but yes or no.</p>
+      <p>It still gives the password away. An attacker who can <em>time</em> the check learns something from every attempt: a guess starting with the right character takes a hair longer to reject than one starting with the wrong character, because the comparison got one step further before giving up. Guess the first character - only one of them is measurably slower. Keep it, and guess the second. A password that would take longer than the universe to brute-force all at once falls in a few thousand tries, one character at a time.</p>
+      <p>Timing is not the only such channel. Three things about a running program are observable without reading its memory:</p>
+      <ul>
+        <li><strong>Which way it branched.</strong> Taking one path rather than another takes a different amount of time, and leaves different traces in the processor.</li>
+        <li><strong>Which memory it touched.</strong> Reading <code>table[secret]</code> pulls exactly that entry into the cache. An attacker sharing the machine can often work out which one.</li>
+        <li><strong>How long an instruction took.</strong> Some instructions - division especially - finish faster or slower depending on the values fed to them.</li>
+      </ul>
+      <p>The standard defence is to write the code so none of those depend on the secret: compare every character whether or not an earlier one already failed, and combine the results arithmetically instead of branching. This is called <strong>constant-time</strong> code, and it is notoriously easy to get wrong.</p>
+
+      <h3 id="why-compiler">Why the compiler has to be involved</h3>
+      <p>Even when you get it right by hand, the compiler can undo it. An optimizer's whole job is to notice that work is unnecessary and remove it - and branch-free code that carefully does the same work every time looks exactly like work worth eliminating. A shortcut you deliberately avoided writing gets helpfully added back, and nothing warns you. The source is still constant-time; the binary is not.</p>
+      <p>So the guarantee cannot live in a coding convention or a library. It has to be something the compiler itself knows about and is obliged to preserve. That is what <code>^</code> is.</p>
+      <pre class="code"><code><span class="cmt"># `^u64` is a secret. the compiler tracks where it flows.</span>
+<span class="deco">#[oblivious]</span>
+<span class="kw">fun</span> <span class="fn">ct_diff</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> {
+    <span class="kw">ret</span> a ^ b;                 <span class="cmt"># one xor, always the same work</span>
+}
+
+<span class="kw">fun</span> <span class="fn">verify</span>(<span class="param">given</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">secret</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="type">bool</span> {
+    <span class="kw">if</span> (given == secret) { <span class="kw">ret</span> <span class="kw">true</span>; }   <span class="cmt"># refused - see below</span>
+    <span class="kw">ret</span> (<span class="fn">ct_diff</span>(given, secret)<span class="ct">:^</span>) == <span class="num">0</span>;
+}</code></pre>
+      <p>That branch does not compile:</p>
+      <pre class="code"><code>error: secret value used as a branch condition
+  --&gt; ./src/main.mach:16:5
+   |
+16 |     if (given == secret) { ret true; }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: a secret may not steer control flow; branching on it leaks
+     through timing. compute branch-free, or `:^` to a public value when
+     disclosure is intended</code></pre>
+      <p>Three things are worth drawing out of that. The mistake is caught <strong>when you compile</strong>, not by an audit or a timing measurement after the fact. Secrecy is <strong>part of the type</strong>, so it travels with the value through every function it is passed to - you cannot lose track of which variable holds the sensitive one. And disclosure is possible but never accidental: <code>:^</code> is the one way to turn a secret back into an ordinary value, so every deliberate release is a visible mark in the source that a reviewer can search for.</p>
+      <p>The rest of this page is the precise version of all that.</p>
 
       <h2 id="lattice">The secrecy lattice</h2>
       <p>There are two secrecy levels in a two-point lattice: public is the bottom, secret the top. <code>^</code> lifts a type to secret and binds to the type immediately to its right, so it nests with <code>*</code> and <code>[N]</code> in any order: <code>^u32</code>, <code>*^u8</code>, <code>^*u8</code>, <code>[N]^u8</code>, <code>^MyRec</code>. Doubling collapses: <code>^^T</code> is <code>^T</code>.</p>
@@ -90,7 +127,7 @@
 
 <span class="kw">rec</span> <span class="type">Key</span> { <span class="param">d</span>: <span class="ct">^</span>[<span class="num">32</span>]<span class="type">u8</span>; }
 <span class="kw">fun</span> <span class="fn">first</span>(<span class="param">k</span>: <span class="type">Key</span>) <span class="ct">^</span><span class="type">u8</span> { <span class="kw">ret</span> k.d[<span class="num">0</span>]; }            <span class="cmt"># element of a secret array is ^u8</span></code></pre>
-      <p><code>&amp;T</code> of a <code>^T</code> value is the public pointer <code>*^T</code> - the address is public, the pointee secret - and dereferencing <code>*^T</code> recovers the secret <code>^T</code>.</p>
+      <p>Taking the address of a <code>^T</code> value with <code>?</code> gives the public pointer <code>*^T</code> - the address is public, the pointee secret - and dereferencing it with <code>@</code> recovers the secret <code>^T</code>.</p>
 
       <h2 id="gates">Gates</h2>
       <p>A secret may not reach a position the leakage model observes. Each is a compile error decided by operand type:</p>
@@ -218,6 +255,8 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
 
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
+      <a href="#why">What this is for</a>
+      <a class="sub" href="#why-compiler">Why the compiler is involved</a>
       <a href="#lattice">The secrecy lattice</a>
       <a href="#join">Join</a>
       <a href="#gates">Gates</a>
