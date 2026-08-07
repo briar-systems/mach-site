@@ -93,6 +93,37 @@
         <p>Provably-dead arms are pruned before type-checking, so each arm uses <code>arg</code> at its own concrete type with no per-arm cast: the <code>str</code> arm above is never checked against a <code>u64</code> element. Only the selected arm is type-checked and emitted.</p>
       </div>
 
+      <h2 id="predicates">Type predicates</h2>
+      <p>Where <code>$type_of</code> asks what a type <em>is</em>, the predicates ask about its <strong>shape</strong>. Each takes one type operand and folds in a <code>$if</code> / <code>$or</code> gate.</p>
+      <pre class="code"><code><span class="ct">$is_record</span>(<span class="type">T</span>)           <span class="cmt"># T is a record (or an instance of one)</span>
+<span class="ct">$is_union</span>(<span class="type">T</span>)            <span class="cmt"># T is a union  (or an instance of one)</span>
+<span class="ct">$is_pointer</span>(<span class="type">T</span>)          <span class="cmt"># T is a reference: the raw `ptr` or a typed `*U`</span></code></pre>
+      <p>They are <strong>comptime-only</strong>. A gate condition selects an arm, and there is no runtime boolean for one to become, so using a predicate as a value is an error.</p>
+      <p>A <code>^</code> secret wrapper is stripped before the question is answered: <code>^Pair</code> is a record, because <code>^T</code> is a wrapper over <code>T</code>'s storage. A generic instance answers as the declaration it instantiates, so <code>Box[i64]</code> is a record - which is the type a reflection loop actually meets.</p>
+      <p>This is what makes <em>recursive</em> reflection expressible: a <code>$fields</code> walk can ask each field whether to descend into it.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Inner</span> { <span class="param">x</span>: <span class="type">u64</span>; <span class="param">y</span>: <span class="type">u64</span>; }
+<span class="kw">rec</span> <span class="type">Outer</span> { <span class="param">i</span>: <span class="type">Inner</span>; <span class="param">n</span>: <span class="type">u64</span>; }
+
+<span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Outer</span>) {
+    <span class="ct">$if</span> (<span class="ct">$is_record</span>(f.type)) {
+        <span class="ct">$each</span> g <span class="kw">in</span> <span class="ct">$fields</span>(f.type) { ... }   <span class="cmt"># descend</span>
+    }
+    <span class="ct">$or</span> { ... }                              <span class="cmt"># a scalar field</span>
+}</code></pre>
+
+      <h2 id="type-name"><code>$type_name(T)</code></h2>
+      <p>A type's spelling, as a NUL-terminated string.</p>
+      <pre class="code"><code><span class="ct">$type_name</span>(<span class="type">T</span>)           <span class="cmt"># the type's spelling, as a *u8</span></code></pre>
+      <p>Unlike the predicates this <strong>is</strong> a value (<code>*u8</code>), usable anywhere one is. The spelling is the same one diagnostics print, so a name a program reads and a name an error reports cannot drift. Composites spell compositely - <code>$type_name(*Pair)</code> is <code>"*Pair"</code> - and a <code>^</code> wrapper is stripped as it is for the predicates.</p>
+
+      <h2 id="type-operand">The type operand</h2>
+      <p><code>$size_of</code>, <code>$align_of</code>, <code>$offset_of</code>, <code>$fields</code>, and the queries above all take a <strong>type</strong> in argument 0, written with the ordinary type grammar - plus one extra form: a field descriptor's <code>f.type</code> inside a <code>$each</code> body.</p>
+      <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) {
+    <span class="kw">val</span> <span class="param">n</span>: <span class="type">u64</span> = <span class="ct">$size_of</span>(f.type);      <span class="cmt"># the field's own size</span>
+    <span class="ct">$each</span> g <span class="kw">in</span> <span class="ct">$fields</span>(f.type) { ... }  <span class="cmt"># its own fields</span>
+}</code></pre>
+      <p>That form is what makes recursive reflection expressible: inside the loop a field's type has no spelling, only the descriptor. A path that is genuinely a qualified type name (<code>mod.Type</code>) still reads as one.</p>
+
       <h2 id="fields">Field intrinsic and projection</h2>
       <p><code>$fields(T)</code> produces a comptime sequence of field descriptors for record or union type <code>T</code>. Each descriptor carries three readable properties.</p>
       <table>
@@ -205,6 +236,9 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
       <div class="toc-title">On this page</div>
       <a href="#value-intrinsics">Value intrinsics</a>
       <a href="#type-intrinsic">Type intrinsic</a>
+      <a href="#predicates">Type predicates</a>
+      <a href="#type-name">$type_name</a>
+      <a href="#type-operand">The type operand</a>
       <a href="#fields">Field intrinsic and projection</a>
       <a class="sub" href="#heterogeneous">Heterogeneous fields</a>
       <a class="sub" href="#descriptor-reads">Descriptor reads</a>

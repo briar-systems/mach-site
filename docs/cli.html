@@ -98,26 +98,31 @@
       </table>
 
       <h2 id="global-flags">Global flags</h2>
-      <p>Read by <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code>, which share one config parser. Passing <code>--verbose</code> and <code>--quiet</code> together is a parse error.</p>
+      <p>Read by <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code>, which share one config parser. Passing a verbosity flag and <code>--quiet</code> together is a parse error.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>--verbose</code>, <code>-v</code></td><td>-</td><td>write extra detail (per-stage compile progress) to stderr</td></tr>
+          <tr><td><code>-v</code></td><td>-</td><td>verbose readout: build phase timing, or per-test lines under <code>mach test</code></td></tr>
+          <tr><td><code>-vv</code></td><td>-</td><td><code>-v</code> plus per-module / per-file (or passing-test) detail</td></tr>
           <tr><td><code>--quiet</code>, <code>-q</code></td><td>-</td><td>suppress non-error output</td></tr>
-          <tr><td><code>--color &lt;mode&gt;</code></td><td>auto, always, never</td><td>color preference (default auto); an unknown mode is a parse error</td></tr>
-          <tr><td><code>--target &lt;name&gt;</code></td><td>target name</td><td>select a declared target; absent, defers to <code>[project].target</code></td></tr>
+          <tr><td><code>--target &lt;name&gt;</code></td><td>target name</td><td>select a <code>[target.&lt;name&gt;]</code> entry</td></tr>
           <tr><td><code>--profile &lt;name&gt;</code></td><td>profile name</td><td>select a <code>[profile.&lt;name&gt;]</code> variant; absent, the first declared</td></tr>
-          <tr><td><code>--bin &lt;name&gt;</code></td><td>artifact name</td><td>narrow the build to one <code>[bin.&lt;name&gt;]</code> artifact</td></tr>
-          <tr><td><code>--lib &lt;name&gt;</code></td><td>artifact name</td><td>narrow to one <code>[lib.&lt;name&gt;]</code> artifact (mutually exclusive with <code>--bin</code>)</td></tr>
-          <tr><td><code>-o &lt;path&gt;</code></td><td>path</td><td>override the artifact path, rooted at the project root</td></tr>
-          <tr><td><code>--all-targets</code></td><td>-</td><td>build every declared <code>[target.*]</code>, not just the default</td></tr>
-          <tr><td><code>--emit-asm</code></td><td>-</td><td>emit per-module assembly text (<code>.s</code>); forces the profile's <code>emit_asm</code> on</td></tr>
-          <tr><td><code>--emit-ir</code></td><td>-</td><td>emit per-module SSA IR text (<code>.ir</code>); forces the profile's <code>emit_ir</code> on</td></tr>
-          <tr><td><code>--no-emit-asm</code></td><td>-</td><td>force assembly emission off, overriding the profile</td></tr>
-          <tr><td><code>--no-emit-ir</code></td><td>-</td><td>force IR emission off, overriding the profile</td></tr>
+          <tr><td><code>--bin &lt;name&gt;</code></td><td>artifact name</td><td>narrow the build to one <code>bin</code>-kind artifact</td></tr>
+          <tr><td><code>--lib &lt;name&gt;</code></td><td>artifact name</td><td>narrow to one library artifact (mutually exclusive with <code>--bin</code>)</td></tr>
+          <tr><td><code>-o &lt;path&gt;</code></td><td>path</td><td>override the linked-binary path; accepted only when the selection resolves to a single build cell</td></tr>
+          <tr><td><code>--all-targets</code></td><td>-</td><td>build every declared target rather than the manifest default</td></tr>
+          <tr><td><code>-g</code></td><td>-</td><td>emit debug info for this build, overriding the profile's <code>debug</code> key</td></tr>
+          <tr><td><code>--pie</code></td><td>-</td><td>emit a position-independent (<code>ET_DYN</code>) executable</td></tr>
+          <tr><td><code>--subsystem &lt;kind&gt;</code></td><td>console, gui</td><td>the environment a windows executable declares; overrides the artifact's <code>subsystem</code> key, inert off windows</td></tr>
+          <tr><td><code>--emit-asm</code></td><td>-</td><td>emit per-module <code>.s</code> assembly text beside each object</td></tr>
+          <tr><td><code>--emit-ir</code></td><td>-</td><td>emit per-module <code>.ir</code> SSA text beside each object</td></tr>
           <tr><td><code>--verify-ir</code></td><td>-</td><td>run the IR verifier after each optimisation pass</td></tr>
         </tbody>
       </table>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>IR and assembly emission is a CLI concern only - there is no profile key for it. There are no <code>--no-emit-*</code> inverses, no <code>--release</code> flag (use <code>-O1</code> / <code>-O2</code> or <code>--profile</code>), no <code>--color</code> flag, and no <code>--verbose</code> long form.</p>
+      </div>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p><code>mach dep</code> and <code>mach init</code> do not use the shared config parser; they read only their own flags.</p>
@@ -129,15 +134,16 @@
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>--release</code></td><td>-</td><td>select the release optimisation pipeline</td></tr>
-          <tr><td><code>-O0</code></td><td>-</td><td>force the debug pipeline (overrides <code>--release</code>)</td></tr>
+          <tr><td><code>-O0</code></td><td>-</td><td>force the debug pipeline, overriding the profile</td></tr>
           <tr><td><code>-O1</code>, <code>-O2</code></td><td>-</td><td>select the release pipeline (both select the same one today)</td></tr>
           <tr><td><code>--emit &lt;kind&gt;</code></td><td>obj, exe</td><td><code>obj</code> stops at the objects; <code>exe</code> (default) links a binary</td></tr>
+          <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>codegen worker threads (default: host CPUs; <code>1</code> serialises)</td></tr>
+          <tr><td><code>--explain</code></td><td>-</td><td>print the resolved build plan and exit without building</td></tr>
           <tr><td><code>-L &lt;dir&gt;</code></td><td>dir</td><td>add a search directory for <code>-l</code>-resolved inputs; repeatable</td></tr>
           <tr><td><code>-l &lt;name&gt;</code></td><td>name</td><td>link a named object, archive, or shared library; repeatable</td></tr>
         </tbody>
       </table>
-      <p>Plus the global flags. The <code>-O&lt;n&gt;</code> flags override <code>--release</code> when both are present; absent any optimisation flag, the build uses the debug pipeline (the bootstrap-stable default).</p>
+      <p>Plus the global flags. An <code>-O&lt;n&gt;</code> flag overrides the selected profile's <code>opt</code> for this invocation; absent one, the profile decides. A bare <code>.o</code> / <code>.a</code> / <code>.so</code> / <code>.dylib</code> / <code>.dll</code> argument, or any <code>/</code>-bearing path, is linked verbatim.</p>
 
       <h3 id="link-inputs">Link inputs</h3>
       <p><code>ext fun</code> declarations are forward references resolved at link time by external precompiled code - a loose <code>.o</code> object, a static <code>.a</code> archive, or a shared <code>.so</code> library. Inputs come from the command line and from the manifest's merged <code>libs</code> overlay; both sets are linked. An input that resolves to no existing file is a hard error, so a typo never silently drops a dependency.</p>
@@ -154,7 +160,11 @@
 
       <h2 id="run">run</h2>
       <pre class="code"><code>mach run &lt;path&gt; [options] [-- args...]</code></pre>
-      <p>Builds the project at <code>&lt;path&gt;</code> exactly like <code>mach build</code>, then executes the produced binary. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>; the child's exit code becomes this command's exit code. <code>--emit</code> is rejected - running a relocatable object is not meaningful. All other <code>build</code> and global flags apply.</p>
+      <p>Executes the binary <code>mach build</code> already produced for <code>&lt;path&gt;</code> - a post-build convenience, not a rebuild. The build selection flags (<code>--target</code>, <code>--profile</code>, <code>--bin</code> / <code>--lib</code>) resolve <em>which</em> artifact to run; the build-only <code>-O0</code> / <code>-O1</code> / <code>-O2</code> are accepted but have no effect, and <code>--emit</code> is rejected. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>; the child's exit code becomes this command's exit code.</p>
+      <div class="callout warn">
+        <span class="callout-label">Changed</span>
+        <p><code>mach run</code> does not build. Run <code>mach build</code> first, or the binary it executes will be the one from your last build.</p>
+      </div>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
@@ -165,13 +175,16 @@
 
       <h2 id="test">test</h2>
       <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
-      <p>Builds one standalone executable per <code>test</code> declaration (the test plus the project's transitive code, with a synthesized <code>main</code> calling just that test), then spawns each as a separate process and reports a per-test <code>name file:line PASS|FAIL</code> line. A crashing test reports its signal and the run continues. A test build always links executables, even for a library target.</p>
+      <p>Builds <strong>one dispatcher executable</strong> covering every <code>test</code> declaration (under the <code>tests</code> template) and runs each test as its own process (<code>&lt;exe&gt; &lt;idx&gt;</code>), reporting a per-module roll-up that expands failures. A crashing test reports its signal and the run continues. Only the current project's own tests run by default. A test build always links executables, even for a library target.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
           <tr><td><code>--filter &lt;pattern&gt;</code></td><td>pattern</td><td>run only tests whose name contains <code>&lt;pattern&gt;</code></td></tr>
+          <tr><td><code>--include-deps</code></td><td>-</td><td>also run tests declared in dependency modules</td></tr>
           <tr><td><code>--list</code></td><td>-</td><td>list the collected tests and exit</td></tr>
-          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt;</code> instead of exec'ing it directly</td></tr>
+          <tr><td><code>--format &lt;kind&gt;</code></td><td>human, json</td><td><code>human</code> (default), or a <code>json</code> NDJSON event stream for tooling</td></tr>
+          <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>run up to <code>n</code> test processes at once, and size the build's codegen workers</td></tr>
+          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt; &lt;idx&gt;</code> instead of exec'ing it directly</td></tr>
         </tbody>
       </table>
       <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
