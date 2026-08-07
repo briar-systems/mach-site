@@ -1,0 +1,28 @@
+use std.runtime;
+use std.print.printf;
+
+fun clamp(v: i64, lo: i64, hi: i64) i64 {
+    if (v < lo) { ret lo; }
+    if (v > hi) { ret hi; }
+    ret v;
+}
+
+# tests live beside the code they test. `mach test` finds every one, builds
+# them, and runs each in its own process, so a crash reports its signal and
+# the run continues. no framework, no dependency, no config.
+test "clamp holds a value inside its bounds" {
+    if (clamp(5, 0, 10) != 5) { ret 1; }
+    ret 0;
+}
+
+test "clamp pins a value outside its bounds" {
+    if (clamp(-3, 0, 10) != 0)  { ret 1; }
+    if (clamp(42, 0, 10) != 10) { ret 1; }
+    ret 0;
+}
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    printf("clamp(42, 0, 10) = {}\n", clamp(42, 0, 10));
+    ret 0;
+}

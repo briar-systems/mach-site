@@ -134,7 +134,7 @@
       <p>Mach has no tagged-union construct and no pattern-matching dispatch. A discriminated value composes from a <code>rec</code> that carries a discriminator alongside a <code>uni</code> payload.</p>
       <pre class="code"><code><span class="kw">rec</span> <span class="type">Value</span> {
     <span class="param">kind</span>: <span class="type">ValueKind</span>;
-    <span class="param">data</span>: <span class="kw">uni</span> { <span class="param">i</span>: <span class="type">i64</span>; <span class="param">f</span>: <span class="type">f64</span>; }
+    <span class="param">data</span>: <span class="kw">uni</span> { <span class="param">i</span>: <span class="type">i64</span>; <span class="param">f</span>: <span class="type">f64</span>; };
 }</code></pre>
       <p>Consumers read <code>kind</code>, then access the matching <code>data</code> field through ordinary <code>if</code>/<code>or</code> chains. The compiler does not verify that <code>kind</code> and <code>data</code> agree; keeping them consistent is the constructor's responsibility.</p>
       <p>This is deliberate. Tagged unions and <code>match</code>-style dispatch would add significant surface area to the language and compiler for an abstraction the composed form already expresses honestly.</p>

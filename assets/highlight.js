@@ -3,10 +3,13 @@
 (function () {
   "use strict";
 
+  // the reserved keyword set, mirroring the compiler's own token table.
+  // mach spells loop control `brk` / `cnt`, the else-arm `or`, and deferred
+  // cleanup `fin`; it has no `break`, `continue`, or `else`.
   var KEYWORDS = {
-    fun: 1, if: 1, for: 1, ret: 1, var: 1, val: 1, ext: 1, pub: 1, def: 1,
-    rec: 1, uni: 1, fwd: 1, test: 1, asm: 1, break: 1, continue: 1, else: 1,
-    in: 1, use: 1
+    asm: 1, brk: 1, cnt: 1, def: 1, ext: 1, fin: 1, for: 1, fun: 1, fwd: 1,
+    if: 1, in: 1, nil: 1, or: 1, pub: 1, rec: 1, ret: 1, test: 1, uni: 1,
+    use: 1, val: 1, var: 1
   };
 
   var PRIMITIVES = {
@@ -123,6 +126,28 @@
       if (c === "." && src.charAt(i + 1) === "." && src.charAt(i + 2) === ".") {
         out += span("ct", "...");
         i += 3;
+        continue;
+      }
+
+      // 6b. the ':^' declassify cast - the one explicit way out of a secret.
+      // matched before the bare '^' below so its colon is not emitted plain.
+      if (c === ":" && src.charAt(i + 1) === "^") {
+        out += span("ct", ":^");
+        i += 2;
+        continue;
+      }
+
+      // 6c. the '^' secret qualifier, in type position.
+      //
+      // '^' is also bitwise xor, and nothing in the token stream separates the
+      // two - only position does. the qualifier binds tightly to the type on
+      // its right ('^u64', '*^u8', '[N]^u8'), so it is never followed by a
+      // space; an xor is an infix operator and effectively always is. keying
+      // on that gap distinguishes them without a parser, and the failure mode
+      // is a mis-coloured character rather than mangled text.
+      if (c === "^" && /[A-Za-z_*\[]/.test(src.charAt(i + 1))) {
+        out += span("ct", "^");
+        i += 1;
         continue;
       }
 
