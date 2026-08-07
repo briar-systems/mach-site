@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Secrecy</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version"></span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/briar-systems/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+          <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link active" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Secrecy</div>
+      <h1>Secrecy</h1>
+      <p class="lead"><code>^T</code> marks a type as carrying secret data. Sema tracks secrecy as an information-flow discipline: secret data may move and be stored, but it may never reach a position a classical leakage model observes - a branch, a memory address, or a variable-latency instruction.</p>
+
+      <div class="callout warn">
+        <span class="callout-label">Experimental preview</span>
+        <p>The constant-time support is incomplete and unaudited, and a proven secret-disclosure path is still open. Read <a href="#assurance">Assurance</a> before relying on any of this. <strong>Do not build production cryptography on it at this version.</strong></p>
+      </div>
+
+      <h2 id="lattice">The secrecy lattice</h2>
+      <p>There are two secrecy levels in a two-point lattice: public is the bottom, secret the top. <code>^</code> lifts a type to secret and binds to the type immediately to its right, so it nests with <code>*</code> and <code>[N]</code> in any order: <code>^u32</code>, <code>*^u8</code>, <code>^*u8</code>, <code>[N]^u8</code>, <code>^MyRec</code>. Doubling collapses: <code>^^T</code> is <code>^T</code>.</p>
+      <p>A public value coerces <em>up</em> to secret wherever a secret is expected, with no syntax. The reverse never happens implicitly.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">up</span>(<span class="param">p</span>: <span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> p; }      <span class="cmt"># public u32 flows into a secret slot</span></code></pre>
+      <p>A <strong>literal is public by construction</strong> and stays public through that coercion: its value sits in the instruction stream, so classifying it as secret would protect nothing. That does not weaken the join below - a value <em>computed</em> with a secret is secret however its other operand is spelled - so <code>v &lt;&lt; 3</code> on a secret <code>v</code> still yields a secret, while the constant <code>3</code> is not mistaken for a secret shift count.</p>
+
+      <h2 id="join">Join</h2>
+      <p>Any operation with a secret operand yields a secret result. Taint joins across arithmetic, bitwise, shift, and comparison operators, and through a value read out of a secret container.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">mix</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> a + b; }    <span class="cmt"># ^u32 + u32 -> ^u32</span>
+
+<span class="kw">rec</span> <span class="type">Key</span> { <span class="param">d</span>: <span class="ct">^</span>[<span class="num">32</span>]<span class="type">u8</span>; }
+<span class="kw">fun</span> <span class="fn">first</span>(<span class="param">k</span>: <span class="type">Key</span>) <span class="ct">^</span><span class="type">u8</span> { <span class="kw">ret</span> k.d[<span class="num">0</span>]; }            <span class="cmt"># element of a secret array is ^u8</span></code></pre>
+      <p><code>&amp;T</code> of a <code>^T</code> value is the public pointer <code>*^T</code> - the address is public, the pointee secret - and dereferencing <code>*^T</code> recovers the secret <code>^T</code>.</p>
+
+      <h2 id="gates">Gates</h2>
+      <p>A secret may not reach a position the leakage model observes. Each is a compile error decided by operand type:</p>
+      <ul>
+        <li>a secret branch or loop condition (<code>if</code>, <code>for</code>)</li>
+        <li>a secret left operand of a short-circuiting <code>&amp;&amp;</code> / <code>||</code> - it is the branch the operator keys on; a secret right operand only taints the result</li>
+        <li>a secret memory index (<code>table[i]</code> with <code>i</code> secret)</li>
+        <li>a secret memory address - an access through a secret <em>pointer</em>, whether by <code>@p</code>, <code>p[i]</code>, or the auto-deref in <code>p.x</code></li>
+        <li>a secret operand of the always-variable-latency <code>/</code> or <code>%</code></li>
+      </ul>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">leak</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">t</span>: *<span class="type">u8</span>, <span class="param">p</span>: <span class="ct">^</span>*<span class="type">u8</span>) <span class="type">u8</span> {
+    <span class="kw">if</span> (a) { <span class="kw">ret</span> <span class="num">1</span>; }       <span class="cmt"># error: secret value used as a branch condition</span>
+    <span class="kw">ret</span> t[a];               <span class="cmt"># error: secret value used as a memory index</span>
+    <span class="kw">ret</span> @p;                 <span class="cmt"># error: secret value used as a memory address</span>
+}</code></pre>
+      <p>The index and the address are the two halves of one effective address, so both are gated. Only a secret <em>pointer</em> is an address: a <code>^[N]T</code> or <code>^Rec</code> is a secret value living at a public address, and a <code>*^T</code> is a public address to secret storage.</p>
+      <p>Three more gates decide against the target's constant-time capabilities rather than the source alone, so they are reported at lowering: a secret operand of a <strong>floating-point</strong> operation (always variable-latency, gated on every target); a secret operand of an <strong>integer multiply</strong> on a target without a trusted data-independent-timing mode, conservatively every ISA today; and a secret <strong>variable shift count</strong> on a target without a barrel shifter. A secret passed to a variadic pack is also rejected, including one wrapped inside an aggregate.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The gates are checked against the types of the <strong>instance</strong>, not of the template. A generic's body is re-checked per instantiation under its concrete type arguments, so a <code>T</code> that instantiates to a secret is gated exactly as the secret spelled out in full would be.</p>
+      </div>
+
+      <h2 id="downgrade">Downgrade with <code>:^</code></h2>
+      <p><code>:^</code> is the only way to remove <code>^</code>. It produces a new public value and never reinterprets storage in place.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:^</span>; }       <span class="cmt"># bare strip</span>
+<span class="kw">fun</span> <span class="fn">publish2</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:^</span><span class="type">u32</span>; }   <span class="cmt"># explicit target names the public type</span></code></pre>
+      <p><code>:^</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
+
+      <h2 id="welded">Welded-storage pointers</h2>
+      <p>Secrecy is fixed at declaration and is non-launderable, which makes the public/secret aliasing leak unconstructable with no alias analysis at all:</p>
+      <ul>
+        <li>a <code>^T</code> is stored only through a <code>*^T</code>, never a <code>*T</code></li>
+        <li>a secret-welded pointer cannot be erased to the untyped <code>ptr</code></li>
+        <li>a <code>uni</code>'s overlapping variants must agree on secrecy</li>
+      </ul>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
+<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
+      <p>The union rule is a property of the union <strong>type</strong>, not of the syntax that declared it, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
+      <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>] { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
+<span class="kw">rec</span> <span class="type">Box</span>[<span class="type">T</span>] { <span class="param">u</span>: <span class="type">U</span>[<span class="type">T</span>]; }
+
+<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct">^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
+<span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span>
+<span class="kw">var</span> <span class="param">p</span>: <span class="type">U</span>[<span class="type">u32</span>];                        <span class="cmt"># fine, and so is an all-secret instantiation</span></code></pre>
+      <p>The check is <strong>deep</strong> and <strong>fails closed</strong>: a secret nested anywhere inside an aggregate counts as secret at these boundaries, and a placement the checker cannot prove severs no weld is rejected rather than allowed. Two aggregates are compared <strong>by byte extent</strong>, not by field ordinal - matching <code>^</code> placement in the type graph does not put two fields on the same bytes, so each paired field must also agree in size and alignment.</p>
+
+      <h2 id="oblivious"><code>#[oblivious]</code> - the codegen contract</h2>
+      <p>The flow typing constrains the <em>source</em>; <code>#[oblivious]</code> carries the obligation through <em>codegen</em>. Inside a function carrying it, the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand.</p>
+      <pre class="code"><code><span class="deco">#[oblivious]</span>
+<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
+      <p>A function instance that <strong>computes</strong> on a secret must carry it; one that only moves, stores, or declassifies secrets is transparent and stays annotation-free. The check runs per monomorphized instance.</p>
+      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:^</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions - a backstop behind the compile-time gates, not a replacement for them.</p>
+
+      <h3 id="oblivious-asm">Inline assembly inside an oblivious function</h3>
+      <p>Inline <code>asm</code> inside such a function is <strong>validated</strong>, not rejected. The block is parsed into instructions and walked for the same three leaks the compiler checks everywhere else. Taint enters through the block's <code>{name}</code> bindings, whose secrecy is stamped from the local's declared type. What the walk cannot model, it refuses:</p>
+      <table>
+        <thead><tr><th>Construct</th><th>Why it is refused</th></tr></thead>
+        <tbody>
+          <tr><td>a body that does not parse</td><td>nothing to analyze</td></tr>
+          <tr><td>a data directive (<code>.byte</code>, <code>.word</code>, <code>.long</code>, <code>.quad</code>)</td><td>its payload can encode any instruction</td></tr>
+          <tr><td>a mnemonic the target has not classified</td><td>its timing behaviour is unknown</td></tr>
+          <tr><td>a flags-conditioned branch (x86-64 <code>jcc</code>, aarch64 <code>b.&lt;cond&gt;</code>)</td><td>its condition rides the flags register, which the inline-asm effect model does not represent</td></tr>
+        </tbody>
+      </table>
+      <p>That last row is a per-target asymmetry worth stating precisely. A branch whose condition is a <strong>register operand</strong> is visible to the walk and is checked: aarch64's <code>cbz</code> / <code>cbnz</code>, and every riscv64 branch, which compares two registers - RISC-V has no flags register at all. A branch whose condition rides the <strong>flags register</strong> cannot be checked, because a <code>cmp</code> of a secret before it would be invisible, so those are refused.</p>
+      <p><code>#[oblivious]</code> remains a <strong>per-function</strong> contract. A call out to a non-oblivious function is not validated - that is the boundary the decorator draws, not a hole in it.</p>
+
+      <h2 id="zeroize">The zeroizing-write guarantee</h2>
+      <p>Wiping a secret is only useful if the wipe survives to run. That guarantee exists, but it is <strong>not</strong> provided by <code>#[oblivious]</code>, and it is scoped more broadly than the decorator is. A store into secret storage is tainted at lowering, keyed on the storage rather than on any decorator:</p>
+      <pre class="code"><code><span class="cmt"># no decorator: the wipe is protected anyway</span>
+<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
+    <span class="kw">var</span> <span class="param">i</span>: <span class="type">usize</span> = <span class="num">0</span>;
+    <span class="kw">for</span> (i &lt; n) { p[i] = <span class="num">0</span>; i = i + <span class="num">1</span>; }
+}</code></pre>
+      <p><strong>What it covers.</strong> Memory reached through a pointer that escapes the function - the shape a <code>zeroize</code> helper has. Such a store cannot be promoted out of memory, and the taint is present for any future pass to read.</p>
+      <p><strong>What it does not cover.</strong> A value the compiler keeps in a <strong>register</strong>. Writing to a promoted local is not a memory write, so wiping one is not preserved:</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct">^</span><span class="type">u8</span> = k;
+x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x` may never have been in memory</span></code></pre>
+      <p>Adding <code>#[oblivious]</code> does not change this. To wipe reliably, write through a pointer whose target is memory the compiler cannot promote away.</p>
+
+      <h2 id="trusted-base">Trusted base</h2>
+      <p>The only secret-to-public crossings are the explicit <code>:^</code> cast and inline <code>asm</code> blocks. Everything else is enforced. A proof is always relative to a leakage model, and its fidelity to real silicon is empirical.</p>
+      <p>The contract is only offered where mach emits the instructions that execute. A target whose back half hands a module to a downstream compiler instead - the SPIR-V backend - <strong>rejects <code>#[oblivious]</code></strong>: neither that translation nor the device's timing behaviour is covered by the leakage model. Compile constant-time code for a machine target, and pass such a target only public data.</p>
+
+      <h2 id="assurance">Assurance</h2>
+      <div class="callout warn">
+        <span class="callout-label">Read this first</span>
+        <p>The constant-time guarantee is incomplete. This support is an experimental preview and has not been audited. <strong>Do not build production cryptography on it at this version.</strong></p>
+      </div>
+      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, and the translation validator independently re-checks the lowered MIR. A dudect-style timing harness measures a branchless constant-time reference against a deliberately-leaky control and flags the leak with Welch's t-test.</p>
+      <p>The leakage model has three channels, and the harness does not cover them uniformly:</p>
+      <table>
+        <thead><tr><th>Channel</th><th>Assured by</th></tr></thead>
+        <tbody>
+          <tr><td>control-flow trace</td><td>the source-level branch gate, plus the harness's latency mode</td></tr>
+          <tr><td>variable-latency operands</td><td>the sema and lowering gates, plus the harness's latency mode</td></tr>
+          <tr><td>memory-address trace</td><td>the source-level secret-index and secret-address gates, plus the harness's address mode</td></tr>
+        </tbody>
+      </table>
+      <p>The two harness modes need opposite sampling and neither substitutes for the other. Latency mode times a large batch of calls per sample, which is what lifts a running-time difference above clock resolution - and that same batching <em>hides</em> an address-trace leak, since every call in a batch is handed the same input and the single cache miss carrying the signal is averaged away. Two consequences worth stating plainly:</p>
+      <ul>
+        <li>A clean latency-mode number for a table lookup is <strong>not</strong> evidence of address-trace safety. It is the wrong instrument for that channel.</li>
+        <li>An address-trace leak is only <em>measurable</em> when the table exceeds the last-level cache. A cache-resident table leaks its index just as truly and no timing harness will see it. For small tables the property rests entirely on the secret-index gate and on reading the emitted code.</li>
+      </ul>
+      <p><strong>The known open holes:</strong></p>
+      <ul>
+        <li><strong><code>$fields</code> reflection projection inside a generic erases a secret field's secrecy</strong>, which discloses the secret. Proven, security-blocking.</li>
+        <li>The validator over-taints a wide secret on a narrow-ALU target, rejecting a public-count shift as a secret memory address. A false positive; it fails safe.</li>
+        <li>A member or index access through a <code>^Rec</code> or <code>^[N]T</code> - which this page documents as legal - fails at lowering, which does not strip the <code>^</code> before resolving the field. A spurious error, not a disclosure.</li>
+      </ul>
+      <p>The validator's scope is the lowered MIR; it trusts instruction selection, width legalization, register allocation, and encoding to be timing-preserving. Validation of the emitted machine code is future work.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="types.html">Types</a> - the compound type grammar <code>^</code> qualifies</li>
+          <li><a href="decorators.html#oblivious">Decorators</a> - the <code>#[oblivious]</code> reference</li>
+          <li><a href="asm.html">Inline assembly</a> - the blocks an oblivious function may contain</li>
+          <li><a href="expressions.html">Expressions</a> - the <code>::</code> / <code>:~</code> casts that preserve secrecy</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="ext-fun.html"><span class="pn-label">Previous</span><span class="pn-title">External functions</span></a><a class="next" href="asm.html"><span class="pn-label">Next</span><span class="pn-title">Inline assembly</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#lattice">The secrecy lattice</a>
+      <a href="#join">Join</a>
+      <a href="#gates">Gates</a>
+      <a href="#downgrade">Downgrade with :^</a>
+      <a href="#welded">Welded-storage pointers</a>
+      <a href="#oblivious">#[oblivious]</a>
+      <a class="sub" href="#oblivious-asm">Inline assembly inside it</a>
+      <a href="#zeroize">The zeroizing-write guarantee</a>
+      <a href="#trusted-base">Trusted base</a>
+      <a href="#assurance">Assurance</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="../assets/version.js" defer></script>
+  <script src="docs.js" defer></script>
+</body>
+</html>

@@ -47,6 +47,8 @@
           <a class="nav-link" href="modules.html">Modules</a>
           <a class="nav-link" href="visibility.html">Visibility</a>
           <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -218,10 +220,11 @@ commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></co
       <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
       <pre class="code"><code>mach <span data-mach-version></span>
 host: linux/x86_64
-isa: x86_64 aarch64 riscv64
+isa: x86_64 aarch64 riscv64 spirv mos6502
 os: linux darwin windows freestanding
-abi: sysv64 win64 aapcs64 lp64
-object: elf coff macho raw</code></pre>
+abi: sysv64 win64 aapcs64 lp64 spirv mos6502
+object: elf coff macho raw spv</code></pre>
+      <p><strong><code>mach info targets</code></strong> prints the concrete <code>(os, isa)</code> tuples this binary can build, one per line. It is derived from the same joint capability declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
       <p>The capability lines are read from the binary's target registries, so they report exactly what this build can target. <code>mach info --version</code> prints the version string alone on one line, for tooling.</p>
       <p><strong><code>mach help [command]</code></strong> prints the top-level usage summary, or - with a known command - that command's detail page. An unknown command prints usage and exits non-zero.</p>
 
