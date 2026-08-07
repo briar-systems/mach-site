@@ -20,16 +20,25 @@
   var VISIBLE = 2;   // targets shown on each side of center
   var STEP = 64;     // px between targets in the reduced-motion flat layout
 
-  // the [target.<name>] stanza shown for each target
+  // the [target.<name>] stanza shown for each target. every tuple here is one
+  // `mach info targets` prints, so the reel can never advertise a target that
+  // would fail to resolve.
   var STANZA = {
     "linux":        '[target.linux]\nisa = "x86_64"\nos  = "linux"\nabi = "sysv64"',
     "windows":      '[target.windows]\nisa  = "x86_64"\nos   = "windows"\nabi  = "win64"\next  = ".exe"\nlibs = ["kernel32.dll"]',
     "freestanding": '[target.freestanding]\nisa = "x86_64"\nos  = "freestanding"\nabi = "sysv64"\nof  = "raw"',
     "linux-arm64":  '[target.linux-arm64]\nisa = "aarch64"\nos  = "linux"\nabi = "aapcs64"',
+    "linux-riscv64":'[target.linux-riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64"',
     "macos":        '[target.macos]\nisa = "aarch64"\nos  = "darwin"\nabi = "aapcs64"',
-    "wasm":         '[target.wasm]\nisa = "wasm32"\nos  = "wasi"\nabi = "wasi"',
-    "riscv64":      '[target.riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64"'
+    "macos-x86_64": '[target.macos-x86_64]\nisa = "x86_64"\nos  = "darwin"\nabi = "sysv64"',
+    // spirv emits a finished module rather than machine code, so it needs no
+    // `of`: the finished-module format resolves on its own
+    "gpu":          '[target.gpu]\nisa = "spirv"\nos  = "freestanding"\nabi = "spirv"',
+    "mos6502":      '[target.mos6502]\nisa = "mos6502"\nos  = "freestanding"\nabi = "mos6502"'
   };
+
+  // targets whose build delivers a module tree instead of a linked binary
+  var MODULE_TREE = { "gpu": true };
 
   function esc(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -51,7 +60,14 @@
   }
 
   function statusLine(name, status) {
-    if (status === "supported") return '# linked -&gt; out/<span class="xc-out">' + esc(name) + "</span>/bin/app";
+    if (status === "supported") {
+      // a finished-module target runs no link phase, so claiming a linked
+      // binary would misdescribe what the build actually delivers
+      if (MODULE_TREE[name]) {
+        return '# module tree -&gt; out/<span class="xc-out">' + esc(name) + "</span>/obj/*.spv";
+      }
+      return '# linked -&gt; out/<span class="xc-out">' + esc(name) + "</span>/bin/app";
+    }
     if (status === "planned") return "# codegen in progress";
     return "# on the roadmap";
   }

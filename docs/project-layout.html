@@ -47,6 +47,8 @@
           <a class="nav-link" href="modules.html">Modules</a>
           <a class="nav-link" href="visibility.html">Visibility</a>
           <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -77,7 +79,7 @@
         <li><code>main.mach</code> - executable entry.</li>
         <li><code>lib.mach</code> - library entry. Exposes code for other projects to import; produces no executable.</li>
       </ul>
-      <p>These names are convention only: the compiler never looks for a function called <code>main</code>. An entry is simply the source file a <code>[bin.*]</code> or <code>[lib.*]</code> artifact names with its <code>entry</code> key; what marks a function as the program's entry point is its exported symbol and signature, covered in <a href="hello-world.html">Hello world</a>. The artifact table fixes the role - a <code>[bin.*]</code> links an executable, a <code>[lib.*]</code> produces a library. A project may carry both files.</p>
+      <p>These names are convention only: the compiler never looks for a function called <code>main</code>. An entry is simply the source file an <code>[artifact.*]</code> names with its <code>entry</code> key; what marks a function as the program's entry point is its exported symbol and signature, covered in <a href="hello-world.html">Hello world</a>. The artifact's <code>kind</code> fixes the role - <code>"bin"</code> links an executable, <code>"static"</code> produces an archive. A project may carry both files.</p>
 
       <h2 id="project-root">The project root</h2>
       <p>Every project has a <code>mach.toml</code> at its root. The compiler finds it by walking up from the working directory until one is seen, so any subcommand run inside the tree resolves the same manifest.</p>
@@ -91,7 +93,7 @@ isa = <span class="str">"x86_64"</span>
 os  = <span class="str">"linux"</span>
 abi = <span class="str">"sysv64"</span>
 
-[bin.app]
+[artifact.app]
 entry = <span class="str">"main.mach"</span>   <span class="cmt"># executable entry, relative to src</span></code></pre>
       <p>Only <code>id</code> and <code>version</code> are required. <code>src</code> (default <code>"src"</code>) is where module paths resolve; vendored dependencies live under <code>dep</code> (default <code>"dep"</code>). The full schema - targets, profiles, artifacts, dependencies, output templates - lives on the <a href="manifest.html">Manifest</a> page.</p>
 
