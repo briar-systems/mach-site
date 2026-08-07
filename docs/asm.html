@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: Inline assembly</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version"></span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/briar-systems/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+          <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link active" href="asm.html">Inline assembly</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Inline assembly</div>
+      <h1>Inline assembly</h1>
+      <p class="lead">Mach has one inline-assembly form: an ISA-tagged block of raw instructions with local-variable substitution. The compiler parses the instruction stream and infers operand direction and clobbers from the opcode semantics - no <code>in</code> / <code>out</code> declarations, no clobber list.</p>
+
+      <h2 id="grammar">Grammar</h2>
+      <pre class="code"><code><span class="kw">asm</span> &lt;isa&gt; {
+    <span class="cmt"># raw instructions, one per line, # for comments</span>
+    mov rcx, {ptr}
+    mov rax, [rcx]
+    mov {result}, rax
+}</code></pre>
+      <ul>
+        <li>The ISA tag is mandatory. Bare <code>asm { ... }</code> does not exist.</li>
+        <li>The tag comes from a closed set: <code>x86_64</code>, <code>aarch64</code>, <code>riscv64</code>. Each has a working assembler that emits native bytes, and all three run in CI.</li>
+        <li>Each line is an instruction in the ISA's native syntax.</li>
+        <li><code>#</code> introduces a line comment: everything from <code>#</code> to the end of the line is ignored, whatever it contains.</li>
+      </ul>
+      <p>The three ISAs share one statement grammar, one effect model, and one numeric-local-label scope; each supplies only its mnemonic table and encoder.</p>
+
+      <h2 id="substitution">Operand substitution</h2>
+      <p><code>{name}</code> substitutes a local in scope. The compiler resolves the reference to a memory or register operand based on liveness and the instruction's expected operand class.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">add_via_asm</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">result</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="kw">asm</span> x86_64 {
+        mov rax, {a}
+        add rax, {b}
+        mov {result}, rax
+    }
+    <span class="kw">ret</span> result;
+}</code></pre>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>In practice a <code>{name}</code> binds the local's storage - typically a stack slot - so a pointer local's pointee is reached by staging the pointer through a scratch register first (<code>mov rcx, {ptr}</code> then <code>mov rax, [rcx]</code>), never by a direct <code>[{ptr}]</code> indirection.</p>
+      </div>
+
+      <h2 id="inference">What the compiler infers</h2>
+      <ul>
+        <li><strong>Operand direction.</strong> Position within an instruction determines whether an operand is read or written.</li>
+        <li><strong>Clobber set.</strong> The compiler reads each instruction, knows what registers and flags it touches, and adds them to the surrounding function's clobber set.</li>
+        <li><strong>Memory clobber.</strong> Every <code>asm</code> block is conservatively assumed to modify arbitrary memory.</li>
+      </ul>
+
+      <h2 id="calls">Calls (x86-64)</h2>
+      <p><code>call</code> takes three shapes, and which one a statement means is read off the operand.</p>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    call some_symbol     <span class="cmt"># direct: E8 rel32, relocated against the symbol</span>
+    call rax             <span class="cmt"># indirect through a register</span>
+    call [0x100018]      <span class="cmt"># indirect through an absolute address</span>
+    call [rax + 8]       <span class="cmt"># indirect through a computed address</span>
+}</code></pre>
+      <p>The absolute form exists for a fixed-address ABI - one whose entry points are addresses rather than symbols. Its displacement is sign-extended to 64 bits, so an address outside signed 32-bit range is refused rather than silently truncated. <code>call [symbol]</code> is refused too: the rip-relative form would mean "call the pointer <em>stored</em> at the symbol", which is not what the <code>call symbol</code> beside it means.</p>
+      <p>An indirect call clobbers exactly as a direct one does. The register or memory holding the target is <strong>read</strong>, not written.</p>
+
+      <h2 id="privileged">Privileged and system instructions</h2>
+      <p>The privileged and system instruction families are reachable from inline assembly on every target: x86-64 port I/O (<code>in</code> / <code>out</code>), <code>cli</code> / <code>sti</code> / <code>lidt</code>, and <code>rdtsc</code> / <code>rdmsr</code> / <code>wrmsr</code>; aarch64 <code>mrs</code> / <code>msr</code>; and the RISC-V CSR family.</p>
+
+      <h3 id="sysreg">System registers (aarch64)</h3>
+      <p><code>mrs</code> and <code>msr</code> name a system register by its architectural name, in either case.</p>
+      <pre class="code"><code><span class="kw">asm</span> aarch64 {
+    mrs x0, cntvct_el0        <span class="cmt"># the virtual counter</span>
+    mrs x1, CNTFRQ_EL0        <span class="cmt"># ... and its frequency, capitalized as ARM spells it</span>
+    msr vbar_el1, x2          <span class="cmt"># install an exception vector base</span>
+    msr daifset, 0xf          <span class="cmt"># mask every interrupt</span>
+}</code></pre>
+      <p>The named set covers what freestanding code reaches for. It is deliberately not exhaustive: <strong>any</strong> system register is also nameable by its encoding, exactly as ARM and GNU as spell it, which is what makes the surface complete rather than a list that always lags the architecture.</p>
+      <pre class="code"><code><span class="kw">asm</span> aarch64 {
+    mrs x0, s3_3_c14_c0_2     <span class="cmt"># the same register as `mrs x0, cntvct_el0`</span>
+}</code></pre>
+      <p>A field the architecture cannot hold is refused rather than truncated, because a truncated selector would name a <em>different</em> register than the text does. <code>msr &lt;field&gt;, #imm</code> writes a PSTATE field (<code>daifset</code>, <code>daifclr</code>, <code>spsel</code>, <code>pan</code>, <code>uao</code>, <code>ssbs</code>, <code>dit</code>, <code>tco</code>); the architecture spells these by name only, so there is no numeric escape for that form.</p>
+
+      <h3 id="csr">Control-and-status registers (riscv64)</h3>
+      <p>The Zicsr extension's six instructions - read-write, read-set, and read-clear, each taking its source from a register or a five-bit immediate - reach a CSR by name.</p>
+      <pre class="code"><code><span class="kw">asm</span> riscv64 {
+    csrrw a0, mstatus, a1   <span class="cmt"># read mstatus into a0, write a1 into it</span>
+    csrr  a0, mtvec         <span class="cmt"># the read-only pseudo</span>
+    csrw  stvec, a1         <span class="cmt"># install a trap vector</span>
+    rdtime a0               <span class="cmt"># the unprivileged counters</span>
+}</code></pre>
+      <p>The privileged spec defines several hundred addresses across three privilege levels, so <strong>any</strong> CSR is also reachable by its numeric address. RISC-V spells no separate escape syntax for this - a CSR operand simply parses as the ordinary integer literal it looks like, bounded to the twelve bits a CSR address occupies.</p>
+      <pre class="code"><code><span class="kw">asm</span> riscv64 {
+    csrr a0, 0xc01   <span class="cmt"># the same register as `csrr a0, time`</span>
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout-label">Restriction</span>
+        <p>Access permission is not checked, on either target: whether a register is readable or writable depends on the exception or privilege level the code runs at, which the compiler does not know. Accessing one the current level cannot reach traps at run time, as the architecture defines.</p>
+      </div>
+
+      <h2 id="raw">Raw encodings</h2>
+      <p>Four data directives emit their values verbatim, for an encoding the ISA's mnemonic table does not name. They work on every target.</p>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    .byte 0x0f, 0x01, 0xd0    <span class="cmt"># xgetbv</span>
+}
+
+<span class="kw">asm</span> aarch64 {
+    .word 0xd53be040          <span class="cmt"># mrs x0, cntvct_el0</span>
+}</code></pre>
+      <p>The widths are GNU as's, per target - <code>.word</code> is the one that differs:</p>
+      <table>
+        <thead><tr><th>Directive</th><th>x86-64</th><th>aarch64 / riscv64</th></tr></thead>
+        <tbody>
+          <tr><td><code>.byte</code></td><td>1 byte</td><td>1 byte</td></tr>
+          <tr><td><code>.word</code></td><td><strong>2 bytes</strong></td><td><strong>4 bytes</strong></td></tr>
+          <tr><td><code>.long</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+          <tr><td><code>.quad</code></td><td>8 bytes</td><td>8 bytes</td></tr>
+        </tbody>
+      </table>
+      <p>Values are written in the target's byte order, so <code>.word 0xd503201f</code> is the aarch64 <code>nop</code> as its manual prints it. A value the width cannot hold is refused rather than truncated, and one directive carries a whole sequence - up to 256 payload bytes - not four. On aarch64 and riscv64 a statement must emit a whole number of instruction words; x86-64 has no such constraint.</p>
+      <div class="callout warn">
+        <span class="callout-label">Cost</span>
+        <p>A raw encoding is an instruction stream the parser cannot read, so the block's clobber set becomes <strong>every register in every bank</strong>, and an <a href="secrecy.html#oblivious-asm"><code>#[oblivious]</code></a> function may not contain one at all. A real mnemonic is always preferable where one exists.</p>
+      </div>
+
+      <h2 id="dispatch">Multi-arch dispatch</h2>
+      <p>Different architectures use different mnemonics, registers, and calling conventions. There is no nested arch-block construct inside <code>asm</code>; instead, wrap each block in <code>$if</code> on <code>$mach.build.arch</code>.</p>
+      <pre class="code"><code><span class="ct">$if</span> (<span class="ct">$mach</span>.build.arch == <span class="ct">$mach</span>.arch.x86_64) {
+    <span class="kw">asm</span> x86_64 { ... }
+}
+<span class="ct">$or</span> (<span class="ct">$mach</span>.build.arch == <span class="ct">$mach</span>.arch.aarch64) {
+    <span class="kw">asm</span> aarch64 { ... }
+}</code></pre>
+      <p>The discarded branches do not compile, so each <code>asm</code> block only needs to be valid for its tagged ISA.</p>
+
+      <h2 id="when">When to use it</h2>
+      <ul>
+        <li>Truly target-specific operations: syscalls, register reads, stack-frame surgery.</li>
+        <li>Anything that does not have a one-to-one standard-library wrapper.</li>
+      </ul>
+      <p>For operations that exist as named standard-library functions - atomics, fences, traps, the SIMD long tail - use the library API. Those wrappers already contain the arch-dispatched <code>asm</code>.</p>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="decorators.html#naked">Decorators</a> - <code>#[naked]</code>, whose body may hold only <code>asm</code></li>
+          <li><a href="secrecy.html#oblivious-asm">Secrecy</a> - how an <code>#[oblivious]</code> function validates an <code>asm</code> block</li>
+          <li><a href="comptime-control.html">Comptime control flow</a> - <code>$if</code> over <code>$mach.build.arch</code></li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="secrecy.html"><span class="pn-label">Previous</span><span class="pn-title">Secrecy</span></a><a class="next" href="comptime.html"><span class="pn-label">Next</span><span class="pn-title">The comptime channel</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#grammar">Grammar</a>
+      <a href="#substitution">Operand substitution</a>
+      <a href="#inference">What the compiler infers</a>
+      <a href="#calls">Calls (x86-64)</a>
+      <a href="#privileged">Privileged and system instructions</a>
+      <a class="sub" href="#sysreg">System registers (aarch64)</a>
+      <a class="sub" href="#csr">CSRs (riscv64)</a>
+      <a href="#raw">Raw encodings</a>
+      <a href="#dispatch">Multi-arch dispatch</a>
+      <a href="#when">When to use it</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="../assets/version.js" defer></script>
+  <script src="docs.js" defer></script>
+</body>
+</html>

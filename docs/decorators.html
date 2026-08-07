@@ -105,13 +105,13 @@
 <span class="deco">#[symbol(<span class="str">"write"</span>)]</span>
 <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;</code></pre>
 
-      <h3 id="library"><code>library(str)</code> - PE import routing</h3>
-      <p>Pins an <code>ext</code> import to a specific DLL in the link's dependency set. Applies to <code>ext</code> functions only, and composes with <code>symbol</code> - the import is emitted under the renamed symbol within the named DLL.</p>
+      <h3 id="library"><code>library(str)</code> - dynamic import attribution</h3>
+      <p>Pins an <code>ext</code> import to a specific dependency in the link set. Applies to <code>ext</code> functions only, and composes with <code>symbol</code> - the import is emitted under the renamed symbol within the named dependency.</p>
       <pre class="code"><code><span class="deco">#[library(<span class="str">"ws2_32.dll"</span>)]</span> <span class="deco">#[symbol(<span class="str">"WSAStartup"</span>)]</span>
 <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">wsa_startup</span>(<span class="param">ver</span>: <span class="type">u16</span>, <span class="param">data</span>: *<span class="type">u8</span>) <span class="type">i32</span>;</code></pre>
       <ul>
-        <li>The named DLL must appear in the manifest's <code>[os.*].libs</code> for the target OS. Pinning to an absent library is a link error, never a silent fallback.</li>
-        <li>Without <code>library</code>, an unattributed PE import binds to the first declared dependency. Every import that belongs to a different DLL needs its own <code>library</code> pin.</li>
+        <li>The value normally names a <code>[link.X]</code> requirement's stable logical identity: its <code>library</code> value, or <code>X</code> when that key is omitted. A bare command-line <code>-l name</code> also exposes <code>name</code>. Exact canonical loader names remain accepted. Pinning to an absent dependency is a link error, never a silent fallback.</li>
+        <li>PE and Mach-O use two-level namespaces, so every dynamic import on those targets needs a <code>library</code> attribution.</li>
         <li>On ELF (Linux) the loader resolves imports by global search, so <code>library</code> has no effect on the emitted binary; the value is still validated against the link's dependency set.</li>
       </ul>
 
@@ -119,6 +119,17 @@
       <p>Marks a function for inlining at every call site, overriding the compiler's size- and use-count heuristics. Applies to functions only and takes no arguments.</p>
       <pre class="code"><code><span class="deco">#[inline]</span>
 <span class="kw">fun</span> <span class="fn">fast_path</span>(<span class="param">x</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> x * <span class="num">2</span>; }</code></pre>
+
+      <h3 id="noinline"><code>noinline</code> - forbid inlining</h3>
+      <p>The inverse of <code>inline</code>: forbids inlining a function into any caller, overriding the heuristics that would otherwise fold it in. Applies to functions only and takes no arguments.</p>
+      <pre class="code"><code><span class="deco">#[noinline]</span>
+<span class="kw">fun</span> <span class="fn">cold_path</span>(<span class="param">code</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="fn">panic</span>(<span class="str">"unreachable state"</span>); }</code></pre>
+      <p>Use it to keep a function's frame and symbol real - for a profiler or stack sampler to attribute its cost correctly, to keep a cold path from bloating a hot caller's instruction cache, or to hold code size down on a constrained target.</p>
+      <ul>
+        <li><code>inline</code> and <code>noinline</code> on the same function is a direct contradiction and is rejected in sema; neither wins silently.</li>
+        <li><code>scalar</code> already declines inlining as a side effect, so pairing it with <code>noinline</code> is legal but redundant.</li>
+        <li>Purely a hint to the inliner; it does not otherwise change codegen. The debug pipeline runs no inlining pass at all, so <code>noinline</code> is inert (and unnecessary) there.</li>
+      </ul>
 
       <h3 id="align"><code>align(expr)</code> - alignment override</h3>
       <p>Sets the alignment of a global variable or a record/union type. <code>expr</code> must be a comptime integer - a literal, or a comptime expression such as <code>$size_of(T)</code> or <code>$align_of(T)</code>.</p>
@@ -144,6 +155,65 @@
 <span class="deco">#[section(<span class="str">".machsec"</span>)]</span> <span class="deco">#[symbol(<span class="str">"g_sec"</span>)]</span>
 <span class="kw">pub</span> <span class="kw">var</span> <span class="param">g_sec</span>: <span class="type">u64</span> = <span class="num">100</span>;</code></pre>
 
+      <h3 id="oblivious"><code>oblivious</code> - constant-time boundary</h3>
+      <p>Marks a function as a constant-time boundary. Applies to functions only and takes no arguments. Inside it the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand; a translation validator re-derives the secret taint over the lowered MIR and rejects any such leak.</p>
+      <pre class="code"><code><span class="deco">#[oblivious]</span>
+<span class="kw">fun</span> <span class="fn">ct_eq</span>(<span class="param">a</span>: <span class="ct">^</span>[<span class="num">8</span>]<span class="type">u8</span>, <span class="param">b</span>: <span class="ct">^</span>[<span class="num">8</span>]<span class="type">u8</span>) <span class="type">u8</span> { ... }</code></pre>
+      <ul>
+        <li>Inline <code>asm</code> inside such a function is <strong>validated rather than rejected</strong>: the block is parsed and walked for the same leaks, and refused only where a leak is found or where the construct cannot be modelled.</li>
+        <li>The decorator is purely subtractive - on a secret-free function it is a no-op. A function instance that <em>computes</em> on a <code>^</code> secret is required to carry it; an instance that only moves, stores, or declassifies secrets stays annotation-free.</li>
+        <li>The zeroizing-write guarantee is <em>not</em> one of the decorator's obligations. A write into secret storage carries a taint keyed on the storage's secrecy rather than on any decorator, so a zeroizing wipe is protected in a function carrying no <code>#[oblivious]</code> at all.</li>
+        <li>Rejected outright for a target whose back half emits a module for a downstream compiler rather than the executed instructions (the SPIR-V backend): the contract cannot be validated or upheld there.</li>
+      </ul>
+      <div class="callout warn">
+        <span class="callout-label">Experimental preview</span>
+        <p>The constant-time guarantee is not complete and has not been audited end to end. Do not build production cryptography on it at this version. See <a href="secrecy.html#assurance">Secrecy</a> for the known open holes.</p>
+      </div>
+
+      <h3 id="scalar"><code>scalar</code> - opt out of auto-vectorization</h3>
+      <p>Excludes a function from loop auto-vectorization, so its loops compile to scalar code even in the release pipeline on a vector-capable target. Applies to functions only and takes no arguments.</p>
+      <pre class="code"><code><span class="deco">#[scalar]</span>
+<span class="kw">fun</span> <span class="fn">reference_sum</span>(<span class="param">a</span>: *<span class="type">i64</span>, <span class="param">n</span>: <span class="type">usize</span>) <span class="type">i64</span> { ... }</code></pre>
+      <p>A <code>#[scalar]</code> function is also declined by the inliner, so the opt-out survives inlining - it cannot be lost by the body moving into an unflagged caller. Use it for a scalar reference twin in a differential test, or where vectorized codegen is undesirable for a specific function. The project-wide equivalent is the <code>vectorize</code> profile key.</p>
+
+      <h3 id="naked"><code>naked</code> - no prologue, no epilogue, body as written</h3>
+      <p>Emits the function's body exactly as written and nothing else: no frame-pointer record, no stack allocation, no callee-save stores, no argument moves, and no return. Applies to functions only and takes no arguments.</p>
+      <pre class="code"><code><span class="deco">#[naked]</span> <span class="deco">#[symbol(<span class="str">"_start"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">start</span>() {
+    <span class="ct">$if</span> (<span class="ct">$mach</span>.build.arch == <span class="ct">$mach</span>.arch.x86_64) {
+        <span class="kw">asm</span> x86_64 {
+            mov rdi, [rsp]        <span class="cmt"># argc, straight off the kernel-supplied stack</span>
+            lea rsi, [rsp+8]      <span class="cmt"># argv</span>
+            call main
+        }
+    }
+    <span class="ct">$or</span> { <span class="kw">asm</span> aarch64 { ... } }
+}</code></pre>
+      <p>The programmer owns the frame, the stack alignment, the link register, and the return. That is the whole point: a reset vector, an interrupt handler that must return with <code>iret</code> / <code>rti</code> rather than <code>ret</code>, a syscall or context-switch stub, or a thread entry point whose register state at entry <em>is</em> the interface.</p>
+      <ul>
+        <li><strong>The body may contain only inline <code>asm</code></strong> - plus the <code>$if $mach.build.arch</code> chain that is how mach spells per-ISA assembly. Any other statement is rejected, because it would lower to code assuming a frame the function does not have and would run and return a wrong answer rather than fail.</li>
+        <li><strong>No return is generated.</strong> If the asm falls off the end, control runs into whatever the linker placed next. Write the return the ABI (or the interrupt controller) actually calls for.</li>
+        <li><strong>Parameters and the return type are still checked</strong> at every call site, so a naked function is called like any other. No moves are emitted for them: the arguments arrive in the ABI's registers and the body reads them there.</li>
+        <li><strong>Mutually exclusive with <code>inline</code></strong> - there is no coherent winner between a body spliced into a caller and one that owns its own frame - and with <code>oblivious</code>, which already forbids inline asm. Both combinations are rejected in sema. <code>noinline</code> is redundant: the inliner declines a naked function unconditionally.</li>
+      </ul>
+      <p>Frame <em>elision</em> is a separate, automatic thing: the compiler already omits the prologue for a leaf that provably never touches its frame. <code>naked</code> is the declared form, and it is unconditional. Merely containing an <code>asm</code> block does <strong>not</strong> suppress a frame: a function that also makes a call gets one, since an unaligned call boundary or a clobbered link register is not something the author asked for by writing assembly.</p>
+
+      <h3 id="embed"><code>embed(str)</code> - compile-time file embedding</h3>
+      <p>Sources a <code>val</code>'s bytes from a file at compile time: the file's content <strong>is</strong> the initializer. Applies to <code>val</code> only - not <code>var</code> (the storage is read-only data) and not an <code>ext</code> data import (which has no storage here). Takes one string-literal argument.</p>
+      <pre class="code"><code><span class="deco">#[embed(<span class="str">"assets/logo.qoi"</span>)]</span>
+<span class="kw">val</span> <span class="param">LOGO</span>: [_]<span class="type">u8</span>;          <span class="cmt"># length taken from the file's byte count</span>
+
+<span class="deco">#[embed(<span class="str">"boot/sector.bin"</span>)]</span>
+<span class="kw">val</span> <span class="param">SECTOR</span>: [<span class="num">512</span>]<span class="type">u8</span>;      <span class="cmt"># length pinned; a size change fails the build</span></code></pre>
+      <ul>
+        <li>The declaration carries no initializer of its own; writing one alongside <code>embed</code> is rejected. This is a second exemption to <code>val</code>'s requires-an-initializer rule, alongside <code>ext</code>.</li>
+        <li>The path resolves relative to the <strong>declaring source file's</strong> directory. An absolute path is taken as written. Escapes are not decoded, matching <code>symbol</code> and <code>section</code> - the path is taken as written.</li>
+        <li>The annotation must be <code>[_]u8</code> or <code>[N]u8</code>. <code>[_]</code> is an inferred array length, legal <strong>only</strong> on an <code>#[embed]</code> declaration. Mach has no intrinsic that measures a value's type, so a program cannot ask a <code>[_]u8</code> embed for its own length; use the explicit <code>[N]u8</code> form when the count is needed.</li>
+        <li>An explicit <code>[N]u8</code> whose <code>N</code> disagrees with the file is rejected, naming both counts. This is how a declaration pins a fixed-size asset - a boot sector, a ROM image - so the build fails the moment it stops being that size.</li>
+        <li>Bytes are placed in read-only data exactly like any other constant byte array: no runtime I/O, no copy. Works for every artifact kind and target, freestanding included.</li>
+        <li>The embedded file is a build input: its content digest feeds the embedding module's incremental cutoff, so editing the asset invalidates that module and an untouched asset stays a cache hit.</li>
+      </ul>
+
       <h2 id="applicability">Applicability</h2>
       <p>Each directive targets a fixed set of declaration kinds. The full matrix:</p>
       <table>
@@ -154,17 +224,25 @@
           <tr><td><code>symbol</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
           <tr><td><code>library</code></td><td>no</td><td>yes</td><td>no</td><td>no</td></tr>
           <tr><td><code>inline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>noinline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>align</code></td><td>no</td><td>no</td><td>yes</td><td>yes</td></tr>
           <tr><td><code>section</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>oblivious</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>scalar</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>naked</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>embed</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
         </tbody>
       </table>
+      <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused.</p>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
           <li><a href="visibility.html">Visibility</a> - <code>pub</code> / <code>ext</code>, the separate concern decorators never touch</li>
           <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$align_of</code> as <code>align</code> arguments</li>
-          <li><a href="manifest.html">Manifest</a> - the <code>[os.*].libs</code> set a <code>library</code> pin resolves against</li>
+          <li><a href="secrecy.html">Secrecy</a> - the <code>^</code> qualifier <code>oblivious</code> is the codegen contract for</li>
+          <li><a href="asm.html">Inline assembly</a> - what a <code>naked</code> function's body may contain</li>
+          <li><a href="manifest.html">Manifest</a> - the <code>[link.X]</code> requirements a <code>library</code> pin resolves against</li>
         </ul>
       </div>
 
@@ -179,8 +257,13 @@
       <a class="sub" href="#symbol">symbol</a>
       <a class="sub" href="#library">library</a>
       <a class="sub" href="#inline">inline</a>
+      <a class="sub" href="#noinline">noinline</a>
       <a class="sub" href="#align">align</a>
       <a class="sub" href="#section">section</a>
+      <a class="sub" href="#oblivious">oblivious</a>
+      <a class="sub" href="#scalar">scalar</a>
+      <a class="sub" href="#naked">naked</a>
+      <a class="sub" href="#embed">embed</a>
       <a href="#applicability">Applicability</a>
     </nav>
   </div>

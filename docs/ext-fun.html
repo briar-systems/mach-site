@@ -47,6 +47,8 @@
           <a class="nav-link" href="modules.html">Modules</a>
           <a class="nav-link" href="visibility.html">Visibility</a>
           <a class="nav-link active" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -107,7 +109,7 @@
       <pre class="code"><code><span class="deco">#[<span class="fn">library</span>(<span class="str">"ws2_32.dll"</span>)]</span>
 <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">WSAStartup</span>(<span class="param">ver</span>: <span class="type">u16</span>, <span class="param">data</span>: *<span class="type">u8</span>) <span class="type">i32</span>;</code></pre>
       <ul>
-        <li>The named DLL must appear in the target's <code>[os.*].libs</code> dependency set. Pinning to an absent library is a link error, never a silent fallback.</li>
+        <li>The named value must resolve to a <code>[link.X]</code> requirement selected for this build cell. Pinning to an absent library is a link error, never a silent fallback.</li>
         <li>An import with no <code>library</code> is unattributed; on PE it binds to the first declared dependency. Pin every import that belongs to a different DLL.</li>
         <li>On ELF (Linux) the loader resolves imports by global search, so <code>library</code> has no effect on the emitted binary; the value is still validated against the dependency set.</li>
       </ul>
@@ -160,7 +162,7 @@ mach build . -l c                    <span class="cmt"># link libc dynamically</
         </ul>
       </div>
 
-      <div class="page-nav"><a class="prev" href="visibility.html"><span class="pn-label">Previous</span><span class="pn-title">Visibility</span></a><a class="next" href="comptime.html"><span class="pn-label">Next</span><span class="pn-title">The comptime channel</span></a></div>
+      <div class="page-nav"><a class="prev" href="visibility.html"><span class="pn-label">Previous</span><span class="pn-title">Visibility</span></a><a class="next" href="secrecy.html"><span class="pn-label">Next</span><span class="pn-title">Secrecy</span></a></div>
     </main>
 
     <nav class="toc" aria-label="On this page">
