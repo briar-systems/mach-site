@@ -109,7 +109,7 @@
       <pre class="code"><code><span class="deco">#[<span class="fn">library</span>(<span class="str">"ws2_32.dll"</span>)]</span>
 <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">WSAStartup</span>(<span class="param">ver</span>: <span class="type">u16</span>, <span class="param">data</span>: *<span class="type">u8</span>) <span class="type">i32</span>;</code></pre>
       <ul>
-        <li>The named DLL must appear in the target's <code>[os.*].libs</code> dependency set. Pinning to an absent library is a link error, never a silent fallback.</li>
+        <li>The named value must resolve to a <code>[link.X]</code> requirement selected for this build cell. Pinning to an absent library is a link error, never a silent fallback.</li>
         <li>An import with no <code>library</code> is unattributed; on PE it binds to the first declared dependency. Pin every import that belongs to a different DLL.</li>
         <li>On ELF (Linux) the loader resolves imports by global search, so <code>library</code> has no effect on the emitted binary; the value is still validated against the dependency set.</li>
       </ul>
