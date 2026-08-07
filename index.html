@@ -385,6 +385,39 @@
                                 you pass.</span
                             >
                         </button>
+                        <button
+                            class="why-option"
+                            type="button"
+                            role="tab"
+                            aria-selected="false"
+                            data-demo="secret"
+                            data-file="secret.mach"
+                        >
+                            <span class="why-principle">Secrets the compiler guards</span>
+                            <span class="why-desc"
+                                >A program can give away a password without
+                                ever printing it - how long it took to check is
+                                enough. Mark a value secret and the compiler
+                                refuses the code that would leak it, and keeps
+                                refusing it through optimization.</span
+                            >
+                        </button>
+                        <button
+                            class="why-option"
+                            type="button"
+                            role="tab"
+                            aria-selected="false"
+                            data-demo="test"
+                            data-file="test.mach"
+                        >
+                            <span class="why-principle">Tests are built in</span>
+                            <span class="why-desc"
+                                >Write a test beside the code it tests.
+                                <code>mach test</code> finds it, builds it, and
+                                runs it in its own process. No framework to
+                                choose, nothing to add to your manifest.</span
+                            >
+                        </button>
                     </div>
                     </div>
 
@@ -416,6 +449,16 @@
                             data-demo="comptime"
                             hidden
                         ><code data-src="examples/comptime.mach"></code></pre>
+                        <pre
+                            class="why-code"
+                            data-demo="secret"
+                            hidden
+                        ><code data-src="examples/secret.mach"></code></pre>
+                        <pre
+                            class="why-code"
+                            data-demo="test"
+                            hidden
+                        ><code data-src="examples/test.mach"></code></pre>
                         <noscript
                             ><a
                                 class="example-fallback"
