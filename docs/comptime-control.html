@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -107,6 +108,32 @@
         <span class="callout-label">Note</span>
         <p>Comptime arithmetic that overflows the value's range is a compile error, not a silent wrap.</p>
       </div>
+
+      <h2 id="decl-scope">When a declaration-scope <code>$if</code> is decided</h2>
+      <p>A <code>$if</code> chain written in declaration scope runs at one of two times, and what its arms <em>contain</em> picks which.</p>
+      <ul>
+        <li><strong>Some arm declares something.</strong> The chain is decided while names are being resolved, because what it decides is which declarations exist and every later stage reads the resulting set. Nothing has a type at that point, so the gate cannot ask a type question: a layout intrinsic, a type predicate, or a <code>$type_of</code> comparison there is rejected, with a message naming the reason.</li>
+        <li><strong>No arm declares anything.</strong> The chain contributes no name and no type whichever arm is taken, so nothing depends on deciding it early. It is decided during type checking instead, where its gate may measure a type (<code>$size_of</code>, <code>$align_of</code>, <code>$length_of</code>), query one (<code>$is_record</code> and friends), or compare one.</li>
+      </ul>
+      <p>The question is answered from the <strong>syntax</strong>, over every arm - <code>$if</code>, every <code>$or</code>, and a trailing <code>$or {}</code> - before any gate is evaluated. One declaring arm anywhere keeps the whole chain at the earlier time. Per-arm answers are not possible: which stage runs the gate would then depend on which arm the gate selects, and the stage that would have to know that is the one being chosen.</p>
+      <p>A <code>use</code> is a declaration, so a conditional import is always decided while names are resolved. That is what makes the common target-gating form above work.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">MeshUniforms</span> { <span class="param">model</span>: [<span class="num">16</span>]<span class="type">f32</span>; }
+
+<span class="cmt"># no arm declares: decided during type checking, so the gate may measure</span>
+<span class="ct">$if</span> (<span class="ct">$size_of</span>(<span class="type">MeshUniforms</span>) != <span class="num">64</span>) {
+    <span class="ct">$error</span>(<span class="str">"MeshUniforms must be 64 bytes"</span>);
+}
+
+<span class="cmt"># the second arm declares, so the whole chain is decided while names are</span>
+<span class="cmt"># resolved - and the gate is rejected there</span>
+<span class="ct">$if</span> (<span class="ct">$size_of</span>(<span class="type">MeshUniforms</span>) != <span class="num">64</span>) {
+    <span class="ct">$error</span>(<span class="str">"MeshUniforms must be 64 bytes"</span>);
+}
+<span class="ct">$or</span> {
+    <span class="kw">val</span> <span class="param">PADDING</span>: <span class="type">u32</span> = <span class="num">0</span>;
+}</code></pre>
+      <p>The one visible consequence is ordering: a <code>$error</code> reached under a chain that declares nothing is reported during type checking, so an unrelated name-resolution error elsewhere in the same module is reported before it rather than after.</p>
+      <p>A <code>$if</code> inside a <strong>function body</strong> is always decided during type checking - it selects statements rather than declarations, so the question does not arise and its gate may always ask about a type.</p>
 
       <h2 id="parameters">Branching on a comptime parameter</h2>
       <p>A comptime function parameter (<code>$mode: u8</code>) is a compile-time-known argument, fixed per call site. <code>$if</code> / <code>$or</code> may branch on it: the compiler monomorphizes the body once per distinct comptime-argument value, and each instance compiles only the arm its value selects.</p>
@@ -177,6 +204,7 @@
       <div class="toc-title">On this page</div>
       <a href="#form">The $if / $or form</a>
       <a href="#conditions">Comptime conditions</a>
+      <a href="#decl-scope">When a declaration-scope $if is decided</a>
       <a href="#parameters">Branching on a comptime parameter</a>
       <a class="sub" href="#rules">Rules</a>
       <a href="#discarded">Discarded branches</a>
