@@ -47,6 +47,9 @@
           <a class="nav-link" href="modules.html">Modules</a>
           <a class="nav-link" href="visibility.html">Visibility</a>
           <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -98,7 +101,8 @@
       <p>The directive set is closed; new directives require a compiler change.</p>
 
       <h3 id="symbol"><code>symbol(str)</code> - linker name</h3>
-      <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it, the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
+      <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
+      <p>The mangled name is the source FQN <em>as the source spells it</em> - <code>std.types.string.str_len</code>, with generic arguments after a <code>$</code> - so a profile, a crash report, and a disassembly all read the name you wrote. There is no prefix: a mangled name always contains a <code>.</code> and a C identifier never can. <code>ext fun</code> foreign symbols and <code>#[symbol("...")]</code> names are literal and unaffected.</p>
       <pre class="code"><code><span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
 <span class="kw">fun</span> <span class="fn">entry</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> { ... }
 
@@ -119,6 +123,7 @@
       <p>Marks a function for inlining at every call site, overriding the compiler's size- and use-count heuristics. Applies to functions only and takes no arguments.</p>
       <pre class="code"><code><span class="deco">#[inline]</span>
 <span class="kw">fun</span> <span class="fn">fast_path</span>(<span class="param">x</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> x * <span class="num">2</span>; }</code></pre>
+      <p>It also <strong>crosses a module boundary</strong>. A dependency's ordinary function body never reaches an importer, so a four-instruction <code>fetch_add</code> in another module cost a <code>call</code> as well as its instructions. <code>#[inline]</code> declares that the body is part of the function's public surface, so an importer may materialize it - the same axis a generic, a comptime-param, and a pack-tailed function are already on, and the first member an author asks for rather than the type system forcing. The copy is emitted weak under the origin's own mangled name, so the defining module's definition still wins at link and the function stays <em>one</em> function with one address.</p>
 
       <h3 id="noinline"><code>noinline</code> - forbid inlining</h3>
       <p>The inverse of <code>inline</code>: forbids inlining a function into any caller, overriding the heuristics that would otherwise fold it in. Applies to functions only and takes no arguments.</p>
@@ -146,6 +151,37 @@
         <li>On a <code>rec</code> or <code>uni</code>, it sets the type's own alignment, inherited by any global of that type.</li>
         <li>It does not apply to <code>def</code> aliases, which are transparent and have no layout of their own.</li>
       </ul>
+
+      <h3 id="packed"><code>packed</code> - no padding</h3>
+      <p>Lays a <code>rec</code> or <code>uni</code> out with no padding: every field sits immediately after the previous one, there is no padding at the tail, and the type takes no alignment from its fields. Takes no arguments.</p>
+      <p><code>align</code> only ever raises alignment. <code>packed</code> is the inverse, and it exists for the case where the layout is not mach's to choose - a C struct, a file header, a wire frame, a vertex whose stride a buffer fixes. Without it such a shape cannot be described as a record at all.</p>
+      <pre class="code"><code><span class="deco">#[packed]</span>
+<span class="kw">rec</span> <span class="type">Header</span> {
+    <span class="param">magic</span>:    <span class="type">u8</span>;    <span class="cmt"># offset 0</span>
+    <span class="param">version</span>:  <span class="type">u16</span>;   <span class="cmt"># offset 1</span>
+    <span class="param">length</span>:   <span class="type">u32</span>;   <span class="cmt"># offset 3</span>
+    <span class="param">checksum</span>: <span class="type">u64</span>;   <span class="cmt"># offset 7</span>
+}                    <span class="cmt"># $size_of == 15, $align_of == 1</span></code></pre>
+      <p>Naturally the same shape is 24 bytes. <code>$size_of</code>, <code>$align_of</code>, and <code>$offset_of</code> all report the packed layout, and so does the code that reads and writes the fields - there is one layout, not a declared one and an emitted one.</p>
+      <p><strong>It composes with <code>align</code> rather than conflicting</strong>, and each owns one question: <code>packed</code> decides padding (none between fields, none at the tail) and <code>align(N)</code> decides the record's own alignment, rounding its size up to a multiple of <code>N</code>.</p>
+      <pre class="code"><code><span class="deco">#[packed]</span> <span class="deco">#[align(<span class="num">8</span>)]</span>
+<span class="kw">rec</span> <span class="type">Frame</span> { <span class="param">a</span>: <span class="type">u8</span>; <span class="param">b</span>: <span class="type">u32</span>; }   <span class="cmt"># fields at 0 and 1; $align_of == 8, $size_of == 8</span></code></pre>
+      <p><strong>Packing is not transitive.</strong> A packed record packs <em>its own</em> fields; a record it contains keeps its own internal padding and is merely <em>placed</em> without padding. This matches C, and it is the rule that composes - an inner type's layout does not change depending on who holds it. A transitive rule would silently change the inner record's meaning inside its holder. If the inner record must be packed too, write <code>#[packed]</code> on it as well.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Point</span> { <span class="param">x</span>: <span class="type">u8</span>; <span class="param">y</span>: <span class="type">u32</span>; }   <span class="cmt"># natural: y at 4, size 8</span>
+
+<span class="deco">#[packed]</span>
+<span class="kw">rec</span> <span class="type">Msg</span> { <span class="param">tag</span>: <span class="type">u8</span>; <span class="param">p</span>: <span class="type">Point</span>; } <span class="cmt"># p at offset 1, still 8 bytes; $size_of(Msg) == 9</span></code></pre>
+      <h4 id="packed-refusals">What is refused</h4>
+      <ul>
+        <li><strong>The address of a packed field.</strong> <code>?r.b</code> would yield a <code>*u32</code>, and a <code>*u32</code> states alignment 4 to everything downstream of it while the storage it names has none. The access through such a pointer is correct on the targets mach supports today; the <em>pointer type</em> is what is untrue, and it travels. The refusal covers the whole access chain, so <code>?r.arr[0]</code>, <code>?r.inner.x</code>, and <code>?p.b</code> through a <code>*Packed</code> go the same way. <code>?r</code> on the <strong>whole</strong> record stays legal - a <code>*Packed</code> describes an align-1 pointee correctly. To work with a field's value, copy it into a local. This is fail-closed on purpose: refusing can be relaxed later once alignment can ride in a pointer type; permitting cannot be tightened.</li>
+        <li><strong>Atomics on a packed field</strong>, by that same rule rather than one of their own. <code>std.sync.atomic</code> is ordinary functions over <code>*i64</code>, so a pointer is the only route an atomic has to a field, and there is no pointer to hand it.</li>
+        <li><strong>Vector fields</strong>, including one reached through an array or a nested record. The reason is evidence rather than arithmetic: an unaligned <em>scalar</em> access is measured on real hardware, and that measurement is what <code>#[packed]</code> rests on. This is a sequencing decision and is expected to be lifted.</li>
+        <li><strong>Interface blocks.</strong> <code>packed</code> cannot apply to a <code>#[uniform]</code> or <code>#[storage]</code> block: its member offsets are fixed by the std140 / std430 layout rules, which packing would contradict.</li>
+      </ul>
+      <div class="callout note">
+        <span class="callout-label">Target note: riscv64</span>
+        <p>Unaligned access is permitted-but-may-trap on RV64, and where the hardware does not do it Linux emulates the access in the kernel. A packed field access there is expected to be <strong>correct and pathologically slow</strong> - a trap-and-emulate round trip per access rather than a load. x86-64 and aarch64 do unaligned scalar access in hardware.</p>
+      </div>
 
       <h3 id="section"><code>section(str)</code> - object section placement</h3>
       <p>Places a function or global variable in a named section instead of the default <code>.text</code> / <code>.data</code>. The section is created if absent; cross-section calls and accesses use ordinary relocations.</p>
@@ -208,11 +244,15 @@
       <ul>
         <li>The declaration carries no initializer of its own; writing one alongside <code>embed</code> is rejected. This is a second exemption to <code>val</code>'s requires-an-initializer rule, alongside <code>ext</code>.</li>
         <li>The path resolves relative to the <strong>declaring source file's</strong> directory. An absolute path is taken as written. Escapes are not decoded, matching <code>symbol</code> and <code>section</code> - the path is taken as written.</li>
-        <li>The annotation must be <code>[_]u8</code> or <code>[N]u8</code>. <code>[_]</code> is an inferred array length, legal <strong>only</strong> on an <code>#[embed]</code> declaration. Mach has no intrinsic that measures a value's type, so a program cannot ask a <code>[_]u8</code> embed for its own length; use the explicit <code>[N]u8</code> form when the count is needed.</li>
+        <li>The annotation must be <code>[_]u8</code> or <code>[N]u8</code>. <code>[_]</code> is an inferred array length, legal <strong>only</strong> on an <code>#[embed]</code> declaration. A <code>[_]u8</code> embed can be asked for its own length: <code>$length_of(LOGO)</code> is its element count and <code>$size_of(LOGO)</code> its byte count, both folded at compile time. The explicit <code>[N]u8</code> form is for pinning a size by contract, not for recovering one.</li>
+        <li>Two <code>#[embed]</code> globals whose files hold byte-identical content and whose final section name, kind, and alignment match share <strong>one</strong> read-only data placement within a module, so their addresses compare equal. This is specific to embedded data; an ordinary global is never merged this way.</li>
         <li>An explicit <code>[N]u8</code> whose <code>N</code> disagrees with the file is rejected, naming both counts. This is how a declaration pins a fixed-size asset - a boot sector, a ROM image - so the build fails the moment it stops being that size.</li>
         <li>Bytes are placed in read-only data exactly like any other constant byte array: no runtime I/O, no copy. Works for every artifact kind and target, freestanding included.</li>
         <li>The embedded file is a build input: its content digest feeds the embedding module's incremental cutoff, so editing the asset invalidates that module and an untouched asset stays a cache hit.</li>
       </ul>
+
+      <h2 id="shader-directives">Shader directives</h2>
+      <p>Nine directives belong to the GPU pipeline surface: <code>stage</code>, <code>workgroup</code>, <code>input</code>, <code>output</code>, <code>builtin</code>, <code>uniform</code>, <code>storage</code>, <code>sampler</code>, and the two target-owned declarations <code>handle</code> and <code>op</code>. They are accepted on <strong>every</strong> target, because which target a module is built for is not a property of its source; only a target that forms pipeline stages acts on them. Each is documented with the surface it belongs to, on <a href="shaders.html">GPU shaders</a>.</p>
 
       <h2 id="applicability">Applicability</h2>
       <p>Each directive targets a fixed set of declaration kinds. The full matrix:</p>
@@ -226,11 +266,20 @@
           <tr><td><code>inline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>noinline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>align</code></td><td>no</td><td>no</td><td>yes</td><td>yes</td></tr>
+          <tr><td><code>packed</code></td><td>no</td><td>no</td><td>no</td><td>yes</td></tr>
           <tr><td><code>section</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
           <tr><td><code>oblivious</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>scalar</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>naked</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
           <tr><td><code>embed</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>stage</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>workgroup</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>input</code> / <code>output</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>builtin</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>uniform</code> / <code>storage</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>sampler</code></td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+          <tr><td><code>op</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><td><code>handle</code></td><td colspan="4">a bodyless <code>def</code> only</td></tr>
         </tbody>
       </table>
       <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused.</p>
@@ -259,11 +308,13 @@
       <a class="sub" href="#inline">inline</a>
       <a class="sub" href="#noinline">noinline</a>
       <a class="sub" href="#align">align</a>
+      <a class="sub" href="#packed">packed</a>
       <a class="sub" href="#section">section</a>
       <a class="sub" href="#oblivious">oblivious</a>
       <a class="sub" href="#scalar">scalar</a>
       <a class="sub" href="#naked">naked</a>
       <a class="sub" href="#embed">embed</a>
+      <a href="#shader-directives">Shader directives</a>
       <a href="#applicability">Applicability</a>
     </nav>
   </div>
