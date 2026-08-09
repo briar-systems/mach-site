@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mach docs: GPU shaders</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button class="menu-toggle" aria-label="Toggle navigation"><span></span></button>
+    <a class="brand" href="index.html">
+      <img src="../assets/mach_32.png" alt="" width="22" height="22">
+      <span>mach</span><span class="brand-docs">docs</span>
+    </a>
+    <span class="badge badge-version"></span>
+    <div class="topbar-spacer"></div>
+    <button class="search-trigger" aria-label="Search the docs">
+      <span class="st-text">Search</span><span class="kbd">Ctrl K</span>
+    </button>
+    <div class="topbar-actions">
+      <a href="../index.html">Home</a>
+      <a href="https://github.com/briar-systems/mach" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <nav>
+        <div class="nav-group">
+          <div class="nav-group-label">Start</div>
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="install.html">Install</a>
+          <a class="nav-link" href="hello-world.html">Hello world</a>
+          <a class="nav-link" href="project-layout.html">Project layout</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Language</div>
+          <a class="nav-link" href="types.html">Types</a>
+          <a class="nav-link" href="values.html">Values and variables</a>
+          <a class="nav-link" href="functions.html">Functions</a>
+          <a class="nav-link" href="expressions.html">Expressions</a>
+          <a class="nav-link" href="statements.html">Statements</a>
+          <a class="nav-link" href="records-unions.html">Records and unions</a>
+          <a class="nav-link" href="modules.html">Modules</a>
+          <a class="nav-link" href="visibility.html">Visibility</a>
+          <a class="nav-link" href="ext-fun.html">External functions</a>
+          <a class="nav-link" href="secrecy.html">Secrecy</a>
+          <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link active" href="shaders.html">GPU shaders</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Comptime</div>
+          <a class="nav-link" href="comptime.html">The comptime channel</a>
+          <a class="nav-link" href="intrinsics.html">Intrinsics</a>
+          <a class="nav-link" href="comptime-control.html">Control flow</a>
+          <a class="nav-link" href="variadics.html">Variadic packs</a>
+          <a class="nav-link" href="decorators.html">Decorators</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Tooling</div>
+          <a class="nav-link" href="cli.html">CLI</a>
+          <a class="nav-link" href="manifest.html">Manifest</a>
+          <a class="nav-link" href="dependencies.html">Dependencies</a>
+          <a class="nav-link" href="testing.html">Testing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>GPU shaders</div>
+      <h1>GPU shaders</h1>
+      <p class="lead">A <code>spirv</code> target compiles ordinary mach into a finished SPIR-V module. A shader is written in the same language as the rest of the project - the same records, the same vectors, the same comptime - and a small set of decorators say which functions are pipeline stages and which module-scope variables the pipeline binds.</p>
+
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>Every directive on this page is accepted on <strong>every</strong> target, because which target a module is built for is not a property of its source. Only a target that forms pipeline stages acts on them: on a machine target a staged function is compiled normally and the interface variables are ordinary globals.</p>
+      </div>
+
+      <h2 id="target">The target</h2>
+      <p>A <code>spirv</code> target's object output is a complete, self-contained module rather than a link input, so the build delivers a <strong>module tree</strong> and runs no link phase.</p>
+      <pre class="code"><code><span class="toml-head">[target.gpu]</span>
+<span class="toml-key">isa</span> = <span class="str">"spirv"</span>
+<span class="toml-key">os</span>  = <span class="str">"freestanding"</span>
+<span class="toml-key">abi</span> = <span class="str">"spirv"</span>
+<span class="cmt"># no `of`: the finished-module format resolves on its own</span></code></pre>
+      <pre class="code"><code>mach build . --target gpu     <span class="cmt"># writes out/gpu/&lt;profile&gt;/obj/&lt;module&gt;.spv</span></code></pre>
+      <p>A <code>static</code> or <code>shared</code> artifact kind, and <code>mach test</code>, are refused by name: there is no archive, shared object, or executable form for a module. See <a href="manifest.html#finished-modules">Manifest</a>.</p>
+
+      <h2 id="stage"><code>stage(str)</code>: a pipeline stage</h2>
+      <p>Marks a function as the entry point of a graphics or compute pipeline stage. The value set is closed - <code>"vertex"</code>, <code>"fragment"</code>, <code>"compute"</code> - and an unrecognized value is a compile error, not a module that quietly forms no stage.</p>
+      <pre class="code"><code><span class="deco">#[stage(<span class="str">"vertex"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">vertex_main</span>() { }
+
+<span class="deco">#[stage(<span class="str">"fragment"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">fragment_main</span>() { }</code></pre>
+      <p>A staged function <strong>takes no parameters and returns nothing</strong>. A pipeline stage has no caller: its inputs arrive through input interface variables and its results leave through output ones, so there is no argument list or return value to carry them. A staged function with either is rejected.</p>
+      <p>A module that declares any stage is a <strong>shader module</strong>, and that changes the whole artifact rather than just the one function. A shader module carries entry points and no external linkage at all; a module with no stage is a <strong>library module</strong>, which publishes each function as a linkage export so a consumer can find it. The two are exclusive - a Vulkan consumer refuses a module carrying linkage - so adding the first <code>#[stage(...)]</code> to a module stops it exporting its functions.</p>
+      <p>The entry point's name, as a pipeline-creation call looks it up, is the function's <strong>bare source name</strong>. A shader module has no linker symbols to mangle.</p>
+
+      <h3 id="workgroup"><code>workgroup(x, y, z)</code></h3>
+      <p>Sizes the workgroup of a <code>#[stage("compute")]</code> function. It requires a stage on the same function - without one it would silently mean nothing - and applies only to the compute stage.</p>
+      <pre class="code"><code><span class="deco">#[stage(<span class="str">"compute"</span>)]</span> <span class="deco">#[workgroup(<span class="num">64</span>, <span class="num">1</span>, <span class="num">1</span>)]</span>
+<span class="kw">fun</span> <span class="fn">compute_main</span>() { }</code></pre>
+      <p>Omitted, a compute stage takes the single-invocation default <code>(1, 1, 1)</code>. The dimensions are always declared in the emitted module, since a compute stage that does not state its workgroup size is not one a consumer can dispatch.</p>
+
+      <h2 id="interface">The interface</h2>
+      <p>A stage reads and writes <strong>module-scope variables</strong> that the pipeline binds. These directives say which kind each variable is. They apply only to module-level <code>val</code> / <code>var</code> bindings, and a variable carries <strong>exactly one</strong> of them - they are mutually exclusive.</p>
+      <pre class="code"><code><span class="deco">#[input(<span class="num">0</span>)]</span>            <span class="kw">var</span> <span class="param">in_position</span>: <span class="type">f32x4</span>;
+<span class="deco">#[output(<span class="num">0</span>)]</span>           <span class="kw">var</span> <span class="param">out_colour</span>:  <span class="type">f32x4</span>;
+<span class="deco">#[builtin(<span class="str">"position"</span>)]</span> <span class="kw">var</span> <span class="param">position</span>:    <span class="type">f32x4</span>;
+
+<span class="kw">rec</span> <span class="type">Camera</span> { <span class="param">view</span>: <span class="type">f32x4</span>; <span class="param">proj</span>: <span class="type">f32x4</span>; }
+<span class="deco">#[uniform(<span class="num">0</span>, <span class="num">0</span>)]</span> <span class="kw">var</span> <span class="param">camera</span>: <span class="type">Camera</span>;
+
+<span class="kw">rec</span> <span class="type">Particles</span> { <span class="param">pos</span>: [<span class="num">64</span>]<span class="type">f32x4</span>; }
+<span class="deco">#[storage(<span class="num">0</span>, <span class="num">1</span>)]</span> <span class="kw">var</span> <span class="param">particles</span>: <span class="type">Particles</span>;
+
+<span class="deco">#[sampler(<span class="num">1</span>, <span class="num">0</span>)]</span> <span class="kw">var</span> <span class="param">albedo</span>: <span class="type">Sampler2D</span>;</code></pre>
+      <p><code>input</code> and <code>output</code> number a <strong>varying</strong> with a location, which is how one stage's outputs line up with the next stage's inputs: the producer's <code>#[output(0)]</code> feeds the consumer's <code>#[input(0)]</code>.</p>
+
+      <h3 id="builtins"><code>builtin(str)</code></h3>
+      <p>Names a value the pipeline supplies or consumes instead of one a location carries. The set is closed.</p>
+      <table>
+        <thead><tr><th>Value</th><th>Meaning</th><th>Type</th><th>Direction</th></tr></thead>
+        <tbody>
+          <tr><td><code>"position"</code></td><td>clip-space vertex position</td><td><code>f32x4</code></td><td>written</td></tr>
+          <tr><td><code>"point_size"</code></td><td>rasterized point size</td><td><code>f32</code></td><td>written</td></tr>
+          <tr><td><code>"vertex_index"</code></td><td>index of the current vertex</td><td><code>u32</code></td><td>read</td></tr>
+          <tr><td><code>"instance_index"</code></td><td>index of the current instance</td><td><code>u32</code></td><td>read</td></tr>
+          <tr><td><code>"frag_coord"</code></td><td>fragment window coordinate</td><td><code>f32x4</code></td><td>read</td></tr>
+          <tr><td><code>"global_invocation"</code></td><td>compute global invocation id</td><td><code>u32x3</code></td><td>read</td></tr>
+          <tr><td><code>"local_invocation"</code></td><td>compute local invocation id</td><td><code>u32x3</code></td><td>read</td></tr>
+          <tr><td><code>"workgroup_id"</code></td><td>compute workgroup id</td><td><code>u32x3</code></td><td>read</td></tr>
+        </tbody>
+      </table>
+      <p>The direction is a property of the built-in, not something you restate - a stage writes its position and reads what the pipeline hands it - so there is no input/output marker to pair with <code>builtin</code>, and none that could disagree with it.</p>
+      <p>The <strong>type</strong> is a property of the built-in too, and it is a requirement rather than a suggestion: the pipeline binds the variable itself, so a wider or narrower one is an invalid module rather than a wasteful one. Declaring a built-in at any other type is a compile error naming both the declared type and the required one. The two integer rows accept <code>i32</code> as well as <code>u32</code>, because the compiler carries an integer's width and not its sign and the emitted type is sign-less either way.</p>
+
+      <h3 id="blocks"><code>uniform</code> and <code>storage</code> blocks</h3>
+      <p><code>uniform</code> binds a read-only block by descriptor set and binding; <code>storage</code> binds a <strong>read-write</strong> buffer the same way. Both types <strong>must be a <code>rec</code></strong>: a block has a host-visible layout, and a bare scalar or vector has no block layout for a pipeline to bind. Wrap a single value in a one-field record. Each is emitted with its <code>Block</code> decoration and an explicit byte offset on every member, taken from the same layout the rest of the compiler uses, so what the shader reads is what the host wrote.</p>
+      <p>They differ in one place: their <strong>layout rules</strong>. A uniform block follows std140-shaped rules, under which an array's stride is rounded up to 16 - which mach's own layout does not do, so an array of anything narrower than 16 bytes is refused rather than silently repacked. A storage buffer follows std430-shaped rules, which use the element's natural stride, and that <em>is</em> mach's layout. So <code>[8]f32</code> is fine in a <code>storage</code> block and rejected in a <code>uniform</code> one.</p>
+      <p>A compute stage's data path is <code>storage</code>: Vulkan forbids the <code>Output</code> storage class in a compute execution model, so a compute shader reads and writes buffers rather than varyings.</p>
+
+      <h3 id="readonly">The <code>"readonly"</code> qualifier</h3>
+      <p><code>storage</code> takes memory qualifiers after the descriptor pair. There is one, and it says that nothing writes the binding.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Palette</span> { <span class="param">columns</span>: [<span class="num">512</span>]<span class="type">f32x4</span>; }
+<span class="deco">#[storage(<span class="num">0</span>, <span class="num">3</span>, <span class="str">"readonly"</span>)]</span> <span class="kw">var</span> <span class="param">palette</span>: <span class="type">Palette</span>;</code></pre>
+      <p>A store through a <code>"readonly"</code> binding is a compile error on every target, naming the line that wrote it. That is what the qualifier buys over what the compiler works out on its own: a buffer no body in the module stores through is emitted with the SPIR-V <code>NonWritable</code> decoration whether or not it is marked, and Vulkan reads that decoration to decide whether a stage needs <code>vertexPipelineStoresAndAtomics</code>. So an accidental write does not produce a wrong module, it produces a <strong>correct one that quietly costs a hardware feature</strong>. Marking the binding turns that into a diagnostic instead.</p>
+      <p>The inference is one-sided on purpose: anything the compiler cannot follow, such as the binding's address handed to a function, counts as a write, so a missing decoration is possible and a wrong one is not.</p>
+
+      <h2 id="textures">Textures and samplers</h2>
+      <p><code>sampler</code> binds a <a href="types.html#handles">handle</a> by descriptor set and binding, at the same descriptor addressing <code>uniform</code> and <code>storage</code> use, so a host binds one the way it binds the others. Its type must be a handle type - a bodyless <code>def</code> carrying <code>#[handle]</code> - and a handle type must carry this decorator: a handle names a descriptor rather than an object with storage, so one with no descriptor address is reachable from no stage.</p>
+      <p>Sampling is an <code>#[op(...)]</code> declaration rather than a language form, because a sample <em>is</em> one SPIR-V instruction, exactly as <code>sqrt</code> and <code>dot</code> are.</p>
+      <pre class="code"><code><span class="deco">#[op(<span class="str">"spirv"</span>, <span class="str">"core"</span>, <span class="str">"OpImageSampleImplicitLod"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">sample</span>(<span class="param">s</span>: <span class="type">Sampler2D</span>, <span class="param">uv</span>: <span class="type">f32x2</span>) <span class="type">f32x4</span>;
+
+<span class="deco">#[stage(<span class="str">"fragment"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">frag_main</span>() {
+    out_colour = <span class="fn">sample</span>(albedo, in_uv);
+}</code></pre>
+      <p>The separately-bound form works the same way, with the instruction that combines an image and a sampler declared alongside it.</p>
+      <pre class="code"><code><span class="deco">#[op(<span class="str">"spirv"</span>, <span class="str">"core"</span>, <span class="str">"OpSampledImage"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">combine</span>(<span class="param">t</span>: <span class="type">Texture2D</span>, <span class="param">s</span>: <span class="type">Sampler</span>) <span class="type">Sampler2D</span>;
+
+<span class="deco">#[sampler(<span class="num">1</span>, <span class="num">0</span>)]</span> <span class="kw">var</span> <span class="param">base_tex</span>: <span class="type">Texture2D</span>;
+<span class="deco">#[sampler(<span class="num">1</span>, <span class="num">1</span>)]</span> <span class="kw">var</span> <span class="param">base_smp</span>: <span class="type">Sampler</span>;
+
+<span class="deco">#[stage(<span class="str">"fragment"</span>)]</span>
+<span class="kw">fun</span> <span class="fn">frag_sep</span>() { out_colour = <span class="fn">sample</span>(<span class="fn">combine</span>(base_tex, base_smp), in_uv); }</code></pre>
+      <p>The combined value is handed straight to the sample rather than named: SPIR-V requires an <code>OpSampledImage</code> result be consumed in the block that produced it, which is the same rule that makes a handle-typed local a compile error.</p>
+
+      <h2 id="op"><code>op(target, set, name)</code>: a function that <em>is</em> an instruction</h2>
+      <p>A shader needs <code>sqrt</code>, <code>normalize</code>, <code>dot</code>, and <code>mix</code>. None of them is an operator, and none of them is a call SPIR-V can make: each is one instruction. This directive says which one a function is, so that on a <code>spirv</code> target a call to it becomes that instruction, inline, rather than a call.</p>
+      <pre class="code"><code><span class="deco">#[op(<span class="str">"spirv"</span>, <span class="str">"GLSL.std.450"</span>, <span class="str">"Sqrt"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">sqrt</span>(<span class="param">x</span>: <span class="type">f32</span>) <span class="type">f32</span>;
+
+<span class="deco">#[op(<span class="str">"spirv"</span>, <span class="str">"GLSL.std.450"</span>, <span class="str">"Normalize"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">normalize</span>(<span class="param">v</span>: <span class="type">f32x4</span>) <span class="type">f32x4</span>;
+
+<span class="deco">#[op(<span class="str">"spirv"</span>, <span class="str">"core"</span>, <span class="str">"OpDot"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">dot</span>(<span class="param">a</span>: <span class="type">f32x4</span>, <span class="param">b</span>: <span class="type">f32x4</span>) <span class="type">f32</span>;</code></pre>
+      <p>The first argument names the <strong>target</strong> - the ISA name the manifest selects with - the second the instruction set, and the third the instruction within it. All three value sets are closed and checked at compile time on <strong>every</strong> target: the directive is legal everywhere, so a typo caught only where it is acted on would go unreported on a CPU build. The parameter count is checked against the instruction's own operand count, which is not uniform across a family that looks it: <code>Reflect</code> takes two operands where <code>Refract</code> takes three, and <code>FMin</code> two where <code>FClamp</code> takes three.</p>
+      <table>
+        <thead><tr><th>Set</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>"core"</code></td><td>the core opcode space; needs no import</td></tr>
+          <tr><td><code>"GLSL.std.450"</code></td><td>the standard extended set; imported once per module, on use</td></tr>
+        </tbody>
+      </table>
+      <p>The substitution is uniform: the emitted instruction's <strong>result type is the function's declared return type</strong> and its <strong>operands are the function's parameters in declaration order</strong>. That is what lets <code>dot</code> and <code>length</code> return a scalar from vectors, and <code>refract</code> mix a scalar operand with vector ones, without any of them being a special case.</p>
+      <div class="callout warn">
+        <span class="callout-label">Check the specification, not GLSL</span>
+        <p><code>dot</code> is <strong>core <code>OpDot</code></strong>, not a GLSL.std.450 instruction, even though GLSL spells it beside <code>normalize</code> and <code>length</code>. Check each function against the SPIR-V specification rather than against GLSL's surface.</p>
+      </div>
+      <p>On every target other than <code>spirv</code> the directive is inert and a decorated function is an ordinary function. A <strong>bodyless</strong> one - which is what the shader-side maths library uses - is then an undefined symbol, so a CPU build that calls it fails at link naming the symbol. That is the library's design choice, not a property of the directive: a decorated function may have a body, and if it does, that body is what every non-<code>spirv</code> target runs while <code>spirv</code> substitutes the instruction.</p>
+
+      <h2 id="modules">Shaders across modules</h2>
+      <p>A shader can call a function defined in another module and can use an <strong>interface variable</strong> one declares, so a shared library may own a whole descriptor set. A drawn-in module contributes globals by <strong>reachability, not membership</strong>: a shared module may declare a whole set, and a shader importing it for one helper does not inherit the rest. The root is exempt - its interface list is the module's pipeline contract, declared whole.</p>
+      <p>A repeated <code>(set, binding)</code> pair is checked over the set one entry point reaches, <strong>across</strong> the descriptor roles rather than within one, since a <code>#[uniform(0, 0)]</code> and a <code>#[storage(0, 0)]</code> are two descriptor types claiming one slot. Within one module a repeat is a typo its author can see; across modules it is neither, and the shader importing both is where the conflict first exists. <code>spirv-val</code> does not catch it, because two variables at one pair are well-formed SPIR-V and the conflict is with the pipeline layout, which is not in the module. The diagnostic names the declaring <strong>module</strong> when it is not the one being compiled.</p>
+
+      <h2 id="limits">What a stage may not do</h2>
+      <ul>
+        <li><strong>Recursion</strong> and a signature past 15 parameters are refused rather than emitted.</li>
+        <li><strong><code>#[oblivious]</code></strong> is rejected outright on this target: the back half emits a module for a downstream compiler rather than the executed instructions, so the constant-time contract cannot be validated or upheld there. See <a href="secrecy.html">Secrecy</a>.</li>
+        <li><strong><code>#[packed]</code></strong> cannot apply to a <code>#[uniform]</code> or <code>#[storage]</code> block, whose member offsets the layout rules fix.</li>
+        <li>A <strong>handle</strong> cannot be a local binding, a record or union field, or sit behind a pointer or inside an array.</li>
+      </ul>
+
+      <div class="see-also">
+        <h2>See also</h2>
+        <ul>
+          <li><a href="types.html#handles">Types</a> - handle types, and the SIMD vectors a stage computes over</li>
+          <li><a href="decorators.html">Decorators</a> - the full directive set and its applicability matrix</li>
+          <li><a href="manifest.html#finished-modules">Manifest</a> - declaring a <code>spirv</code> target and what its build delivers</li>
+        </ul>
+      </div>
+
+      <div class="page-nav"><a class="prev" href="asm.html"><span class="pn-label">Previous</span><span class="pn-title">Inline assembly</span></a><a class="next" href="comptime.html"><span class="pn-label">Next</span><span class="pn-title">The comptime channel</span></a></div>
+    </main>
+
+    <nav class="toc" aria-label="On this page">
+      <div class="toc-title">On this page</div>
+      <a href="#target">The target</a>
+      <a href="#stage">stage</a>
+      <a class="sub" href="#workgroup">workgroup</a>
+      <a href="#interface">The interface</a>
+      <a class="sub" href="#builtins">builtin</a>
+      <a class="sub" href="#blocks">uniform and storage</a>
+      <a class="sub" href="#readonly">The readonly qualifier</a>
+      <a href="#textures">Textures and samplers</a>
+      <a href="#op">op</a>
+      <a href="#modules">Shaders across modules</a>
+      <a href="#limits">What a stage may not do</a>
+    </nav>
+  </div>
+
+  <div class="palette" aria-hidden="true">
+    <div class="palette-box" role="dialog" aria-label="Search the docs">
+      <div class="palette-head">
+        <span class="palette-prompt">/</span>
+        <input class="palette-input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+      </div>
+      <div class="palette-list"></div>
+    </div>
+  </div>
+
+  <script src="../assets/version.js" defer></script>
+  <script src="docs.js" defer></script>
+</body>
+</html>
