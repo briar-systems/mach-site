@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -105,6 +106,12 @@
       <pre class="code"><code><span class="kw">val</span> <span class="param">x</span>: <span class="type">i64</span> = <span class="fn">identity</span>[<span class="type">i64</span>](<span class="num">42</span>);
 <span class="kw">val</span> <span class="param">p</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>] = <span class="fn">make_pair</span>[<span class="type">i64</span>, <span class="type">u8</span>](<span class="num">1</span>, <span class="num">2u8</span>);</code></pre>
 
+      <h3 id="instance-as-value">An instance is a value</h3>
+      <p><code>f[T, ..]</code> with no call after it denotes the monomorphized <strong>instance itself</strong> and types as the instantiated signature, so a generic can be stored in a binding, passed as a callback, returned, placed in a table, and addressed.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">fp</span>: <span class="kw">fun</span>(<span class="type">i64</span>) <span class="type">i64</span> = <span class="fn">identity</span>[<span class="type">i64</span>];    <span class="cmt"># the instance as a value</span>
+<span class="kw">val</span> <span class="param">ap</span>: *<span class="kw">fun</span>(<span class="type">i64</span>) <span class="type">i64</span> = ?<span class="fn">identity</span>[<span class="type">i64</span>];   <span class="cmt"># its address</span></code></pre>
+      <p>The instance is reached through the same path a call site uses, so the two spellings name one instance under one linkage name. A <strong>bare</strong> <code>f</code> is still not a value and has no address: a generic is a template, not code, and only an instance denotes a function.</p>
+
       <h2 id="comptime-params">Comptime value parameters</h2>
       <p>A parameter marked <code>$name: T</code> must be supplied with a value the compiler can resolve at compile time. The body can branch on it with <code>$if</code>, producing different code per call-site instantiation.</p>
       <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">pick_op</span>(<span class="ct">$mode</span>: <span class="type">Mode</span>, <span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> {
@@ -156,6 +163,7 @@
       <div class="toc-title">On this page</div>
       <a href="#declaring">Declaring a function</a>
       <a href="#generics">Generic type parameters</a>
+      <a class="sub" href="#instance-as-value">An instance is a value</a>
       <a href="#comptime-params">Comptime value parameters</a>
       <a href="#variadics">Variadic packs</a>
     </nav>

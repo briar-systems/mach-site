@@ -28,7 +28,8 @@
     "windows":      '[target.windows]\nisa  = "x86_64"\nos   = "windows"\nabi  = "win64"\next  = ".exe"\nlibs = ["kernel32.dll"]',
     "freestanding": '[target.freestanding]\nisa = "x86_64"\nos  = "freestanding"\nabi = "sysv64"\nof  = "raw"',
     "linux-arm64":  '[target.linux-arm64]\nisa = "aarch64"\nos  = "linux"\nabi = "aapcs64"',
-    "linux-riscv64":'[target.linux-riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64"',
+    "linux-riscv64":'[target.linux-riscv64]\nisa = "riscv64"\nos  = "linux"\nabi = "lp64d"',
+    "riscv32":      '[target.riscv32]\nisa = "riscv32"\nos  = "freestanding"\nabi = "ilp32d"\nof  = "raw"',
     "macos":        '[target.macos]\nisa = "aarch64"\nos  = "darwin"\nabi = "aapcs64"',
     "macos-x86_64": '[target.macos-x86_64]\nisa = "x86_64"\nos  = "darwin"\nabi = "sysv64"',
     // spirv emits a finished module rather than machine code, so it needs no
