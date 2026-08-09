@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -91,10 +92,8 @@ nil        <span class="cmt"># the nil value</span></code></pre>
 <span class="kw">val</span> <span class="param">a</span>:    [<span class="num">3</span>]<span class="type">i64</span>        = [<span class="num">3</span>]<span class="type">i64</span>{ <span class="num">10</span>, <span class="num">20</span>, <span class="num">30</span> };
 <span class="kw">val</span> <span class="param">u</span>:    <span class="type">Number</span>        = <span class="type">Number</span>{ <span class="param">i</span>: <span class="num">99</span> };
 <span class="kw">val</span> <span class="param">pair</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>] = <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]{ <span class="param">left</span>: <span class="num">5</span>, <span class="param">right</span>: <span class="num">6u8</span> };</code></pre>
-      <div class="callout note">
-        <span class="callout-label">Not yet implemented</span>
-        <p>Vector literals such as <code>f32x4{ ... }</code> follow the same shape but depend on the SIMD vector types, which are not yet implemented. See <a href="types.html">Types</a>.</p>
-      </div>
+      <p>A vector literal takes the same shape and is <strong>full-arity</strong>: one initializer per lane, with too few or too many a compile error. See <a href="types.html#vectors">Types</a>.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">v</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};</code></pre>
 
       <h2 id="access">Field and index access</h2>
       <p>A field is read with the dot, an array element with a bracketed index.</p>
@@ -125,6 +124,23 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <p>Operators combine expressions into larger expressions. Precedence follows the usual C-family conventions.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = a + b * c;    <span class="cmt"># * binds tighter than +</span></code></pre>
 
+      <h3 id="vector-operators">Lane-wise operators</h3>
+      <p>Vector types carry lane-wise operators at <strong>every</strong> lane count, not only the 128-bit shapes, and <strong>which operators are legal is target-independent</strong>: an <code>f32x8</code> add is as legal as an <code>f32x4</code> one, and the two differ only in how they are realized.</p>
+      <table>
+        <thead><tr><th>Lane family</th><th><code>+</code> <code>-</code></th><th><code>*</code></th><th><code>/</code></th><th><code>%</code></th><th><code>&amp; | ^ ~</code></th><th><code>&lt;&lt; &gt;&gt;</code></th><th>comparisons</th></tr></thead>
+        <tbody>
+          <tr><td>float</td><td>yes</td><td>yes</td><td>yes</td><td>no</td><td>-</td><td>no</td><td>same-shape unsigned mask</td></tr>
+          <tr><td>integer</td><td>yes</td><td>yes</td><td>no</td><td>no</td><td>yes</td><td>no</td><td>same-shape unsigned mask</td></tr>
+        </tbody>
+      </table>
+      <p>Both operands must be the <strong>same</strong> vector shape: there is no implicit scalar-to-vector mixing and no cross-shape widening. Anything the table marks <code>no</code> is a compile error, not a silent fallback.</p>
+      <p>A comparison produces the same-shape <strong>unsigned mask</strong> vector - one lane per input lane, all-ones bits for true and all-zeros for false, exactly what the hardware compare yields. There is no vector-bool type, and select is not an operator: it is the library idiom <code>(mask &amp; a) | (~mask &amp; b)</code> over matching integer lanes.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">a</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};
+<span class="kw">val</span> <span class="param">b</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">4.0</span>, <span class="num">3.0</span>, <span class="num">2.0</span>, <span class="num">1.0</span>};
+<span class="kw">val</span> <span class="param">sum</span>:  <span class="type">f32x4</span> = a + b;       <span class="cmt"># lane-wise -> {5.0, 5.0, 5.0, 5.0}</span>
+<span class="kw">val</span> <span class="param">mask</span>: <span class="type">u32x4</span> = a &lt; b;       <span class="cmt"># -> {0xFFFFFFFF, 0xFFFFFFFF, 0, 0}</span></code></pre>
+      <p>A legal operator means the same thing on every target, but not every target has a packed instruction for every one. The backend picks the packed form where the target has one, else a defined unrolled scalar expansion with lane-identical results - so neither choice changes the answer. Integer <code>*</code> is where that is most visible: <code>i32x4 * i32x4</code> is packed on NEON and a scalar expansion on the SSE2 baseline. A project that cannot afford an expansion sets <code>simd = "require"</code> in its profile, which turns the shortfall into a build error naming the operation, its lane width, the function, and the target.</p>
+
       <div class="see-also">
         <h2>See also</h2>
         <ul>
@@ -147,6 +163,7 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <a href="#calls">Function calls</a>
       <a class="sub" href="#generic-calls">Generic calls</a>
       <a class="sub" href="#variadic-calls">Variadic calls</a>
+      <a class="sub" href="#vector-operators">Lane-wise operators</a>
       <a class="sub" href="#comptime-args">Comptime arguments</a>
       <a href="#operators">Operators</a>
     </nav>

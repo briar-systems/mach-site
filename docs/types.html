@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -89,16 +90,57 @@
         <p>There is no compiler <code>bool</code>. It is a stdlib alias <code>def bool: u8;</code>, with <code>true</code> and <code>false</code> as stdlib <code>val</code>s (<code>1</code> and <code>0</code>).</p>
       </div>
 
-      <h2 id="vectors">SIMD vectors <span class="badge badge-planned">planned</span></h2>
-      <p>The planned design extends the primitive numeric types into vectors by appending <code>x&lt;count&gt;</code>.</p>
+      <h2 id="vectors">SIMD vectors</h2>
+      <p>A vector type is a <strong>form</strong>, not a fixed list: any primitive numeric element followed by <code>x</code> and a lane count.</p>
       <pre class="code"><code><span class="type">f32x4</span>           <span class="cmt"># 4 lanes of f32</span>
 <span class="type">i32x8</span>           <span class="cmt"># 8 lanes of i32</span>
 <span class="type">u8x16</span>          <span class="cmt"># 16 lanes of u8</span></code></pre>
-      <p>The grammar is <code>&lt;u|i|f&gt;&lt;width&gt;(x&lt;count&gt;)*</code>. Higher dimensions such as <code>f32x4x4</code> are legal grammatically; the compiler ships only the entries its target backends can accelerate.</p>
-      <div class="callout warn">
-        <span class="callout-label">Not yet implemented</span>
-        <p>The compiler does not seed vector types today. A name like <code>f32x4</code> resolves as an ordinary unbound identifier, not a type. The grammar above describes the planned design only.</p>
-      </div>
+      <p>The spelling is <code>&lt;u|i|f&gt;&lt;width&gt;x&lt;count&gt;</code> with a <strong>single</strong> <code>x</code>. A name like <code>f32x4x4</code> is not a vector type and resolves as an ordinary identifier: a matrix is an algorithm over vectors and belongs in a library, not in the language. <code>ptr</code> is not a lane element, since its width is target-defined rather than a scalar bit count.</p>
+      <p>Two rules bound the form, and <strong>neither depends on the target</strong>: at least 2 lanes (<code>f32x1</code> is refused - a one-lane vector is just its scalar), and at most 65535 (a compiler limit; the lane count rides a 16-bit field through codegen). Everything else is legal at every width. <code>f32x3</code> is 96 bits, <code>f32x8</code> is 256, and both compile on every target - including one with no vector unit at all.</p>
+      <p><strong>Width is a realization question, not a legality one.</strong> How a shape is realized does depend on the target, and there are three answers: one packed instruction where the shape fits a vector register and the operation has a packed form; a value placed in memory and worked one lane at a time where it does not; and per-lane scalar code on a target with no vector unit (riscv64 today). All three compute identical lanes - the expansion is a fixed unroll, never a reassociation - so only performance varies. A target that gains wider vector registers therefore gets <strong>better code</strong>, not new spellings. The <code>simd</code> profile key reports or refuses the scalar cases when a project cannot afford them; see <a href="manifest.html#profiles">Manifest</a>.</p>
+      <p>A vector spelling is recognized only in <strong>type</strong> position, so a <em>value</em> may still be named <code>f32x4</code>. A <em>type</em> may not: <code>rec</code>, <code>uni</code>, and <code>def</code> reject a name spelled as a vector form, because such a type would be silently unreachable - every use in type position resolves to the vector instead.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">f32x4</span>: <span class="type">i64</span> = <span class="num">7</span>;             <span class="cmt"># fine: values are a different position</span>
+<span class="kw">rec</span> <span class="type">f32x3</span> { <span class="param">x</span>: <span class="type">f32</span>; }           <span class="cmt"># error: `f32x3` is spelled as a vector type</span></code></pre>
+
+      <h3 id="vector-layout">Size and alignment</h3>
+      <p><code>$size_of</code> is <strong>lane-derived</strong> - lanes x element size, packed, with no padding at any width.</p>
+      <table>
+        <thead><tr><th>Type</th><th><code>$size_of</code></th><th><code>$align_of</code></th></tr></thead>
+        <tbody>
+          <tr><td><code>f32x2</code></td><td>8</td><td>4</td></tr>
+          <tr><td><code>f32x3</code></td><td>12</td><td>4</td></tr>
+          <tr><td><code>f32x4</code></td><td>16</td><td>16</td></tr>
+          <tr><td><code>i16x4</code></td><td>8</td><td>2</td></tr>
+          <tr><td><code>f32x8</code></td><td>32</td><td>16</td></tr>
+        </tbody>
+      </table>
+      <p><code>$align_of</code> has two rungs, each for its own reason. A vector <em>narrower</em> than the vector register is a packed aggregate that loads piecewise, so it aligns to a single lane - which is what makes <code>[N]f32x3</code> a usable packed vertex buffer, since padding <code>f32x3</code> to 16 bytes would make it indistinguishable from <code>f32x4</code> in memory. One that <em>fills</em> the register aligns to its whole size, because the machine's vector load requires it. One <em>wider</em> than the register is placed as several register-width pieces and so aligns to the register width - 16 for <code>f32x8</code>, not 32.</p>
+
+      <h3 id="vector-values">Literals and lanes</h3>
+      <p><strong>Literals are full-arity</strong>: one initializer per lane, mirroring array literals. Too few or too many lanes is a compile error. An uninitialized vector local default-initializes to all-zero lanes.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">v</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};
+<span class="kw">var</span> <span class="param">z</span>: <span class="type">i32x4</span>;                   <span class="cmt"># every lane is 0</span></code></pre>
+      <p><code>v[i]</code> reads or writes a single lane. The index must be a comptime constant in <code>[0, lanes)</code>, checked the same way an array index is: <code>v[4]</code> on a <code>u32x4</code> reports <code>index 4 is out of bounds for `u32x4` of length 4</code>. A dynamic lane index is not supported in this increment.</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">v</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};
+<span class="kw">val</span> <span class="param">x</span>: <span class="type">f32</span> = v[<span class="num">0</span>];              <span class="cmt"># read lane 0</span>
+v[<span class="num">3</span>] = <span class="num">9.0</span>;                     <span class="cmt"># write lane 3</span></code></pre>
+      <p>Arrays of vectors (<code>[4]f32x4</code>) and pointers to vectors (<code>*f32x4</code>) are ordinary composite types over a vector element. There are no scalar-to-vector casts in this increment: neither an implicit conversion nor a <code>1.0::f32x4</code> reinterpret is legal.</p>
+
+      <h2 id="handles">Handles</h2>
+      <p>A <strong>handle</strong> is a type whose representation is not the program's: the owning target mints it and the pipeline binds it. A shader reads a texture through one.</p>
+      <p>The language knows only the machinery. A handle is a <strong>bodyless <code>def</code></strong> carrying <code>#[handle(target, constructor, operands...)]</code>, and which constructors exist, what operands each takes, and what an operand means all belong to the named target.</p>
+      <pre class="code"><code><span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"image"</span>, TEXEL_F32, DIM_2D, NO_DEPTH, NONARRAYED, SINGLE_SAMPLED, SAMPLED)]</span>
+<span class="kw">pub</span> <span class="kw">def</span> <span class="type">Texture2D</span>;
+
+<span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"sampled_image"</span>, <span class="type">Texture2D</span>)]</span>
+<span class="kw">pub</span> <span class="kw">def</span> <span class="type">Sampler2D</span>;
+
+<span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"sampler"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">def</span> <span class="type">Sampler</span>;</code></pre>
+      <p><code>def</code> is the carrier because it already means "this name denotes a type" and promises no fields and no storage, which is exactly what a handle is. There is no body because the target supplies the definition. Operands are ordinary comptime constants, with one exception: a constructor composing over another handle takes a <strong>type name</strong>, so <code>Sampler2D</code> names the image it wraps rather than restating that image's operands and cannot disagree with it.</p>
+      <p>Every rule a handle carries follows from the one fact the directive states, and the set is fixed and closed rather than varied per declaration: no fields, no indexing, no construction; it cannot be a local binding, a record or union field, or sit behind a pointer or inside an array; it reaches an operation only by being passed to one, bound as a descriptor; and its extent is declared by the owning target.</p>
+      <p><code>$size_of</code> a handle is the target's pointer size - it is a name for a resource, and a pointer is the shape every target already has for that. On a target that mints no such type the declaration is <strong>inert</strong>: it still denotes a type and still sizes, and an operation over it is an undefined symbol at link. A target refuses an operand combination its constructor spells but it cannot emit, naming the operand rather than the declaration.</p>
+      <p>See <a href="shaders.html">GPU shaders</a> for binding a handle and sampling through one.</p>
 
       <h2 id="pointer">Pointers</h2>
       <p><code>*T</code> is a pointer to a value of type <code>T</code>. Take an address with <code>?</code> and read through it with <code>@</code>.</p>
@@ -110,6 +152,11 @@
       <p><code>[N]T</code> is an array of exactly <code>N</code> values of type <code>T</code>. Arrays nest as <code>[N][M]T</code>.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">a</span>: [<span class="num">4</span>]<span class="type">i64</span>    = [<span class="num">4</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>};
 <span class="kw">val</span> <span class="param">g</span>: [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span> = [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span>{ [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>}, [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">3</span>, <span class="num">4</span>} };</code></pre>
+      <p><strong>Constant indices are bounds-checked at compile time.</strong> <code>N</code> is part of the type, so an index the compiler can fold must land in <code>[0, N)</code>.</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">xs</span>: [<span class="num">4</span>]<span class="type">i32</span>;
+<span class="kw">val</span> <span class="param">a</span>: <span class="type">i32</span> = xs[<span class="num">3</span>];             <span class="cmt"># ok</span>
+<span class="kw">val</span> <span class="param">b</span>: <span class="type">i32</span> = xs[<span class="num">4</span>];             <span class="cmt"># error: index 4 is out of bounds for `[4]i32` of length 4</span></code></pre>
+      <p>The rule is keyed on the length the type carries, not on how the array was spelled, so a <code>def</code> alias, an array field of a generic instance, a nested array, and a <code>^</code>-qualified array are all checked the same way. It is exactly the length <code>$length_of</code> reports, and a vector's lane count takes the identical rule. Only a <strong>constant</strong> index is checked: a runtime index is not, and a pointer is not indexed against any length at all, since <code>*T</code> carries none.</p>
 
       <h2 id="function-type">Function types</h2>
       <p><code>fun(T1, T2) R</code> is a first-class function-pointer type, usable as a value's type just like any scalar.</p>
@@ -128,7 +175,9 @@
           <li><a href="values.html">Values and variables</a> - <code>def</code> aliases, <code>val</code> constants, and how <code>bool</code> is built</li>
           <li><a href="records-unions.html">Records and unions</a> - declaring named <code>rec</code> and <code>uni</code> types</li>
           <li><a href="expressions.html">Expressions</a> - which operations work on each type</li>
-          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$align_of</code> over any type</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code>, <code>$align_of</code>, and <code>$length_of</code> over any type</li>
+          <li><a href="shaders.html">GPU shaders</a> - what a handle is bound to, and the vectors a stage computes over</li>
+          <li><a href="secrecy.html">Secrecy</a> - the <code>^</code> qualifier over any of these types</li>
         </ul>
       </div>
 
@@ -139,6 +188,9 @@
       <div class="toc-title">On this page</div>
       <a href="#scalars">Primitive scalars</a>
       <a href="#vectors">SIMD vectors</a>
+      <a class="sub" href="#vector-layout">Size and alignment</a>
+      <a class="sub" href="#vector-values">Literals and lanes</a>
+      <a href="#handles">Handles</a>
       <a href="#pointer">Pointers</a>
       <a href="#array">Arrays</a>
       <a href="#function-type">Function types</a>
