@@ -17,6 +17,7 @@
     { title: "External functions", group: "Language", url: "ext-fun.html" },
     { title: "Secrecy", group: "Language", url: "secrecy.html" },
     { title: "Inline assembly", group: "Language", url: "asm.html" },
+    { title: "GPU shaders", group: "Language", url: "shaders.html" },
     { title: "The comptime channel", group: "Comptime", url: "comptime.html" },
     { title: "Intrinsics", group: "Comptime", url: "intrinsics.html" },
     { title: "Control flow", group: "Comptime", url: "comptime-control.html" },

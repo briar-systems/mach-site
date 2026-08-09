@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -74,12 +75,53 @@
       <p class="lead">Intrinsics are compiler-shipped comptime functions. They share the ordinary <code>$name(args)</code> call shape, but their names are reserved and their bodies live in the compiler. The set is closed: adding one requires a compiler change.</p>
 
       <h2 id="value-intrinsics">Value intrinsics</h2>
-      <p>These fold to a comptime constant unsigned integer. The storage type is whatever the binding declares - Mach has no compiler-known <code>usize</code>.</p>
+      <p>These fold to a comptime constant <code>u64</code>. Mach has no implicit widening or narrowing, so a binding of another integer type takes an explicit <code>::</code> cast.</p>
       <pre class="code"><code><span class="ct">$size_of</span>(<span class="type">T</span>)             <span class="cmt"># byte size of type T</span>
+<span class="ct">$length_of</span>(<span class="type">T</span>)           <span class="cmt"># ELEMENT count of type T</span>
 <span class="ct">$align_of</span>(<span class="type">T</span>)            <span class="cmt"># byte alignment of type T</span>
 <span class="ct">$offset_of</span>(<span class="type">T</span>, field)    <span class="cmt"># byte offset of T's field</span></code></pre>
-      <pre class="code"><code><span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_SIZE</span>: <span class="type">i64</span> = <span class="ct">$size_of</span>(<span class="type">Point</span>);
-<span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_X</span>:    <span class="type">i64</span> = <span class="ct">$offset_of</span>(<span class="type">Point</span>, x);</code></pre>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_SIZE</span>: <span class="type">u64</span> = <span class="ct">$size_of</span>(<span class="type">Point</span>);
+<span class="kw">pub</span> <span class="kw">val</span> <span class="param">POINT_X</span>:    <span class="type">i64</span> = <span class="ct">$offset_of</span>(<span class="type">Point</span>, x)::<span class="type">i64</span>;</code></pre>
+      <p><code>T</code> is a <strong>type</strong>, written with the ordinary type grammar - not just a bare name. A generic instance, a pointer, an array, a <code>^</code> secret, and a qualified <code>module.Type</code> are all valid, including inside the generic that owns the parameter. <code>$offset_of</code>'s second argument is the exception: a bare field name, resolved against the record's layout, never a type or a value.</p>
+
+      <h3 id="length-of"><code>$length_of</code>: elements, not bytes</h3>
+      <p><code>$size_of</code> counts bytes and <code>$length_of</code> counts elements. For <code>[N]u8</code> the two answers are equal; for everything else they are not, and the difference is deliberately in the surface rather than in the caller's head - making a caller divide by an element size is exactly the silent-arithmetic error the <code>u8</code> case hides during development.</p>
+      <pre class="code"><code><span class="ct">$length_of</span>(<span class="param">PIXELS</span>)      <span class="cmt"># 400   - elements, for a [400]f32x4</span>
+<span class="ct">$size_of</span>(<span class="param">PIXELS</span>)        <span class="cmt"># 6400  - bytes</span>
+<span class="ct">$length_of</span>(<span class="type">f32x4</span>)        <span class="cmt"># 4     - a vector's lane count</span></code></pre>
+      <p><strong>Only a fixed array and a vector have an answer</strong>, and everything else is refused rather than guessed: a pointer (<code>str</code> included) has a length the compiler does not know, and a record has a field count rather than an element count. The refusal names the type it was handed.</p>
+
+      <h3 id="binding-operand">The operand may be a binding</h3>
+      <p>Every intrinsic taking a type operand also accepts a <strong>value binding</strong> there, denoting that binding's type. A binding's type has no spelling - <code>val LOGO: [_]u8</code> really is a concrete <code>[7194]u8</code> that cannot be written - so without this a program could index an embed and pass it around and never learn its length.</p>
+      <pre class="code"><code><span class="deco">#[embed(<span class="str">"assets/logo.qoi"</span>)]</span>
+<span class="kw">val</span> <span class="param">LOGO</span>: [_]<span class="type">u8</span>;
+
+<span class="ct">$length_of</span>(<span class="param">LOGO</span>)        <span class="cmt"># 7194 - elements</span>
+<span class="ct">$size_of</span>(<span class="param">LOGO</span>)          <span class="cmt"># 7194 - bytes</span></code></pre>
+      <p>This is the operand slot's rule, not a per-intrinsic one, and it is <strong>only</strong> that slot. A name written where a type is expected and resolving to a value is still a mistake in every other position.</p>
+
+      <h3 id="where-constant">Where a layout intrinsic folds</h3>
+      <p><code>$size_of</code>, <code>$length_of</code>, and <code>$align_of</code> fold in every <strong>type</strong> position, including ones resolved before layout would otherwise be known: the measured type's layout is established on demand when the measurement asks for it, so where the type is <em>declared</em> relative to where it is measured makes no difference.</p>
+      <table>
+        <thead><tr><th>Position</th><th><code>$size_of</code> / <code>$length_of</code> / <code>$align_of</code></th></tr></thead>
+        <tbody>
+          <tr><td><code>val</code> / <code>var</code> initializer</td><td>yes</td></tr>
+          <tr><td>global <code>align</code></td><td>yes</td></tr>
+          <tr><td>record / union type <code>align</code></td><td>yes</td></tr>
+          <tr><td>array length <code>[N]T</code></td><td>yes</td></tr>
+          <tr><td><code>$if</code> / <code>$or</code> condition, in a function body</td><td>yes</td></tr>
+          <tr><td><code>$if</code> / <code>$or</code> condition, in declaration scope</td><td>only when no arm of the chain declares anything</td></tr>
+        </tbody>
+      </table>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Pair</span> { <span class="param">a</span>: <span class="type">u64</span>; <span class="param">b</span>: <span class="type">u64</span>; }
+
+<span class="deco">#[align(<span class="ct">$align_of</span>(<span class="type">Pair</span>))]</span>        <span class="cmt"># a type's alignment</span>
+<span class="kw">rec</span> <span class="type">Over</span> { <span class="param">x</span>: <span class="type">u8</span>; }
+
+<span class="kw">rec</span> <span class="type">Holder</span> { <span class="param">buf</span>: [<span class="ct">$size_of</span>(<span class="type">Pair</span>)]<span class="type">u8</span>; }   <span class="cmt"># an array length, inside a field type</span></code></pre>
+      <p>A layout relationship is the thing most worth asserting and it now has a home: <code>$if ($size_of(A) != $size_of(B)) { $error("..."); }</code> fails the build that introduces the divergence, rather than a runtime test that fires only if someone runs the suite.</p>
+      <p><code>$offset_of</code> is the exception among the four: it folds in a value position but not in a type one, because a field offset is settled during lowering rather than by the front end. Which times a declaration-scope gate may measure at is covered in <a href="comptime-control.html#decl-scope">Control flow</a>.</p>
+      <p><strong>Cycles are refused, not resolved.</strong> A measurement whose answer is one of its own inputs - <code>#[align($size_of(Self))]</code>, or two types each aligned to the other's size - is reported as a layout cycle naming the type that closes it. A pointer field does not create one: it stores an address of fixed width, so <code>rec Node { next: *Node; }</code> measures normally.</p>
 
       <h2 id="type-intrinsic">Type intrinsic</h2>
       <p><code>$type_of(expr)</code> produces a comptime type value: the resolved type of its argument. Type values have no runtime representation; they are meaningful only as operands in comptime type comparisons.</p>
@@ -97,10 +139,72 @@
       <p>Where <code>$type_of</code> asks what a type <em>is</em>, the predicates ask about its <strong>shape</strong>. Each takes one type operand and folds in a <code>$if</code> / <code>$or</code> gate.</p>
       <pre class="code"><code><span class="ct">$is_record</span>(<span class="type">T</span>)           <span class="cmt"># T is a record (or an instance of one)</span>
 <span class="ct">$is_union</span>(<span class="type">T</span>)            <span class="cmt"># T is a union  (or an instance of one)</span>
-<span class="ct">$is_pointer</span>(<span class="type">T</span>)          <span class="cmt"># T is a reference: the raw `ptr` or a typed `*U`</span></code></pre>
+<span class="ct">$is_pointer</span>(<span class="type">T</span>)          <span class="cmt"># T is a reference: the raw `ptr` or a typed `*U`</span>
+<span class="ct">$is_secret</span>(<span class="type">T</span>)           <span class="cmt"># T is `^`-qualified at the outermost level</span></code></pre>
       <p>They are <strong>comptime-only</strong>. A gate condition selects an arm, and there is no runtime boolean for one to become, so using a predicate as a value is an error.</p>
-      <p>A <code>^</code> secret wrapper is stripped before the question is answered: <code>^Pair</code> is a record, because <code>^T</code> is a wrapper over <code>T</code>'s storage. A generic instance answers as the declaration it instantiates, so <code>Box[i64]</code> is a record - which is the type a reflection loop actually meets.</p>
-      <p>This is what makes <em>recursive</em> reflection expressible: a <code>$fields</code> walk can ask each field whether to descend into it.</p>
+      <p><strong><code>^</code> is a constructor, and a predicate answers about the outermost one.</strong> <code>^Pair</code> is a secret, not a record, so the three shape predicates answer false and a reflection walk refuses it instead of descending into secret storage. That is what keeps a predicate and <code>$fields</code> in agreement: <code>$fields(^Pair)</code> refuses, so a gate that called <code>^Pair</code> a record would send a walk into an operand the intrinsic then rejects.</p>
+      <p>Outermost means outermost. <code>^*u8</code> is a secret pointer and <code>$is_pointer</code> answers false; <code>*^u8</code> is a <strong>public</strong> pointer to secret storage and is still a pointer, since the address is public. A generic instance answers as the declaration it instantiates, so <code>Box[i64]</code> is a record - which is the type a reflection loop actually meets - and <code>Box[^u64]</code> is a record too, because the instance is not itself secret; its field is, and the field is where a walk meets the question.</p>
+      <p>Inside a generic, a predicate is answered <strong>per instantiation</strong>: <code>$is_record(T)</code> in a <code>fun f[T]()</code> body is not decided against the template's placeholder, so <code>f[SomeRecord]</code> and <code>f[u64]</code> take different arms from one template.</p>
+
+      <h3 id="is-secret"><code>$is_secret</code></h3>
+      <p><code>$is_secret</code> is the family's fourth member and its one exception, and the exception is coherent rather than special-cased: the other three ask about the shape <em>under</em> the wrapper, this one asks about the wrapper itself. It is what makes the other three's false readable - <code>$is_record(^Pair)</code> and <code>$is_record(u64)</code> are otherwise the same answer, so without it a library could only ever meet a secret as a fallthrough it had to refuse.</p>
+      <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) {
+    <span class="ct">$if</span> (<span class="ct">$is_secret</span>(f.type)) { ... }        <span class="cmt"># redact, refuse, or compare in constant time</span>
+    <span class="ct">$or</span> { ... }                             <span class="cmt"># an ordinary public field</span>
+}</code></pre>
+      <table>
+        <thead><tr><th>Operand</th><th><code>$is_secret</code></th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><code>^u64</code>, <code>^Pair</code>, <code>^[4]u8</code></td><td>true</td><td><code>^</code> is outermost</td></tr>
+          <tr><td><code>^*u8</code></td><td>true</td><td>a secret <strong>pointer</strong>: the address is the secret</td></tr>
+          <tr><td><code>^^T</code></td><td>true</td><td><code>^^T</code> collapses to <code>^T</code></td></tr>
+          <tr><td><code>*^u8</code></td><td>false</td><td>a <strong>public</strong> pointer to secret storage</td></tr>
+          <tr><td><code>[4]^u8</code></td><td>false</td><td>a public array of secret elements</td></tr>
+          <tr><td><code>rec S { k: ^u64; }</code></td><td>false</td><td>the record is public, its <strong>field</strong> is secret</td></tr>
+          <tr><td><code>u64</code>, <code>Pair</code>, <code>ptr</code></td><td>false</td><td>no <code>^</code> anywhere</td></tr>
+        </tbody>
+      </table>
+      <p><strong>It is not transitive, deliberately.</strong> "Does this contain a secret anywhere" is a different question, and folding the two together would make the common case answer wrong: a <code>fmt</code> derive gating on a transitive answer would redact a whole record over one field, and could not tell which field to redact. Where the transitive question is genuinely wanted through a reference it is <em>composed</em>: <code>$is_secret($pointee_of(f.type))</code> says whether a pointer field points at secret storage.</p>
+
+      <h2 id="pointee-of"><code>$pointee_of(T)</code>: descend through a reference</h2>
+      <p><code>$is_pointer</code> tells a walk that a field is a reference. <code>$pointee_of</code> says what it refers to, which is what makes the reference traversable rather than merely detectable.</p>
+      <pre class="code"><code><span class="ct">$pointee_of</span>(*<span class="type">U</span>)         <span class="cmt"># U</span>
+<span class="ct">$pointee_of</span>(**<span class="type">U</span>)        <span class="cmt"># *U - one level, not all of them</span></code></pre>
+      <p>It is a type <strong>constructor</strong>, in the same family as <code>*</code>, <code>[N]</code>, and <code>^</code>, not a call that returns a value. So it is written wherever a type is written, including nested inside another intrinsic's operand and inside a generic argument list.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Node</span> { <span class="param">value</span>: <span class="type">i64</span>; <span class="param">next</span>: *<span class="type">Inner</span>; }
+
+<span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Node</span>) {
+    <span class="ct">$if</span> (<span class="ct">$is_pointer</span>(f.type)) {
+        <span class="ct">$each</span> g <span class="kw">in</span> <span class="ct">$fields</span>(<span class="ct">$pointee_of</span>(f.type)) {    <span class="cmt"># gate, then descend</span>
+            total = total + (@(n.[f])).[g];
+        }
+    }
+    <span class="ct">$or</span> { total = total + n.[f]; }
+}</code></pre>
+      <p>Because <code>str</code> is <code>def str: *char</code>, a <code>str</code> field is a reference field, and <code>$pointee_of(str)</code> is <code>u8</code> - which is what a formatter rendering a <code>str</code> field needs.</p>
+      <p><strong>Everything that is not a typed reference is refused, and the refusal names what it was handed</strong>, because a plausible wrong type here flows into a <code>$fields</code> walk that then reports about the wrong record. <code>ptr</code> is refused (the raw pointer is untyped and carries no pointee) and so is <code>^*U</code> (a <code>^</code> secret is not a reference). <code>^</code> is <strong>not</strong> stripped, which puts <code>$pointee_of</code> with the predicates rather than with <code>$size_of</code>: <code>$is_pointer(^*U)</code> answers false, so descending through <code>^*U</code> would hand a walk the secret storage the gate refused it.</p>
+      <div class="callout warn">
+        <span class="callout-label">Termination</span>
+        <p>Following references does not terminate structurally. A record cannot contain itself by value, so a <code>$is_record</code> descent reaches a finite set of types; a reference graph has no such property. <code>rec Grow[T] { p: *Grow[*T]; n: i64; }</code> is legal and has unboundedly many instances. The compiler's generic-instantiation guard turns that into a diagnostic naming the derivation chain rather than a hang, but that is a backstop, not a termination story - a library that walks references owes its callers one of its own.</p>
+      </div>
+
+      <h2 id="strip-rules">Where <code>^</code> is stripped</h2>
+      <p>One rule covers the whole surface: <strong><code>^</code> is stripped only where the question is about storage.</strong></p>
+      <table>
+        <thead><tr><th>Asks about</th><th>Strips <code>^</code></th></tr></thead>
+        <tbody>
+          <tr><td><code>$size_of</code> / <code>$length_of</code> / <code>$align_of</code> / <code>$offset_of</code></td><td>yes - a secret occupies its base type's storage</td></tr>
+          <tr><td><code>$is_record</code> / <code>$is_union</code> / <code>$is_pointer</code></td><td>no - <code>^T</code> is a secret, not a <code>T</code></td></tr>
+          <tr><td><code>$is_secret</code></td><td>no - and it is the one query <em>about</em> the <code>^</code></td></tr>
+          <tr><td><code>$pointee_of</code></td><td>no - <code>^*U</code> is a secret, and is refused rather than followed</td></tr>
+          <tr><td><code>$type_name</code></td><td>no - the spelling is <code>^T</code></td></tr>
+          <tr><td><code>$fields</code></td><td>no - a secret record is refused, not walked</td></tr>
+          <tr><td>type comparison (<code>f.type == u64</code>)</td><td>no - <code>^u64</code> is not <code>u64</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="recursive-reflection">Recursive reflection</h2>
+      <p>A <code>$fields</code> walk can ask each field whether to descend into it.</p>
       <pre class="code"><code><span class="kw">rec</span> <span class="type">Inner</span> { <span class="param">x</span>: <span class="type">u64</span>; <span class="param">y</span>: <span class="type">u64</span>; }
 <span class="kw">rec</span> <span class="type">Outer</span> { <span class="param">i</span>: <span class="type">Inner</span>; <span class="param">n</span>: <span class="type">u64</span>; }
 
@@ -114,18 +218,29 @@
       <h2 id="type-name"><code>$type_name(T)</code></h2>
       <p>A type's spelling, as a NUL-terminated string.</p>
       <pre class="code"><code><span class="ct">$type_name</span>(<span class="type">T</span>)           <span class="cmt"># the type's spelling, as a *u8</span></code></pre>
-      <p>Unlike the predicates this <strong>is</strong> a value (<code>*u8</code>), usable anywhere one is. The spelling is the same one diagnostics print, so a name a program reads and a name an error reports cannot drift. Composites spell compositely - <code>$type_name(*Pair)</code> is <code>"*Pair"</code> - and a <code>^</code> wrapper is stripped as it is for the predicates.</p>
+      <p>Unlike the predicates this <strong>is</strong> a value (<code>*u8</code>), usable anywhere one is. The spelling is the same one diagnostics print, so a name a program reads and a name an error reports cannot drift. Composites spell compositely - <code>$type_name(*Pair)</code> is <code>"*Pair"</code> - and <code>^</code> spells too: <code>$type_name(^Pair)</code> is <code>"^Pair"</code>. Stripping it would be a drift on the one qualifier where a drift matters most, since a diagnostic about that type prints <code>^Pair</code>.</p>
 
       <h2 id="type-operand">The type operand</h2>
-      <p><code>$size_of</code>, <code>$align_of</code>, <code>$offset_of</code>, <code>$fields</code>, and the queries above all take a <strong>type</strong> in argument 0, written with the ordinary type grammar - plus one extra form: a field descriptor's <code>f.type</code> inside a <code>$each</code> body.</p>
+      <p><code>$size_of</code>, <code>$length_of</code>, <code>$align_of</code>, <code>$offset_of</code>, <code>$fields</code>, and the queries above all take a <strong>type</strong> in argument 0, written with the ordinary type grammar - plus one extra form: a field descriptor's <code>f.type</code> inside a <code>$each</code> body. <code>$pointee_of</code> is part of that grammar rather than one of its consumers, so it composes with every one of them.</p>
       <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) {
     <span class="kw">val</span> <span class="param">n</span>: <span class="type">u64</span> = <span class="ct">$size_of</span>(f.type);      <span class="cmt"># the field's own size</span>
     <span class="ct">$each</span> g <span class="kw">in</span> <span class="ct">$fields</span>(f.type) { ... }  <span class="cmt"># its own fields</span>
 }</code></pre>
-      <p>That form is what makes recursive reflection expressible: inside the loop a field's type has no spelling, only the descriptor. A path that is genuinely a qualified type name (<code>mod.Type</code>) still reads as one.</p>
+      <p>Inside the loop a field's type has no spelling, only the descriptor. A path that is genuinely a qualified type name (<code>mod.Type</code>) still reads as one.</p>
+      <p>The same form is valid in a <strong>generic argument list</strong>, which is what makes a walk recursive rather than merely descending.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">eq</span>[<span class="type">T</span>](<span class="param">a</span>: *<span class="type">T</span>, <span class="param">b</span>: *<span class="type">T</span>) <span class="type">bool</span> {
+    <span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) {
+        <span class="ct">$if</span> (<span class="ct">$is_record</span>(f.type)) {
+            <span class="kw">if</span> (!<span class="fn">eq</span>[f.type](?a.[f], ?b.[f])) { <span class="kw">ret</span> <span class="param">false</span>; }   <span class="cmt"># re-enter at the field's type</span>
+        }
+        <span class="ct">$or</span> { <span class="kw">if</span> (a.[f] != b.[f]) { <span class="kw">ret</span> <span class="param">false</span>; } }
+    }
+    <span class="kw">ret</span> <span class="param">true</span>;
+}</code></pre>
+      <p>Without it, <code>$fields(f.type)</code> gives one level of descent per <code>$each</code> someone wrote, so a walk reaches only as deep as its author hand-unrolled. With it the walk is written once and reaches any depth. <strong>Termination is structural and needs no depth limit</strong>: each descent instantiates at a field's own type, a record's fields are finite, and a record cannot contain itself by value - a self-reference must go through a pointer, which <code>$is_record</code> does not select.</p>
 
       <h2 id="fields">Field intrinsic and projection</h2>
-      <p><code>$fields(T)</code> produces a comptime sequence of field descriptors for record or union type <code>T</code>. Each descriptor carries three readable properties.</p>
+      <p><code>$fields(T)</code> produces a comptime sequence of field descriptors for record type <code>T</code>, written with the full type grammar exactly as the layout intrinsics take it (<code>$fields(Box[T])</code>, <code>$fields(mod.Rec)</code>). A <strong>union is refused</strong>: its variants overlap in storage, so a member walk over them would report distinct fields at distinct offsets that do not exist. Each descriptor carries three readable properties.</p>
       <table>
         <thead><tr><th>Property</th><th>Type</th><th>Value</th></tr></thead>
         <tbody>
@@ -135,7 +250,7 @@
         </tbody>
       </table>
       <p>The sequence is consumed by <code>$each f in $fields(T)</code>. Inside the body, <code>v.[f]</code> projects the concrete field off an instance <code>v</code>. It is an lvalue: readable and writable, including through a pointer receiver.</p>
-      <pre class="code"><code><span class="ct">$fields</span>(<span class="type">T</span>)              <span class="cmt"># comptime field sequence for record/union T</span>
+      <pre class="code"><code><span class="ct">$fields</span>(<span class="type">T</span>)              <span class="cmt"># comptime field sequence for record T</span>
 v.[f]                   <span class="cmt"># comptime field projection: access the field f on v</span></code></pre>
       <pre class="code"><code><span class="kw">rec</span> <span class="type">Pair</span> { <span class="param">x</span>: <span class="type">i64</span>; <span class="param">y</span>: <span class="type">i64</span>; }
 
@@ -196,10 +311,39 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
 }</code></pre>
 
       <h2 id="each">$each: compile-time unroll</h2>
-      <p><code>$each</code> is a statement form that splices its body once per element of a comptime sequence. There are two sequence forms.</p>
+      <p><code>$each</code> is a statement form that splices its body once per element of a comptime sequence. There are three sequence forms.</p>
       <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) { ... }    <span class="cmt"># one iteration per field of T</span>
-<span class="ct">$each</span> a <span class="kw">in</span> va { ... }            <span class="cmt"># one iteration per element of pack va</span></code></pre>
+<span class="ct">$each</span> a <span class="kw">in</span> va { ... }            <span class="cmt"># one iteration per element of pack va</span>
+<span class="ct">$each</span> x <span class="kw">in</span> <span class="param">ARR</span> { ... }           <span class="cmt"># one iteration per element of a constant array val</span></code></pre>
       <p>It is valid only in statement scope, inside a function body. It is not a loop: the body is duplicated at compile time, not iterated at runtime. Enclosing runtime variables (an index, an accumulator) are shared across all unrolled copies. See <a href="variadics.html">Variadic packs</a> for the pack form.</p>
+
+      <h3 id="each-array">$each over a comptime-constant array</h3>
+      <p><code>$each x in ARR</code> unrolls the body once per element of <code>ARR</code>, binding <code>x</code> to that element's compile-time constant. Unlike the pack and <code>$fields</code> forms, every element shares one type - the array's element type - so the loop variable is an ordinary constant value: it reads as a value, casts, dispatches a per-element <code>$if</code>, and for a record element projects fields with <code>x.field</code>.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">PRIMES</span>: [<span class="num">4</span>]<span class="type">i64</span> = [<span class="num">4</span>]<span class="type">i64</span>{<span class="num">2</span>, <span class="num">3</span>, <span class="num">5</span>, <span class="num">7</span>};
+
+<span class="kw">fun</span> <span class="fn">sum</span>() <span class="type">i64</span> {
+    <span class="kw">var</span> <span class="param">total</span>: <span class="type">i64</span> = <span class="num">0</span>;
+    <span class="ct">$each</span> x <span class="kw">in</span> <span class="param">PRIMES</span> {
+        total = total + x;      <span class="cmt"># x is 2, then 3, then 5, then 7</span>
+    }
+    <span class="kw">ret</span> total;                  <span class="cmt"># 17</span>
+}</code></pre>
+      <p>A per-element <code>$if</code> selects its arm from the element's constant, so heterogeneous handling falls out of the unroll - including a function-pointer field, which folds to the element's function.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Rule</span> { <span class="param">tag</span>: <span class="type">i64</span>; <span class="param">fn</span>: <span class="kw">fun</span>(<span class="type">i64</span>) <span class="type">i64</span>; }
+
+<span class="kw">val</span> <span class="param">RULES</span>: [<span class="num">3</span>]<span class="type">Rule</span> = [<span class="num">3</span>]<span class="type">Rule</span>{
+    <span class="type">Rule</span>{<span class="param">tag</span>: <span class="num">1</span>, <span class="param">fn</span>: inc},
+    <span class="type">Rule</span>{<span class="param">tag</span>: <span class="num">2</span>, <span class="param">fn</span>: dbl},
+    <span class="type">Rule</span>{<span class="param">tag</span>: <span class="num">3</span>, <span class="param">fn</span>: neg},
+};
+
+<span class="kw">fun</span> <span class="fn">run</span>(<span class="param">n</span>: <span class="type">i64</span>) {
+    <span class="ct">$each</span> r <span class="kw">in</span> <span class="param">RULES</span> {
+        <span class="ct">$if</span> (r.tag == <span class="num">2</span>) { <span class="fn">use_double</span>(r.<span class="fn">fn</span>(n)); }
+        <span class="ct">$or</span>              { <span class="fn">use_other</span>(r.tag, r.<span class="fn">fn</span>(n)); }
+    }
+}</code></pre>
+      <p><strong>Eligibility.</strong> <code>ARR</code> must name an immutable <code>val</code> (never a <code>var</code>) declared in the current module, whose type is a fixed-size array <code>[N]E</code> fully initialized by an array literal of exactly <code>N</code> elements. <code>E</code> must be a scalar or record type; nested-array element types are not supported. An empty array unrolls to nothing, and each violation is reported with a teaching diagnostic. Projection is one level deep (<code>x.field</code>); <code>x</code> itself is a constant and has no address, so <code>?x</code> is rejected.</p>
 
       <h2 id="diagnostics">Diagnostic intrinsics</h2>
       <p><code>$error("msg")</code> fails compilation with <code>msg</code> when it is reached on a live path: an unconditional position, or a <code>$if</code> / <code>$or</code> arm the compiler selects. A <code>$error</code> in a discarded arm never fires, so it is the natural total-coverage fallback for a <code>$type_of</code> dispatch: the unhandled-type <code>$or {}</code> arm fails the build at compile time instead of falling through to a runtime error. It is valid in both declaration and statement scope and takes one string-literal message.</p>
@@ -212,13 +356,14 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
 <span class="ct">$if</span> (<span class="ct">$type_of</span>(arg) == <span class="type">i64</span>) { <span class="fn">write_i64</span>(w, arg); }
 <span class="ct">$or</span> (<span class="ct">$type_of</span>(arg) == <span class="type">str</span>) { <span class="fn">write_str</span>(w, arg); }
 <span class="ct">$or</span> { <span class="ct">$error</span>(<span class="str">"no writer for this argument type"</span>); }    <span class="cmt"># compile error on an unhandled type</span></code></pre>
-      <div class="callout warn">
-        <span class="callout-label">Not yet implemented</span>
-        <p><code>$assert</code> <span class="badge badge-planned">planned</span> parses as a comptime directive but the compiler does not yet evaluate it. It is intended as sugar over <code>$if</code> plus <code>$error</code>: <code>$assert(cond, "msg")</code> is equivalent to <code>$if (!cond) { $error("msg"); }</code>, e.g. <code>$assert($size_of(i64) == 8, "expected 64-bit i64");</code>.</p>
-      </div>
-
       <h2 id="not-intrinsics">Not provided as intrinsics</h2>
       <p>Code intrinsics - runtime-instruction emitters like <code>trap</code>, <code>fence</code>, and <code>pause</code> - are not in the compiler-shipped set. They belong in the standard library as functions with per-arch <code>asm</code> bodies.</p>
+      <p><strong><code>$assert</code> is not an intrinsic either</strong>, and is not planned as one: <code>$if</code> and <code>$error</code> already compose to it exactly, so a dedicated directive would add spelling without adding capability. Write the composition directly.</p>
+      <pre class="code"><code><span class="cmt"># instead of $assert(cond, "msg")</span>
+<span class="ct">$if</span> (!cond) { <span class="ct">$error</span>(<span class="str">"msg"</span>); }
+
+<span class="ct">$if</span> (!(<span class="ct">$mach</span>.build.arch == <span class="ct">$mach</span>.arch.x86_64)) { <span class="ct">$error</span>(<span class="str">"expected x86_64"</span>); }</code></pre>
+      <p>The composition inherits <code>$if</code>'s condition rules, which is the point: the same conditions fold there as in any other gate, and the ones that do not refuse with their own cause rather than through a second surface that could describe them differently. A chain written this way declares nothing, so in declaration scope it is decided during type checking and can measure a type.</p>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -235,8 +380,15 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
       <a href="#value-intrinsics">Value intrinsics</a>
+      <a class="sub" href="#length-of">$length_of</a>
+      <a class="sub" href="#binding-operand">The operand may be a binding</a>
+      <a class="sub" href="#where-constant">Where a layout intrinsic folds</a>
       <a href="#type-intrinsic">Type intrinsic</a>
       <a href="#predicates">Type predicates</a>
+      <a class="sub" href="#is-secret">$is_secret</a>
+      <a href="#pointee-of">$pointee_of</a>
+      <a href="#strip-rules">Where ^ is stripped</a>
+      <a href="#recursive-reflection">Recursive reflection</a>
       <a href="#type-name">$type_name</a>
       <a href="#type-operand">The type operand</a>
       <a href="#fields">Field intrinsic and projection</a>
@@ -244,6 +396,7 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
       <a class="sub" href="#descriptor-reads">Descriptor reads</a>
       <a class="sub" href="#nested">Nested $each</a>
       <a href="#each">$each: compile-time unroll</a>
+      <a class="sub" href="#each-array">Over a constant array</a>
       <a href="#diagnostics">Diagnostic intrinsics</a>
       <a href="#not-intrinsics">Not provided as intrinsics</a>
     </nav>

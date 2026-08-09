@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -105,14 +106,15 @@
     <span class="param">a</span>: <span class="type">u8</span>;
     <span class="param">b</span>: <span class="type">i64</span>;
 }</code></pre>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>Disabling padding entirely (a <code>packed</code> layout for binary-protocol or on-disk structs) is not yet available. Field-to-field padding always follows the natural alignment rule.</p>
-      </div>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>Set a type's alignment with the <code>#[align(N)]</code> decorator.</p>
-      </div>
+      <p><code>#[packed]</code> is the inverse: every field sits immediately after the previous one, there is no tail padding, and the type takes no alignment from its fields. That is what describes a shape whose layout is not mach's to choose - a C struct, a file header, a wire frame. The two compose, each owning one question: <code>packed</code> decides padding, <code>align</code> decides the record's own alignment.</p>
+      <pre class="code"><code><span class="deco">#[packed]</span>
+<span class="kw">rec</span> <span class="type">Header</span> {
+    <span class="param">magic</span>:    <span class="type">u8</span>;    <span class="cmt"># offset 0</span>
+    <span class="param">version</span>:  <span class="type">u16</span>;   <span class="cmt"># offset 1</span>
+    <span class="param">length</span>:   <span class="type">u32</span>;   <span class="cmt"># offset 3</span>
+    <span class="param">checksum</span>: <span class="type">u64</span>;   <span class="cmt"># offset 7</span>
+}                    <span class="cmt"># $size_of == 15, $align_of == 1</span></code></pre>
+      <p>Packing is <strong>not transitive</strong>: a record a packed record contains keeps its own internal padding and is merely placed without any. Taking the address of a packed field is refused, since the resulting pointer type would state an alignment its storage does not have; <code>?r</code> on the whole record stays legal. See <a href="decorators.html#packed">Decorators</a> for the full rule set.</p>
 
       <h2 id="unions">Unions</h2>
       <p>A <code>uni</code> is a collection of named fields that share the same memory. Writing one field overwrites whatever bytes the others held. A union's size is the size of its largest field plus any alignment padding. Unions may be generic.</p>

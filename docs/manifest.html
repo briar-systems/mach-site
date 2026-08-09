@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -115,11 +116,15 @@ ref = <span class="str">"branch/main"</span></code></pre>
           <tr><td><code>version</code></td><td>string</td><td>Project version. Read by <code>$project.version</code>; the source of truth a <code>tag/&lt;version&gt;</code> acquisition checks.</td></tr>
           <tr><td><code>src</code></td><td>string</td><td>Source root, project-root-relative. Module paths resolve under it.</td></tr>
           <tr><td><code>out</code></td><td>string</td><td>The output-path template root, referenced as <code>{project.out}</code> by artifact <code>out</code>, step paths, and <code>cmd</code>s.</td></tr>
+          <tr><td><code>mach</code></td><td>string</td><td>Optional. The minimum compiler version the project needs, as semver, validated when the manifest is read.</td></tr>
         </tbody>
       </table>
+      <p>A project using a feature added last week otherwise fails on an older toolchain with an ordinary parse error pointing at the <em>feature</em> rather than at the version. <code>mach</code> is checked for the root project and for every dependency, so a dependency that outgrows the running compiler says so in its own name rather than failing somewhere in its source.</p>
+      <pre class="code"><code>[project]
+mach = <span class="str">"4.15.0"</span></code></pre>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p><code>[project]</code> is exactly these four keys. <code>name</code>, <code>description</code>, and any other key are unknown-key errors in a root manifest.</p>
+        <p><code>[project]</code> is exactly these keys. <code>name</code>, <code>description</code>, and any other key are unknown-key errors in a root manifest.</p>
       </div>
 
       <h2 id="targets">Targets</h2>
@@ -144,14 +149,25 @@ ref = <span class="str">"branch/main"</span></code></pre>
       <table>
         <thead><tr><th>Axis</th><th>Values</th></tr></thead>
         <tbody>
-          <tr><td><code>isa</code></td><td><code>x86_64</code>, <code>aarch64</code>, <code>riscv64</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
+          <tr><td><code>isa</code></td><td><code>x86_64</code>, <code>aarch64</code>, <code>riscv64</code>, <code>riscv32</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
           <tr><td><code>os</code></td><td><code>linux</code>, <code>windows</code>, <code>darwin</code>, <code>freestanding</code></td></tr>
-          <tr><td><code>abi</code></td><td><code>sysv64</code>, <code>win64</code>, <code>aapcs64</code>, <code>lp64</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
+          <tr><td><code>abi</code></td><td><code>sysv64</code>, <code>win64</code>, <code>aapcs64</code>, <code>lp64</code>, <code>lp64f</code>, <code>lp64d</code>, <code>ilp32</code>, <code>ilp32f</code>, <code>ilp32d</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
           <tr><td><code>of</code></td><td><code>elf</code>, <code>coff</code>, <code>macho</code>, <code>raw</code>, <code>spv</code></td></tr>
         </tbody>
       </table>
       <p>A value outside its axis's set is a strict-parse error, so a typo is caught rather than silently never matching. <code>mach info targets</code> prints the tuples this binary can actually build; it is derived from the same declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
+      <div class="callout warn">
+        <span class="callout-label">RISC-V is a family of ABIs</span>
+        <p><code>lp64</code> means <strong>soft float</strong>: arguments ride integer registers even where the hardware has an FPU. <code>lp64f</code> passes single-precision floats in float registers and <code>lp64d</code> passes both single and double, which is what a Linux riscv64 toolchain means by its default. <code>ilp32</code>, <code>ilp32f</code>, and <code>ilp32d</code> are the same three on 32-bit RISC-V. Passing <code>lp64</code> where <code>lp64d</code> was meant is an ABI mismatch against every C object on the system, not a performance choice.</p>
+      </div>
       <p>Each os has a default object format - <code>linux</code> to <code>elf</code>, <code>windows</code> to <code>coff</code>, <code>darwin</code> to <code>macho</code>, <code>freestanding</code> to <code>raw</code> - and <code>of</code> names a different one. An os accepts only the formats it can load, so an override the os cannot enter is refused. The default is a function of the whole tuple, not the os alone: a <code>spirv</code> target resolves to <code>spv</code> regardless of the os it names.</p>
+      <p>A <code>freestanding</code> target can select <code>of = "elf"</code> on every architecture, and gets an image with no loader construct in it: no header segment, since nothing parses a program header at run time on bare metal.</p>
+      <pre class="code"><code>[target.metal]
+isa = <span class="str">"x86_64"</span>
+os  = <span class="str">"freestanding"</span>   <span class="cmt"># os default object format is "raw"</span>
+abi = <span class="str">"sysv64"</span>
+of  = <span class="str">"elf"</span>            <span class="cmt"># override: emit an ELF image instead</span></code></pre>
+      <p><code>--pie</code>, dynamic linking, and a shared library are each refused by name on a loaderless os: a position-independent executable exists to be relocated by a program loader, a dynamically-linked one to have its imports resolved by one, and <code>os = "freestanding"</code> has none.</p>
 
       <h3 id="finished-modules">Finished-module targets</h3>
       <p>A <code>spirv</code> target's object output is a complete, self-contained module rather than a link input. The build delivers the <strong>module tree</strong> - one <code>&lt;out&gt;/obj/&lt;fqn-as-path&gt;.spv</code> per module - and runs no link phase, so a default build and <code>--emit obj</code> produce the same files.</p>

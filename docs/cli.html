@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -89,6 +90,7 @@
           <tr><td><code>build</code></td><td>compile the project to objects and (for a <code>kind = "bin"</code> artifact) a linked binary</td></tr>
           <tr><td><code>run</code></td><td>build, then execute the produced binary</td></tr>
           <tr><td><code>test</code></td><td>build the test binary and run the collected tests</td></tr>
+          <tr><td><code>clean</code></td><td>remove the project's build output</td></tr>
           <tr><td><code>dep</code></td><td>manage git-backed dependencies (clone, lock, vendor)</td></tr>
           <tr><td><code>init</code></td><td>scaffold a new project</td></tr>
           <tr><td><code>doc</code></td><td>generate Markdown reference docs from source doc-comments</td></tr>
@@ -189,6 +191,10 @@
       </table>
       <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
 
+      <h2 id="clean">clean</h2>
+      <pre class="code"><code>mach clean &lt;path&gt;</code></pre>
+      <p>Removes the project's build output: the output directory trees declared by the manifest's <code>out</code> / <code>obj</code> / <code>ir</code> / <code>asm</code> templates. <code>&lt;path&gt;</code> is a project directory or a manifest file. It is idempotent and takes no options. Exit codes are its own: <code>0</code> ok, <code>1</code> no project or a bad manifest, <code>2</code> an IO failure.</p>
+
       <h2 id="dep">dep</h2>
       <pre class="code"><code>mach dep &lt;action&gt; [args]</code></pre>
       <p>Manages the project's dependency tree. A dependency has exactly one source form: a <strong>git</strong> URL plus a ref, acquired into the dep directory with plain git operations, or a <strong>path</strong> to another project tree, materialised as a relative symlink so the build resolves it by the same vendor layout.</p>
@@ -233,9 +239,9 @@ commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></co
       <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
       <pre class="code"><code>mach <span data-mach-version></span>
 host: linux/x86_64
-isa: x86_64 aarch64 riscv64 spirv mos6502
+isa: x86_64 aarch64 riscv64 riscv32 spirv mos6502
 os: linux darwin windows freestanding
-abi: sysv64 win64 aapcs64 lp64 spirv mos6502
+abi: sysv64 win64 aapcs64 lp64 lp64f lp64d ilp32 ilp32f ilp32d spirv mos6502
 object: elf coff macho raw spv</code></pre>
       <p><strong><code>mach info targets</code></strong> prints the concrete <code>(os, isa)</code> tuples this binary can build, one per line. It is derived from the same joint capability declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
       <p>The capability lines are read from the binary's target registries, so they report exactly what this build can target. <code>mach info --version</code> prints the version string alone on one line, for tooling.</p>
@@ -275,6 +281,7 @@ object: elf coff macho raw spv</code></pre>
       <a class="sub" href="#link-inputs">Link inputs</a>
       <a href="#run">run</a>
       <a href="#test">test</a>
+      <a href="#clean">clean</a>
       <a href="#dep">dep</a>
       <a class="sub" href="#lockfile">Lockfile</a>
       <a href="#init">init</a>

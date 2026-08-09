@@ -49,6 +49,7 @@
           <a class="nav-link" href="ext-fun.html">External functions</a>
           <a class="nav-link active" href="secrecy.html">Secrecy</a>
           <a class="nav-link" href="asm.html">Inline assembly</a>
+          <a class="nav-link" href="shaders.html">GPU shaders</a>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Comptime</div>
@@ -148,6 +149,22 @@
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p>The gates are checked against the types of the <strong>instance</strong>, not of the template. A generic's body is re-checked per instantiation under its concrete type arguments, so a <code>T</code> that instantiates to a secret is gated exactly as the secret spelled out in full would be.</p>
+      </div>
+
+      <h2 id="ask-comptime">Asking about secrecy at comptime</h2>
+      <p><code>$is_secret(T)</code> folds true when <code>T</code> is <code>^</code>-qualified <strong>at the outermost level</strong>. It is a type predicate like <code>$is_record</code> / <code>$is_union</code> / <code>$is_pointer</code>: comptime-only, valid as a <code>$if</code> / <code>$or</code> gate condition, and answered per instantiation inside a generic. The full reference is in <a href="intrinsics.html#is-secret">Intrinsics</a>.</p>
+      <p>It exists because secrecy was otherwise invisible to a library. Every other predicate asks about the shape <em>under</em> the <code>^</code> and so answers false for every secret, which makes <code>$is_record(^u64)</code> and <code>$is_record(u64)</code> the same answer - a reflection walk could only ever meet a secret field as a fallthrough it had to refuse. <code>$is_secret</code> is the positive question, and it is what lets a derive <strong>decide</strong> rather than refuse: a formatter redacts a secret field, a hash refuses one (a data-dependent fold is a leak in the shape of a digest), and an equality picks the constant-time comparison instead of the early-out whose timing <em>is</em> the secret.</p>
+      <pre class="code"><code><span class="kw">rec</span> <span class="type">Session</span> { <span class="param">id</span>: <span class="type">u64</span>; <span class="param">key</span>: <span class="ct">^</span>[<span class="num">32</span>]<span class="type">u8</span>; }
+
+<span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Session</span>) {
+    <span class="ct">$if</span> (<span class="ct">$is_secret</span>(f.type)) { }            <span class="cmt"># redact: no read of `key` is emitted</span>
+    <span class="ct">$or</span> { <span class="fn">render</span>(s.[f]); }
+}</code></pre>
+      <p><strong>Outermost only</strong>, the same line the rest of the family draws. <code>^*u8</code> is secret - the pointer <em>is</em> the secret, which is the shape the welded-storage rules exist for. <code>*^u8</code> is not: it is a public address to secret storage, and <code>$is_secret($pointee_of(f.type))</code> asks about the pointee. <code>[N]^u8</code> is not, and neither is a record with a secret field - the <strong>field</strong> is, and that is where a walk meets the question.</p>
+      <p>There is deliberately no transitive "contains a secret anywhere" query: the per-field question is the one a walk actually has, and answering the transitive one in its place would make the common case wrong.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>A walk that skips a secret field is pinned by the flow rules rather than by convention - reading one into a public accumulator does not compile, so a walk that gates wrongly is a compile error, not a silent disclosure.</p>
       </div>
 
       <h2 id="downgrade">Downgrade with <code>:^</code></h2>
@@ -260,6 +277,7 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
       <a href="#lattice">The secrecy lattice</a>
       <a href="#join">Join</a>
       <a href="#gates">Gates</a>
+      <a href="#ask-comptime">Asking about secrecy at comptime</a>
       <a href="#downgrade">Downgrade with :^</a>
       <a href="#welded">Welded-storage pointers</a>
       <a href="#oblivious">#[oblivious]</a>
