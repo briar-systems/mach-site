@@ -139,6 +139,7 @@
       <p>Where <code>$type_of</code> asks what a type <em>is</em>, the predicates ask about its <strong>shape</strong>. Each takes one type operand and folds in a <code>$if</code> / <code>$or</code> gate.</p>
       <pre class="code"><code><span class="ct">$is_record</span>(<span class="type">T</span>)           <span class="cmt"># T is a record (or an instance of one)</span>
 <span class="ct">$is_union</span>(<span class="type">T</span>)            <span class="cmt"># T is a union  (or an instance of one)</span>
+<span class="ct">$is_tag</span>(<span class="type">T</span>)              <span class="cmt"># T is a tag    (or an instance of one)</span>
 <span class="ct">$is_pointer</span>(<span class="type">T</span>)          <span class="cmt"># T is a reference: the raw `ptr` or a typed `*U`</span>
 <span class="ct">$is_secret</span>(<span class="type">T</span>)           <span class="cmt"># T is `^`-qualified at the outermost level</span></code></pre>
       <p>They are <strong>comptime-only</strong>. A gate condition selects an arm, and there is no runtime boolean for one to become, so using a predicate as a value is an error.</p>
@@ -193,12 +194,12 @@
       <table>
         <thead><tr><th>Asks about</th><th>Strips <code>^</code></th></tr></thead>
         <tbody>
-          <tr><td><code>$size_of</code> / <code>$length_of</code> / <code>$align_of</code> / <code>$offset_of</code></td><td>yes - a secret occupies its base type's storage</td></tr>
-          <tr><td><code>$is_record</code> / <code>$is_union</code> / <code>$is_pointer</code></td><td>no - <code>^T</code> is a secret, not a <code>T</code></td></tr>
+          <tr><td><code>$size_of</code> / <code>$length_of</code> / <code>$align_of</code> / <code>$offset_of</code> / <code>$discriminant_of</code></td><td>yes - a secret occupies its base type's storage</td></tr>
+          <tr><td><code>$is_record</code> / <code>$is_union</code> / <code>$is_tag</code> / <code>$is_pointer</code></td><td>no - <code>^T</code> is a secret, not a <code>T</code></td></tr>
           <tr><td><code>$is_secret</code></td><td>no - and it is the one query <em>about</em> the <code>^</code></td></tr>
           <tr><td><code>$pointee_of</code></td><td>no - <code>^*U</code> is a secret, and is refused rather than followed</td></tr>
           <tr><td><code>$type_name</code></td><td>no - the spelling is <code>^T</code></td></tr>
-          <tr><td><code>$fields</code></td><td>no - a secret record is refused, not walked</td></tr>
+          <tr><td><code>$fields</code> / <code>$cases</code></td><td>no - a secret aggregate is refused, not walked</td></tr>
           <tr><td>type comparison (<code>f.type == u64</code>)</td><td>no - <code>^u64</code> is not <code>u64</code></td></tr>
         </tbody>
       </table>
@@ -308,11 +309,36 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
         }
     }
     <span class="kw">ret</span> t;
+      <h2 id="cases">Tag reflection: <code>$cases</code> and <code>$discriminant_of</code></h2>
+      <p><code>$cases(T)</code> produces a comptime sequence of case descriptors for tag type <code>T</code>. Each descriptor carries five readable properties.</p>
+      <table>
+        <thead><tr><th>Property</th><th>Type</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><code>c.name</code></td><td><code>*u8</code></td><td>case name as a NUL-terminated string</td></tr>
+          <tr><td><code>c.has_payload</code></td><td><code>bool</code></td><td>whether the case takes a payload</td></tr>
+          <tr><td><code>c.type</code></td><td>type value</td><td>comptime type value of the payload when present</td></tr>
+          <tr><td><code>c.offset</code></td><td>integer</td><td>byte offset of the payload in <code>T</code>'s layout</td></tr>
+          <tr><td><code>c.code</code></td><td>integer</td><td>discriminant value assigned to this case</td></tr>
+        </tbody>
+      </table>
+      <p>The sequence is consumed by <code>$each c in $cases(T)</code>. Inside the body, <code>sel v.[c]</code> tests whether an instance holds that case, <code>v.[c]</code> accesses the payload under an active guard, and <code>T.[c]{...}</code> constructs an instance for case <code>c</code>.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">code_of</span>(<span class="param">v</span>: <span class="type">Reply</span>) <span class="type">u64</span> {
+    <span class="ct">$each</span> c <span class="kw">in</span> <span class="ct">$cases</span>(<span class="type">Reply</span>) {
+        <span class="kw">if</span> (<span class="kw">sel</span> <span class="param">v</span>.[c]) {
+            <span class="kw">ret</span> c.code;
+        }
+    }
+    <span class="kw">ret</span> <span class="num">0</span>;
 }</code></pre>
 
+      <h3 id="discriminant-of"><code>$discriminant_of(T)</code></h3>
+      <p><code>$discriminant_of(T)</code> is a comptime type constructor that returns the unsigned integer type declared for tag <code>T</code>'s discriminator. It can be used anywhere a type is expected.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">disc_size</span>: <span class="type">u64</span> = <span class="ct">$size_of</span>(<span class="ct">$discriminant_of</span>(<span class="type">Shape</span>));</code></pre>
+
       <h2 id="each">$each: compile-time unroll</h2>
-      <p><code>$each</code> is a statement form that splices its body once per element of a comptime sequence. There are three sequence forms.</p>
+      <p><code>$each</code> is a statement form that splices its body once per element of a comptime sequence. There are four sequence forms.</p>
       <pre class="code"><code><span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">T</span>) { ... }    <span class="cmt"># one iteration per field of T</span>
+<span class="ct">$each</span> c <span class="kw">in</span> <span class="ct">$cases</span>(<span class="type">T</span>) { ... }     <span class="cmt"># one iteration per case of tag T</span>
 <span class="ct">$each</span> a <span class="kw">in</span> va { ... }            <span class="cmt"># one iteration per element of pack va</span>
 <span class="ct">$each</span> x <span class="kw">in</span> <span class="param">ARR</span> { ... }           <span class="cmt"># one iteration per element of a constant array val</span></code></pre>
       <p>It is valid only in statement scope, inside a function body. It is not a loop: the body is duplicated at compile time, not iterated at runtime. Enclosing runtime variables (an index, an accumulator) are shared across all unrolled copies. See <a href="variadics.html">Variadic packs</a> for the pack form.</p>
@@ -395,6 +421,8 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
       <a class="sub" href="#heterogeneous">Heterogeneous fields</a>
       <a class="sub" href="#descriptor-reads">Descriptor reads</a>
       <a class="sub" href="#nested">Nested $each</a>
+      <a href="#cases">Tag reflection: $cases</a>
+      <a class="sub" href="#discriminant-of">$discriminant_of</a>
       <a href="#each">$each: compile-time unroll</a>
       <a class="sub" href="#each-array">Over a constant array</a>
       <a href="#diagnostics">Diagnostic intrinsics</a>

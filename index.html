@@ -120,6 +120,7 @@
                 </a>
                 <div class="nav-links">
                     <a href="#why">Why mach?</a>
+                    <a href="#tags">Tags &amp; sel</a>
                     <a href="#targets">Targets</a>
                     <a href="#get-started">Get Started</a>
                     <a href="docs/">Docs</a>
@@ -360,9 +361,9 @@
                             <span class="why-principle">Errors are values</span>
                             <span class="why-desc"
                                 >A fallible call returns a
-                                <code>Result</code> you read like any other
-                                value. No exceptions, no hidden unwinding; you
-                                check the error before you reach the
+                                <code>res</code> tag you read like any other
+                                value. No exceptions, no hidden unwinding, you
+                                check the error with <code>sel</code> before you reach the
                                 result.</span
                             >
                         </button>
@@ -466,6 +467,56 @@
                                 >View the examples in examples/</a
                             ></noscript
                         >
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tag and sel -->
+        <section class="section tags" id="tags">
+            <div class="section-inner">
+                <h2>Discriminated values with tag and sel</h2>
+                <p class="section-lead">
+                    Mach defines discriminated values with <code>tag</code>, where an explicit discriminator integer fixes the storage width and each case holds a single payload or none. Reading a payload requires a compile-time lexical guard: <code>sel</code> tests the active case, and only guarded branches can read the value.
+                </p>
+
+                <div class="tags-stage">
+                    <div class="tags-cards">
+                        <div class="tag-card">
+                            <h3>Explicit Discriminators</h3>
+                            <p>Every <code>tag</code> specifies its underlying integer type from <code>u8</code> through <code>u64</code>. Storage layout and discriminator width are never hidden.</p>
+                        </div>
+                        <div class="tag-card">
+                            <h3>Lexical Payload Guards</h3>
+                            <p>Payload access is enforced at compile time. <code>sel r.case</code> tests the variant, and reading <code>r.case</code> is permitted only inside the guarded branch or after an exiting error check.</p>
+                        </div>
+                        <div class="tag-card">
+                            <h3>No Pattern Matcher Runtime</h3>
+                            <p>Tag dispatch uses ordinary control flow with zero runtime overhead. There is no heavy pattern matching machinery or hidden allocations.</p>
+                        </div>
+                    </div>
+
+                    <div class="code-window">
+                        <div class="code-header">
+                            <span class="code-dot"></span>
+                            <span class="code-dot"></span>
+                            <span class="code-dot"></span>
+                            <span class="code-filename">reply.mach</span>
+                        </div>
+                        <pre><code><span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Reply</span>: <span class="type">u8</span> {
+    <span class="param">empty</span>;
+    <span class="param">value</span>: <span class="type">i64</span>;
+}
+
+<span class="kw">fun</span> <span class="fn">handle</span>(<span class="param">r</span>: <span class="type">Reply</span>) <span class="type">i64</span> {
+    <span class="cmt"># sel tests the active case and opens a lexical guard</span>
+    <span class="kw">if</span> (<span class="kw">sel</span> r.value) {
+        <span class="kw">ret</span> r.value;
+    }
+
+    <span class="cmt"># unhandled branches cannot read r.value</span>
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
                     </div>
                 </div>
             </div>
@@ -579,12 +630,12 @@
                                 class="reel-item"
                                 role="option"
                                 data-target="riscv32"
-                                data-tuple="riscv32 / freestanding / ilp32d"
+                                data-tuple="riscv32 / freestanding / ilp32"
                                 data-status="supported"
                             >
                                 <span class="reel-name">riscv32</span
                                 ><span class="reel-tuple"
-                                    >riscv32 / freestanding / ilp32d</span
+                                    >riscv32 / freestanding / ilp32</span
                                 >
                             </li>
                             <li
@@ -597,18 +648,6 @@
                                 <span class="reel-name">gpu</span
                                 ><span class="reel-tuple"
                                     >spirv / freestanding / spirv</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="mos6502"
-                                data-tuple="mos6502 / freestanding / mos6502"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">mos6502</span
-                                ><span class="reel-tuple"
-                                    >mos6502 / freestanding / mos6502</span
                                 >
                             </li>
                         </ul>
@@ -657,8 +696,8 @@
 <span class="term-note"># verifies the download, installs to ~/.local/bin</span>
 <span class="term-prompt">$</span> <span class="term-cmd">mach init my-app</span>
 <span class="term-prompt">$</span> <span class="term-cmd">cd my-app</span>
-<span class="term-prompt">$</span> <span class="term-cmd">mach dep pull</span>
-<span class="term-note"># vendors dependencies into dep/, pinned in mach.lock</span>
+<span class="term-prompt">$</span> <span class="term-cmd">mach dep pull .</span>
+<span class="term-note"># vendors dependencies into dep/</span>
 <span class="term-prompt">$</span> <span class="term-cmd">mach build .</span>
 <span class="term-note"># one binary builds and links, with no external linker</span>
 <span class="term-prompt">$</span> <span class="term-cmd">mach run .</span>
