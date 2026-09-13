@@ -1,22 +1,21 @@
-use R:     std.types.result;
 use parse: std.text.parse;
-
-use std.runtime;
 use std.print.printf;
-use std.types.string.str;
+use std.runtime;
+use std.types.result.res;
 
 #[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {
-    # a fallible call returns a value, not a thrown exception
-    val r: R.Result[u64, str] = parse.parse_u64(argv[1], 10);
+    # a fallible call returns a tag value, not a thrown exception
+    val r: res[u64, parse.ParseError] = parse.parse_u64(argv[1], 10);
 
-    # the error path is visible, so check it before you unwrap
-    if (R.is_err[u64, str](r)) {
-        printf("error: {}\n", R.unwrap_err[u64, str](r));
+    # sel checks the active case and guards access to the payload
+    if (sel r.err) {
+        printf("failed to parse integer\n");
         ret 1;
     }
 
-    val limit: u64 = R.unwrap_ok[u64, str](r);
+    # r.ok is readable because the error branch exited
+    val limit: u64 = r.ok;
     printf("limit = {}\n", limit);
 
     ret 0;

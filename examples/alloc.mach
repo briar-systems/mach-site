@@ -1,26 +1,31 @@
 use std.runtime;
-use std.types.string.str;
+use std.types.error.err;
+use std.types.result.res;
+use std.types.size.usize;
 
 use A:    std.allocator;
 use page: std.allocator.page;
-use R:    std.types.result;
 
 #[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {
-    val count: u64 = 1024;
+    val count: usize = 1024;
 
     # create a page-backed allocator
     var a: A.Allocator;
     page.make(?a);
 
     # allocate a buffer using the canonical allocator interface
-    val res: R.Result[*u8, str] = A.allocate[u8](?a, count);
-    val buf: *u8                = R.unwrap_ok[*u8, str](res);
-
-    # ... use buf ...
+    val r: res[*u8, A.Error] = A.allocate[u8](?a, count);
+    if (sel r.err) {
+        ret 1;
+    }
+    val buf: *u8 = r.ok;
 
     # the same allocator frees exactly what it allocated
-    A.deallocate[u8](?a, buf, count);
+    val released: err[A.Error] = A.deallocate[u8](?a, buf, count);
+    if (sel released.err) {
+        ret 1;
+    }
 
     ret 0;
 }
