@@ -1013,6 +1013,50 @@ html.js .copy-btn {
     }
 }
 
+.tags {
+    border-top: 1px solid var(--border);
+}
+
+.tags-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: start;
+}
+
+.tags-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.tag-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+}
+
+.tag-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.5rem;
+}
+
+.tag-card p {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+    .tags-stage {
+        grid-template-columns: 1fr;
+        gap: 1.75rem;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .js .reel-item {
         transition: none;
@@ -1022,3 +1066,4 @@ html.js .copy-btn {
         animation: none;
     }
 }
+
