@@ -100,6 +100,17 @@
       <h2 id="directives">Directives</h2>
       <p>The directive set is closed; new directives require a compiler change.</p>
 
+      <h3 id="deprecated"><code>deprecated</code> / <code>deprecated(str)</code> - deprecation notice</h3>
+      <p>Marks a declaration or tag case as deprecated. An optional string argument supplies guidance for consumers. When code references a deprecated symbol or case, the compiler emits a warning naming the declaration and message.</p>
+      <pre class="code"><code><span class="deco">#[deprecated(<span class="str">"use new_parser instead"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">old_parser</span>() { ... }
+
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Status</span>: <span class="type">u8</span> {
+    <span class="param">ready</span>;
+    <span class="deco">#[deprecated(<span class="str">"use ready"</span>)]</span>
+    <span class="param">pending</span>;
+}</code></pre>
+
       <h3 id="symbol"><code>symbol(str)</code> - linker name</h3>
       <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
       <p>The mangled name is the source FQN <em>as the source spells it</em> - <code>std.types.string.str_len</code>, with generic arguments after a <code>$</code> - so a profile, a crash report, and a disassembly all read the name you wrote. There is no prefix: a mangled name always contains a <code>.</code> and a C identifier never can. <code>ext fun</code> foreign symbols and <code>#[symbol("...")]</code> names are literal and unaffected.</p>
@@ -123,7 +134,7 @@
       <p>Marks a function for inlining at every call site, overriding the compiler's size- and use-count heuristics. Applies to functions only and takes no arguments.</p>
       <pre class="code"><code><span class="deco">#[inline]</span>
 <span class="kw">fun</span> <span class="fn">fast_path</span>(<span class="param">x</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> x * <span class="num">2</span>; }</code></pre>
-      <p>It also <strong>crosses a module boundary</strong>. A dependency's ordinary function body never reaches an importer, so a four-instruction <code>fetch_add</code> in another module cost a <code>call</code> as well as its instructions. <code>#[inline]</code> declares that the body is part of the function's public surface, so an importer may materialize it - the same axis a generic, a comptime-param, and a pack-tailed function are already on, and the first member an author asks for rather than the type system forcing. The copy is emitted weak under the origin's own mangled name, so the defining module's definition still wins at link and the function stays <em>one</em> function with one address.</p>
+      <p>Release builds inline small helpers and <code>#[inline]</code> functions across modules. Marking a function <code>#[inline]</code> declares that the body is part of its public surface so an importer can inline it directly. The copy is emitted weak under the origin's mangled name so the defining module still provides the single canonical symbol at link time.</p>
 
       <h3 id="noinline"><code>noinline</code> - forbid inlining</h3>
       <p>The inverse of <code>inline</code>: forbids inlining a function into any caller, overriding the heuristics that would otherwise fold it in. Applies to functions only and takes no arguments.</p>
@@ -192,7 +203,7 @@
 <span class="kw">pub</span> <span class="kw">var</span> <span class="param">g_sec</span>: <span class="type">u64</span> = <span class="num">100</span>;</code></pre>
 
       <h3 id="oblivious"><code>oblivious</code> - constant-time boundary</h3>
-      <p>Marks a function as a constant-time boundary. Applies to functions only and takes no arguments. Inside it the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand; a translation validator re-derives the secret taint over the lowered MIR and rejects any such leak.</p>
+      <p>Marks a function as a constant-time boundary. Applies to functions only and takes no arguments. Inside it the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand. A translation validator re-derives the secret taint over lowered MIR, and a second validation pass verifies the final machine instructions to reject any leaks.</p>
       <pre class="code"><code><span class="deco">#[oblivious]</span>
 <span class="kw">fun</span> <span class="fn">ct_eq</span>(<span class="param">a</span>: <span class="ct">^</span>[<span class="num">8</span>]<span class="type">u8</span>, <span class="param">b</span>: <span class="ct">^</span>[<span class="num">8</span>]<span class="type">u8</span>) <span class="type">u8</span> { ... }</code></pre>
       <ul>
@@ -243,7 +254,7 @@
 <span class="kw">val</span> <span class="param">SECTOR</span>: [<span class="num">512</span>]<span class="type">u8</span>;      <span class="cmt"># length pinned; a size change fails the build</span></code></pre>
       <ul>
         <li>The declaration carries no initializer of its own; writing one alongside <code>embed</code> is rejected. This is a second exemption to <code>val</code>'s requires-an-initializer rule, alongside <code>ext</code>.</li>
-        <li>The path resolves relative to the <strong>declaring source file's</strong> directory. An absolute path is taken as written. Escapes are not decoded, matching <code>symbol</code> and <code>section</code> - the path is taken as written.</li>
+        <li>The path resolves relative to the <strong>declaring source file's</strong> directory and must remain within the project root. Any path escaping the project root is refused and the file is not read.</li>
         <li>The annotation must be <code>[_]u8</code> or <code>[N]u8</code>. <code>[_]</code> is an inferred array length, legal <strong>only</strong> on an <code>#[embed]</code> declaration. A <code>[_]u8</code> embed can be asked for its own length: <code>$length_of(LOGO)</code> is its element count and <code>$size_of(LOGO)</code> its byte count, both folded at compile time. The explicit <code>[N]u8</code> form is for pinning a size by contract, not for recovering one.</li>
         <li>Two <code>#[embed]</code> globals whose files hold byte-identical content and whose final section name, kind, and alignment match share <strong>one</strong> read-only data placement within a module, so their addresses compare equal. This is specific to embedded data; an ordinary global is never merged this way.</li>
         <li>An explicit <code>[N]u8</code> whose <code>N</code> disagrees with the file is rejected, naming both counts. This is how a declaration pins a fixed-size asset - a boot sector, a ROM image - so the build fails the moment it stops being that size.</li>
@@ -258,9 +269,10 @@
       <p>Each directive targets a fixed set of declaration kinds. The full matrix:</p>
       <table>
         <thead>
-          <tr><th>Directive</th><th><code>fun</code></th><th><code>ext fun</code></th><th><code>val</code> / <code>var</code></th><th><code>rec</code> / <code>uni</code></th></tr>
+          <tr><th>Directive</th><th><code>fun</code></th><th><code>ext fun</code></th><th><code>val</code> / <code>var</code></th><th><code>rec</code> / <code>uni</code> / <code>tag</code></th></tr>
         </thead>
         <tbody>
+          <tr><td><code>deprecated</code></td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
           <tr><td><code>symbol</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
           <tr><td><code>library</code></td><td>no</td><td>yes</td><td>no</td><td>no</td></tr>
           <tr><td><code>inline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
@@ -282,7 +294,7 @@
           <tr><td><code>handle</code></td><td colspan="4">a bodyless <code>def</code> only</td></tr>
         </tbody>
       </table>
-      <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused.</p>
+      <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused. <code>deprecated</code> also applies to <code>def</code>, <code>use</code>, <code>fwd</code>, and individual tag cases.</p>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -303,6 +315,7 @@
       <a href="#surface">Surface</a>
       <a href="#placement">Placement</a>
       <a href="#directives">Directives</a>
+      <a class="sub" href="#deprecated">deprecated</a>
       <a class="sub" href="#symbol">symbol</a>
       <a class="sub" href="#library">library</a>
       <a class="sub" href="#inline">inline</a>
