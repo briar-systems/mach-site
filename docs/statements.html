@@ -86,6 +86,14 @@
     ...                     <span class="cmt"># final else (no condition)</span>
 }</code></pre>
 
+      <h3 id="payload-guards">Lexical payload guards</h3>
+      <p>An <code>if (sel p.c)</code> condition opens a compile-time payload guard for the case <code>p.c</code> inside its block. Reading <code>p.c</code> is only permitted within such a dominating guard.</p>
+      <p>Guards also propagate across logical <code>&&</code>: the right side of <code>sel p.c && expr</code> is guarded by the check on the left. In addition, when an <code>if</code> branch exits the enclosing block using <code>ret</code>, <code>brk</code>, or <code>cnt</code>, the compiler knows the exited case cannot reach subsequent statements.</p>
+      <div class="callout warn">
+        <span class="callout-label">Guard limits</span>
+        <p>An <code>or</code> branch is not guarded because the tested condition failed. Logical <code>||</code> and <code>!</code> do not establish guards. Keep tests to one condition per check when unwrapping payloads.</p>
+      </div>
+
       <h2 id="for">Loops: <code>for</code></h2>
       <p>mach has a single condition-driven loop. The body repeats while the condition holds. There is no for-each form.</p>
       <pre class="code"><code><span class="kw">var</span> <span class="param">i</span>: <span class="type">i64</span> = <span class="num">0</span>;
@@ -133,6 +141,7 @@
         <ul>
           <li><a href="expressions.html">Expressions</a> - what goes on the right side of <code>=</code> and inside conditions</li>
           <li><a href="values.html">Values and variables</a> - <code>var</code> and <code>val</code> declarations</li>
+          <li><a href="records-unions.html">Records, unions, and tags</a> - tag declarations and payload safety</li>
           <li><a href="comptime-control.html">Control flow</a> - the comptime counterparts <code>$if</code> and <code>$each</code></li>
         </ul>
       </div>
@@ -143,6 +152,7 @@
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
       <a href="#if-or">Conditionals: if / or</a>
+      <a class="sub" href="#payload-guards">Payload guards</a>
       <a href="#for">Loops: for</a>
       <a href="#ret">Returning: ret</a>
       <a href="#brk-cnt">Loop control: brk / cnt</a>

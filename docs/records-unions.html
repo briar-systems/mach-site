@@ -71,8 +71,8 @@
 
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Records and unions</div>
-      <h1>Records and unions</h1>
-      <p class="lead">A <code>rec</code> is a named collection of typed fields, each with its own storage. A <code>uni</code> overlaps its fields in the same memory. Together they compose every aggregate mach has, including discriminated values.</p>
+      <h1>Records, unions, and tags</h1>
+      <p class="lead">A <code>rec</code> is a named collection of typed fields, each with its own storage. A <code>uni</code> overlaps its fields in the same memory. A <code>tag</code> defines a discriminated value with compiler-enforced lexical guards.</p>
 
       <h2 id="records">Records</h2>
       <p>A <code>rec</code> lays out its fields side by side. Each field has independent storage, and the record's size is the sum of the field sizes plus any padding the compiler inserts for alignment. A record may be generic over type parameters.</p>
@@ -132,22 +132,53 @@
         <p>The compiler does not track which field of a union is live. Reading a field other than the one last written reinterprets raw bytes; keeping the active field straight is the programmer's responsibility.</p>
       </div>
 
-      <h2 id="discriminated">Discriminated values</h2>
-      <p>Mach has no tagged-union construct and no pattern-matching dispatch. A discriminated value composes from a <code>rec</code> that carries a discriminator alongside a <code>uni</code> payload.</p>
-      <pre class="code"><code><span class="kw">rec</span> <span class="type">Value</span> {
-    <span class="param">kind</span>: <span class="type">ValueKind</span>;
-    <span class="param">data</span>: <span class="kw">uni</span> { <span class="param">i</span>: <span class="type">i64</span>; <span class="param">f</span>: <span class="type">f64</span>; };
+      <h2 id="tags">Tags</h2>
+      <p>A <code>tag</code> defines a discriminated value with compiler-enforced payload safety. Unlike an untracked union, a tag stores a discriminator alongside an overlapping payload area, and the compiler prevents reading any payload unless the active case is proven by a dominating guard.</p>
+      <p>The discriminator type is written after the tag name and must be an unsigned integer type from <code>u8</code> through <code>u64</code>. Cases may carry a single typed payload or remain payload-free.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Shape</span>: <span class="type">u8</span> {
+    <span class="param">circle</span>: <span class="type">f64</span>;
+    <span class="param">rect</span>: <span class="type">Rect</span>;
+    <span class="param">point</span>;
+}
+
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Option</span>[<span class="type">T</span>]: <span class="type">u8</span> {
+    <span class="param">none</span>;
+    <span class="param">some</span>: <span class="type">T</span>;
 }</code></pre>
-      <p>Consumers read <code>kind</code>, then access the matching <code>data</code> field through ordinary <code>if</code>/<code>or</code> chains. The compiler does not verify that <code>kind</code> and <code>data</code> agree; keeping them consistent is the constructor's responsibility.</p>
-      <p>This is deliberate. Tagged unions and <code>match</code>-style dispatch would add significant surface area to the language and compiler for an abstraction the composed form already expresses honestly.</p>
+      <p>Values are constructed using the type name, case name, and curly braces. A payload case supplies its value inside the braces, while a unit case uses empty braces.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">c</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">circle</span>{<span class="num">3.14</span>};
+<span class="kw">val</span> <span class="param">p</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">point</span>{};</code></pre>
+
+      <h2 id="guards">Payload guards and sel</h2>
+      <p>The <code>sel</code> keyword tests whether a tag instance currently holds a specific case. The expression <code>sel place.case</code> yields a <code>bool</code>.</p>
+      <p>Reading a case payload is permitted only where a lexical guard guarantees that case is active. Accessing a payload without a dominating guard produces a compile error.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="param">area</span>(<span class="param">s</span>: <span class="type">Shape</span>) <span class="type">f64</span> {
+    <span class="kw">if</span> (<span class="kw">sel</span> <span class="param">s</span>.<span class="param">circle</span>) {
+        <span class="kw">ret</span> <span class="num">3.141592653589793</span> * <span class="param">s</span>.<span class="param">circle</span> * <span class="param">s</span>.<span class="param">circle</span>;
+    }
+    <span class="kw">if</span> (<span class="kw">sel</span> <span class="param">s</span>.<span class="param">rect</span>) {
+        <span class="kw">ret</span> <span class="param">s</span>.<span class="param">rect</span>.<span class="param">w</span> * <span class="param">s</span>.<span class="param">rect</span>.<span class="param">h</span>;
+    }
+    <span class="kw">ret</span> <span class="num">0.0</span>;
+}</code></pre>
+      <p>Guards obey strict lexical scope rules:</p>
+      <ul>
+        <li>The body of an <code>if (sel p.c)</code> block guards <code>p.c</code> for the duration of that block.</li>
+        <li>The right-hand side of a logical <code>&&</code> expression is guarded when <code>sel p.c</code> appears on the left.</li>
+        <li>When an <code>if (sel p.c)</code> arm exits through a return, break, or continue, later code in the enclosing block is not guarded for <code>p.c</code>. However, exiting when all other possibilities are handled allows narrowing.</li>
+      </ul>
+      <div class="callout warn">
+        <span class="callout-label">Guard restrictions</span>
+        <p>Guards must be unambiguous. An <code>or</code> branch is not guarded because the condition evaluated to false. Logical <code>||</code> and negation with <code>!</code> do not open a payload guard. Test one condition at a time.</p>
+      </div>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
-          <li><a href="decorators.html">Decorators</a> - <code>#[align(N)]</code> and the rest of the decorator set</li>
-          <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$offset_of</code> for inspecting layout</li>
-          <li><a href="statements.html">Statements</a> - <code>if</code>/<code>or</code> chains for reading discriminated values</li>
-          <li><a href="types.html">Types</a> - the type system records and unions build on</li>
+          <li><a href="decorators.html">Decorators</a> - <code>#[deprecated]</code> on declarations and cases</li>
+          <li><a href="intrinsics.html">Intrinsics</a> - <code>$cases</code>, <code>$is_tag</code>, and <code>$discriminant_of</code> for tag reflection</li>
+          <li><a href="statements.html">Statements</a> - control flow and conditional guards</li>
+          <li><a href="types.html">Types</a> - aggregate and primitive type definitions</li>
         </ul>
       </div>
 
@@ -160,7 +191,8 @@
       <a href="#construct">Construction and access</a>
       <a href="#layout">Memory layout</a>
       <a href="#unions">Unions</a>
-      <a href="#discriminated">Discriminated values</a>
+      <a href="#tags">Tags</a>
+      <a href="#guards">Payload guards and sel</a>
     </nav>
   </div>
 

@@ -79,8 +79,9 @@
       <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">add</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> a + b; }
 <span class="kw">fun</span> <span class="fn">helper</span>() { ... }            <span class="cmt"># private: only callable inside this file</span>
 <span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Point</span> { <span class="param">x</span>: <span class="type">i64</span>; <span class="param">y</span>: <span class="type">i64</span>; }
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Status</span> { <span class="fn">Ready</span>, <span class="fn">Failed</span>(<span class="type">u32</span>) }
 <span class="kw">pub</span> <span class="kw">val</span> <span class="param">MAX</span>: <span class="type">i64</span> = <span class="num">100</span>;</code></pre>
-      <p>The modifier applies to declarations: <code>fun</code>, <code>rec</code>, <code>uni</code>, <code>def</code>, <code>val</code>, <code>var</code>, and <code>ext fun</code>.</p>
+      <p>The modifier applies to declarations: <code>fun</code>, <code>tag</code>, <code>rec</code>, <code>uni</code>, <code>def</code>, <code>val</code>, <code>var</code>, and <code>ext fun</code>.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p><code>fwd</code> always publishes and does not take an explicit <code>pub</code> modifier.</p>

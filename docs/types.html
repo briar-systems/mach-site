@@ -98,7 +98,7 @@
       <p>The spelling is <code>&lt;u|i|f&gt;&lt;width&gt;x&lt;count&gt;</code> with a <strong>single</strong> <code>x</code>. A name like <code>f32x4x4</code> is not a vector type and resolves as an ordinary identifier: a matrix is an algorithm over vectors and belongs in a library, not in the language. <code>ptr</code> is not a lane element, since its width is target-defined rather than a scalar bit count.</p>
       <p>Two rules bound the form, and <strong>neither depends on the target</strong>: at least 2 lanes (<code>f32x1</code> is refused - a one-lane vector is just its scalar), and at most 65535 (a compiler limit; the lane count rides a 16-bit field through codegen). Everything else is legal at every width. <code>f32x3</code> is 96 bits, <code>f32x8</code> is 256, and both compile on every target - including one with no vector unit at all.</p>
       <p><strong>Width is a realization question, not a legality one.</strong> How a shape is realized does depend on the target, and there are three answers: one packed instruction where the shape fits a vector register and the operation has a packed form; a value placed in memory and worked one lane at a time where it does not; and per-lane scalar code on a target with no vector unit (riscv64 today). All three compute identical lanes - the expansion is a fixed unroll, never a reassociation - so only performance varies. A target that gains wider vector registers therefore gets <strong>better code</strong>, not new spellings. The <code>simd</code> profile key reports or refuses the scalar cases when a project cannot afford them; see <a href="manifest.html#profiles">Manifest</a>.</p>
-      <p>A vector spelling is recognized only in <strong>type</strong> position, so a <em>value</em> may still be named <code>f32x4</code>. A <em>type</em> may not: <code>rec</code>, <code>uni</code>, and <code>def</code> reject a name spelled as a vector form, because such a type would be silently unreachable - every use in type position resolves to the vector instead.</p>
+      <p>A vector spelling is recognized only in <strong>type</strong> position, so a <em>value</em> may still be named <code>f32x4</code>. A <em>type</em> may not: <code>rec</code>, <code>uni</code>, <code>tag</code>, and <code>def</code> reject a name spelled as a vector form, because such a type would be silently unreachable - every use in type position resolves to the vector instead.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">f32x4</span>: <span class="type">i64</span> = <span class="num">7</span>;             <span class="cmt"># fine: values are a different position</span>
 <span class="kw">rec</span> <span class="type">f32x3</span> { <span class="param">x</span>: <span class="type">f32</span>; }           <span class="cmt"># error: `f32x3` is spelled as a vector type</span></code></pre>
 
@@ -165,7 +165,7 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
 <span class="kw">val</span> <span class="param">r</span>:  <span class="type">i64</span>   = <span class="fn">op</span>(<span class="num">2</span>, <span class="num">3</span>);</code></pre>
 
       <h2 id="named-types">Named types and aliases</h2>
-      <p><code>rec</code> and <code>uni</code> declarations produce named types. A <code>def</code> introduces an alias for any type, including the constructed forms above.</p>
+      <p><code>rec</code>, <code>uni</code>, and <code>tag</code> declarations produce named types. A <code>def</code> introduces an alias for any type, including the constructed forms above.</p>
       <pre class="code"><code><span class="kw">def</span> <span class="type">Bytes</span>: [<span class="num">16</span>]<span class="type">u8</span>;     <span class="cmt"># Bytes now names an array type</span>
 <span class="kw">def</span> <span class="type">bool</span>: <span class="type">u8</span>;          <span class="cmt"># the stdlib's own bool alias</span></code></pre>
 
@@ -173,7 +173,7 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
         <h2>See also</h2>
         <ul>
           <li><a href="values.html">Values and variables</a> - <code>def</code> aliases, <code>val</code> constants, and how <code>bool</code> is built</li>
-          <li><a href="records-unions.html">Records and unions</a> - declaring named <code>rec</code> and <code>uni</code> types</li>
+          <li><a href="records-unions.html">Records, unions, and tags</a> - declaring named <code>rec</code>, <code>uni</code>, and <code>tag</code> types</li>
           <li><a href="expressions.html">Expressions</a> - which operations work on each type</li>
           <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code>, <code>$align_of</code>, and <code>$length_of</code> over any type</li>
           <li><a href="shaders.html">GPU shaders</a> - what a handle is bound to, and the vectors a stage computes over</li>
