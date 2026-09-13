@@ -101,7 +101,7 @@
 
 <span class="kw">fun</span> <span class="fn">verify</span>(<span class="param">given</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">secret</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="type">bool</span> {
     <span class="kw">if</span> (given == secret) { <span class="kw">ret</span> <span class="kw">true</span>; }   <span class="cmt"># refused - see below</span>
-    <span class="kw">ret</span> (<span class="fn">ct_diff</span>(given, secret)<span class="ct">:^</span>) == <span class="num">0</span>;
+    <span class="kw">ret</span> (<span class="fn">ct_diff</span>(given, secret)<span class="ct">:&gt;</span><span class="type">u64</span>) == <span class="num">0</span>;
 }</code></pre>
       <p>That branch does not compile:</p>
       <pre class="code"><code>error: secret value used as a branch condition
@@ -111,9 +111,9 @@
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: a secret may not steer control flow; branching on it leaks
-     through timing. compute branch-free, or `:^` to a public value when
+     through timing. compute branch-free, or `:>T` to a public value when
      disclosure is intended</code></pre>
-      <p>Three things are worth drawing out of that. The mistake is caught <strong>when you compile</strong>, not by an audit or a timing measurement after the fact. Secrecy is <strong>part of the type</strong>, so it travels with the value through every function it is passed to - you cannot lose track of which variable holds the sensitive one. And disclosure is possible but never accidental: <code>:^</code> is the one way to turn a secret back into an ordinary value, so every deliberate release is a visible mark in the source that a reviewer can search for.</p>
+      <p>Three things are worth drawing out of that. The mistake is caught <strong>when you compile</strong>, not by an audit or a timing measurement after the fact. Secrecy is <strong>part of the type</strong>, so it travels with the value through every function it is passed to - you cannot lose track of which variable holds the sensitive one. And disclosure is possible but never accidental: <code>:&gt;T</code> is the one way to turn a secret back into an ordinary value, so every deliberate release is a visible mark in the source that a reviewer can search for.</p>
       <p>The rest of this page is the precise version of all that.</p>
 
       <h2 id="lattice">The secrecy lattice</h2>
@@ -167,11 +167,10 @@
         <p>A walk that skips a secret field is pinned by the flow rules rather than by convention - reading one into a public accumulator does not compile, so a walk that gates wrongly is a compile error, not a silent disclosure.</p>
       </div>
 
-      <h2 id="downgrade">Downgrade with <code>:^</code></h2>
-      <p><code>:^</code> is the only way to remove <code>^</code>. It produces a new public value and never reinterprets storage in place.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:^</span>; }       <span class="cmt"># bare strip</span>
-<span class="kw">fun</span> <span class="fn">publish2</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:^</span><span class="type">u32</span>; }   <span class="cmt"># explicit target names the public type</span></code></pre>
-      <p><code>:^</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
+      <h2 id="downgrade">Downgrade with <code>:&gt;T</code></h2>
+      <p><code>:&gt;T</code> is the only way to remove <code>^</code>. It produces a new public value of type <code>T</code> and never reinterprets storage in place. The destination type <code>T</code> must always be named explicitly.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
+      <p><code>:&gt;T</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
 
       <h2 id="welded">Welded-storage pointers</h2>
       <p>Secrecy is fixed at declaration and is non-launderable, which makes the public/secret aliasing leak unconstructable with no alias analysis at all:</p>
@@ -180,23 +179,22 @@
         <li>a secret-welded pointer cannot be erased to the untyped <code>ptr</code></li>
         <li>a <code>uni</code>'s overlapping variants must agree on secrecy</li>
       </ul>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
-<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
+<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
       <p>The union rule is a property of the union <strong>type</strong>, not of the syntax that declared it, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
       <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>] { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
 <span class="kw">rec</span> <span class="type">Box</span>[<span class="type">T</span>] { <span class="param">u</span>: <span class="type">U</span>[<span class="type">T</span>]; }
 
-<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct">^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
-<span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span>
-<span class="kw">var</span> <span class="param">p</span>: <span class="type">U</span>[<span class="type">u32</span>];                        <span class="cmt"># fine, and so is an all-secret instantiation</span></code></pre>
-      <p>The check is <strong>deep</strong> and <strong>fails closed</strong>: a secret nested anywhere inside an aggregate counts as secret at these boundaries, and a placement the checker cannot prove severs no weld is rejected rather than allowed. Two aggregates are compared <strong>by byte extent</strong>, not by field ordinal - matching <code>^</code> placement in the type graph does not put two fields on the same bytes, so each paired field must also agree in size and alignment.</p>
+<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct>^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
+<span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span></code></pre>
+      <p>Welding extends to <strong>nested aggregates</strong>: a <code>*Pair</code> whose <code>x</code> field is <code>^u64</code> has a welded field, so <code>?p.x</code> yields a <code>*^u64</code> and inherits the refusal.</p>
 
       <h2 id="oblivious"><code>#[oblivious]</code> - the codegen contract</h2>
       <p>The flow typing constrains the <em>source</em>; <code>#[oblivious]</code> carries the obligation through <em>codegen</em>. Inside a function carrying it, the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand.</p>
       <pre class="code"><code><span class="deco">#[oblivious]</span>
-<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
+<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="ct>^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
       <p>A function instance that <strong>computes</strong> on a secret must carry it; one that only moves, stores, or declassifies secrets is transparent and stays annotation-free. The check runs per monomorphized instance.</p>
-      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:^</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions - a backstop behind the compile-time gates, not a replacement for them.</p>
+      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:&gt;T</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions, followed by a second validation pass on the final machine instructions.</p>
 
       <h3 id="oblivious-asm">Inline assembly inside an oblivious function</h3>
       <p>Inline <code>asm</code> inside such a function is <strong>validated</strong>, not rejected. The block is parsed into instructions and walked for the same three leaks the compiler checks everywhere else. Taint enters through the block's <code>{name}</code> bindings, whose secrecy is stamped from the local's declared type. What the walk cannot model, it refuses:</p>
@@ -215,18 +213,18 @@
       <h2 id="zeroize">The zeroizing-write guarantee</h2>
       <p>Wiping a secret is only useful if the wipe survives to run. That guarantee exists, but it is <strong>not</strong> provided by <code>#[oblivious]</code>, and it is scoped more broadly than the decorator is. A store into secret storage is tainted at lowering, keyed on the storage rather than on any decorator:</p>
       <pre class="code"><code><span class="cmt"># no decorator: the wipe is protected anyway</span>
-<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
+<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
     <span class="kw">var</span> <span class="param">i</span>: <span class="type">usize</span> = <span class="num">0</span>;
     <span class="kw">for</span> (i &lt; n) { p[i] = <span class="num">0</span>; i = i + <span class="num">1</span>; }
 }</code></pre>
       <p><strong>What it covers.</strong> Memory reached through a pointer that escapes the function - the shape a <code>zeroize</code> helper has. Such a store cannot be promoted out of memory, and the taint is present for any future pass to read.</p>
       <p><strong>What it does not cover.</strong> A value the compiler keeps in a <strong>register</strong>. Writing to a promoted local is not a memory write, so wiping one is not preserved:</p>
-      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct">^</span><span class="type">u8</span> = k;
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct>^</span><span class="type">u8</span> = k;
 x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x` may never have been in memory</span></code></pre>
       <p>Adding <code>#[oblivious]</code> does not change this. To wipe reliably, write through a pointer whose target is memory the compiler cannot promote away.</p>
 
       <h2 id="trusted-base">Trusted base</h2>
-      <p>The only secret-to-public crossings are the explicit <code>:^</code> cast and inline <code>asm</code> blocks. Everything else is enforced. A proof is always relative to a leakage model, and its fidelity to real silicon is empirical.</p>
+      <p>The only secret-to-public crossings are the explicit <code>:&gt;T</code> cast and inline <code>asm</code> blocks. Everything else is enforced. A proof is always relative to a leakage model, and its fidelity to real silicon is empirical.</p>
       <p>The contract is only offered where mach emits the instructions that execute. A target whose back half hands a module to a downstream compiler instead - the SPIR-V backend - <strong>rejects <code>#[oblivious]</code></strong>: neither that translation nor the device's timing behaviour is covered by the leakage model. Compile constant-time code for a machine target, and pass such a target only public data.</p>
 
       <h2 id="assurance">Assurance</h2>
@@ -234,14 +232,14 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
         <span class="callout-label">Read this first</span>
         <p>The constant-time guarantee is incomplete. This support is an experimental preview and has not been audited. <strong>Do not build production cryptography on it at this version.</strong></p>
       </div>
-      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, and the translation validator independently re-checks the lowered MIR. A dudect-style timing harness measures a branchless constant-time reference against a deliberately-leaky control and flags the leak with Welch's t-test.</p>
+      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, the translation validator independently re-checks the lowered MIR, and a second validation pass checks final machine instructions. A dudect-style timing harness measures a branchless constant-time reference against a deliberately-leaky control and flags the leak with Welch's t-test.</p>
       <p>The leakage model has three channels, and the harness does not cover them uniformly:</p>
       <table>
         <thead><tr><th>Channel</th><th>Assured by</th></tr></thead>
         <tbody>
-          <tr><td>control-flow trace</td><td>the source-level branch gate, plus the harness's latency mode</td></tr>
-          <tr><td>variable-latency operands</td><td>the sema and lowering gates, plus the harness's latency mode</td></tr>
-          <tr><td>memory-address trace</td><td>the source-level secret-index and secret-address gates, plus the harness's address mode</td></tr>
+          <tr><td>secret-dependent control flow (branches)</td><td>compile-time refusal + validation over lowered MIR and machine instructions</td></tr>
+          <tr><td>secret-dependent memory access (cache traces)</td><td>compile-time refusal + validation over lowered MIR and machine instructions</td></tr>
+          <tr><td>variable-latency instructions</td><td>instruction-selection refusal + translation validation against target CPU model</td></tr>
         </tbody>
       </table>
       <p>The two harness modes need opposite sampling and neither substitutes for the other. Latency mode times a large batch of calls per sample, which is what lifts a running-time difference above clock resolution - and that same batching <em>hides</em> an address-trace leak, since every call in a batch is handed the same input and the single cache miss carrying the signal is averaged away. Two consequences worth stating plainly:</p>
@@ -278,7 +276,7 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
       <a href="#join">Join</a>
       <a href="#gates">Gates</a>
       <a href="#ask-comptime">Asking about secrecy at comptime</a>
-      <a href="#downgrade">Downgrade with :^</a>
+      <a href="#downgrade">Downgrade with :&gt;T</a>
       <a href="#welded">Welded-storage pointers</a>
       <a href="#oblivious">#[oblivious]</a>
       <a class="sub" href="#oblivious-asm">Inline assembly inside it</a>

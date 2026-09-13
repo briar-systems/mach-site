@@ -87,24 +87,29 @@ src     = <span class="str">"src"</span>                        <span class="cmt
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>  <span class="cmt"># required: output-path template root</span>
 
 [target.linux]                        <span class="cmt"># a platform: a fully-spelled tuple</span>
+default = true
 isa = <span class="str">"x86_64"</span>
 os  = <span class="str">"linux"</span>
 abi = <span class="str">"sysv64"</span>
 
-[profile.debug]                       <span class="cmt"># a build variant</span>
-opt   = <span class="num">0</span>                             <span class="cmt"># 0 (debug pipeline) | 1 | 2 (release pipeline)</span>
-debug = true                          <span class="cmt"># emit debug info for this profile</span>
-simd  = <span class="str">"scalarize"</span>                  <span class="cmt"># SIMD lever: "scalarize" | "require"</span>
+[profile.debug]                       <span class="cmt"># a build variant: requires all five keys</span>
+default       = true
+opt           = <span class="num">0</span>                     <span class="cmt"># 0 (debug pipeline) | 1 | 2 (release pipeline)</span>
+debug         = true                  <span class="cmt"># emit debug info for this profile</span>
+simd          = <span class="str">"scalarize"</span>          <span class="cmt"># SIMD lever: "scalarize" | "require"</span>
+vectorize     = true                  <span class="cmt"># auto-vectorization lever</span>
+float_reassoc = false                 <span class="cmt"># associative float transforms</span>
 
 [artifact.demo]                       <span class="cmt"># a produced artifact</span>
+default = true
 kind    = <span class="str">"bin"</span>                       <span class="cmt"># "bin" | "static" | "shared"</span>
 entry   = <span class="str">"main.mach"</span>                 <span class="cmt"># entry source, relative to src</span>
 out     = <span class="str">"bin/demo"</span>                  <span class="cmt"># output path, relative to the project out</span>
 targets = [<span class="str">"*"</span>]                        <span class="cmt"># which declared targets build it ("*" = all)</span>
 link    = []                          <span class="cmt"># [link.X] names this artifact links</span>
-need    = []                          <span class="cmt"># [step.X] names this artifact demands directly</span>
+need    = []                          <span class="cmt"># category-qualified names demanded directly</span>
 
-[dep.std]                             <span class="cmt"># a dependency</span>
+[dep.std]                             <span class="cmt"># a dependency: directory, manifest key, and id match</span>
 git = <span class="str">"https://github.com/briar-systems/mach-std"</span>
 ref = <span class="str">"branch/main"</span></code></pre>
 
@@ -116,15 +121,11 @@ ref = <span class="str">"branch/main"</span></code></pre>
           <tr><td><code>version</code></td><td>string</td><td>Project version. Read by <code>$project.version</code>; the source of truth a <code>tag/&lt;version&gt;</code> acquisition checks.</td></tr>
           <tr><td><code>src</code></td><td>string</td><td>Source root, project-root-relative. Module paths resolve under it.</td></tr>
           <tr><td><code>out</code></td><td>string</td><td>The output-path template root, referenced as <code>{project.out}</code> by artifact <code>out</code>, step paths, and <code>cmd</code>s.</td></tr>
-          <tr><td><code>mach</code></td><td>string</td><td>Optional. The minimum compiler version the project needs, as semver, validated when the manifest is read.</td></tr>
         </tbody>
       </table>
-      <p>A project using a feature added last week otherwise fails on an older toolchain with an ordinary parse error pointing at the <em>feature</em> rather than at the version. <code>mach</code> is checked for the root project and for every dependency, so a dependency that outgrows the running compiler says so in its own name rather than failing somewhere in its source.</p>
-      <pre class="code"><code>[project]
-mach = <span class="str">"4.15.0"</span></code></pre>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p><code>[project]</code> is exactly these keys. <code>name</code>, <code>description</code>, and any other key are unknown-key errors in a root manifest.</p>
+        <p><code>[project]</code> permits only <code>id</code>, <code>version</code>, <code>src</code>, and <code>out</code>. Any other key is an unknown-key error in a root manifest.</p>
       </div>
 
       <h2 id="targets">Targets</h2>
@@ -149,18 +150,18 @@ mach = <span class="str">"4.15.0"</span></code></pre>
       <table>
         <thead><tr><th>Axis</th><th>Values</th></tr></thead>
         <tbody>
-          <tr><td><code>isa</code></td><td><code>x86_64</code>, <code>aarch64</code>, <code>riscv64</code>, <code>riscv32</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
+          <tr><td><code>isa</code></td><td><code>x86_64</code>, <code>aarch64</code>, <code>riscv64</code>, <code>riscv32</code>, <code>spirv</code></td></tr>
           <tr><td><code>os</code></td><td><code>linux</code>, <code>windows</code>, <code>darwin</code>, <code>freestanding</code></td></tr>
-          <tr><td><code>abi</code></td><td><code>sysv64</code>, <code>win64</code>, <code>aapcs64</code>, <code>lp64</code>, <code>lp64f</code>, <code>lp64d</code>, <code>ilp32</code>, <code>ilp32f</code>, <code>ilp32d</code>, <code>spirv</code>, <code>mos6502</code></td></tr>
+          <tr><td><code>abi</code></td><td><code>sysv64</code>, <code>win64</code>, <code>aapcs64</code>, <code>lp64</code>, <code>lp64f</code>, <code>lp64d</code>, <code>ilp32</code>, <code>ilp32f</code>, <code>ilp32d</code>, <code>spirv</code></td></tr>
           <tr><td><code>of</code></td><td><code>elf</code>, <code>coff</code>, <code>macho</code>, <code>raw</code>, <code>spv</code></td></tr>
         </tbody>
       </table>
-      <p>A value outside its axis's set is a strict-parse error, so a typo is caught rather than silently never matching. <code>mach info targets</code> prints the tuples this binary can actually build; it is derived from the same declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
+      <p>A value outside its axis set is a strict-parse error, so a typo is caught rather than silently never matching. <code>mach info targets</code> prints the tuples this binary can actually build. It is derived from the same declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
       <div class="callout warn">
         <span class="callout-label">RISC-V is a family of ABIs</span>
-        <p><code>lp64</code> means <strong>soft float</strong>: arguments ride integer registers even where the hardware has an FPU. <code>lp64f</code> passes single-precision floats in float registers and <code>lp64d</code> passes both single and double, which is what a Linux riscv64 toolchain means by its default. <code>ilp32</code>, <code>ilp32f</code>, and <code>ilp32d</code> are the same three on 32-bit RISC-V. Passing <code>lp64</code> where <code>lp64d</code> was meant is an ABI mismatch against every C object on the system, not a performance choice.</p>
+        <p><code>lp64</code> means <strong>soft float</strong>: arguments ride integer registers even where the hardware has an FPU. <code>lp64f</code> passes single-precision floats in float registers and <code>lp64d</code> passes both single and double, which is what a Linux riscv64 toolchain means by its default. <code>ilp32</code>, <code>ilp32f</code>, and <code>ilp32d</code> are the same three on 32-bit RISC-V. Passing <code>lp64</code> where <code>lp64d</code> was meant is an ABI mismatch against every C object on the system, not a performance choice. <code>riscv64</code> defaults to <code>rv64gc</code>, while <code>riscv32</code> defaults to <code>rv32imac</code> and <code>ilp32</code> (specify <code>rv32imafdc</code> when RV32 hardware float is wanted).</p>
       </div>
-      <p>Each os has a default object format - <code>linux</code> to <code>elf</code>, <code>windows</code> to <code>coff</code>, <code>darwin</code> to <code>macho</code>, <code>freestanding</code> to <code>raw</code> - and <code>of</code> names a different one. An os accepts only the formats it can load, so an override the os cannot enter is refused. The default is a function of the whole tuple, not the os alone: a <code>spirv</code> target resolves to <code>spv</code> regardless of the os it names.</p>
+      <p>Each os has a default object format: <code>linux</code> to <code>elf</code>, <code>windows</code> to <code>coff</code>, <code>darwin</code> to <code>macho</code>, <code>freestanding</code> to <code>raw</code>, and <code>of</code> names a different one. An os accepts only the formats it can load, so an override the os cannot enter is refused. The default is a function of the whole tuple, not the os alone: a <code>spirv</code> target resolves to <code>spv</code> regardless of the os it names.</p>
       <p>A <code>freestanding</code> target can select <code>of = "elf"</code> on every architecture, and gets an image with no loader construct in it: no header segment, since nothing parses a program header at run time on bare metal.</p>
       <pre class="code"><code>[target.metal]
 isa = <span class="str">"x86_64"</span>
@@ -189,27 +190,28 @@ base     = <span class="num">0xFFFF800000000000</span>
 platform = <span class="str">"bmos"</span></code></pre>
 
       <h2 id="artifacts">Artifacts</h2>
-      <p>Every artifact is declared explicitly and named by its table key. <code>$project.name</code> reads the selected artifact's name.</p>
+      <p>Every artifact is declared explicitly and named by its table key. <code>$bin.name</code> reads the selected artifact name.</p>
       <table>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><code>kind</code></td><td>yes</td><td><code>"bin"</code>, <code>"static"</code>, or <code>"shared"</code>.</td></tr>
-          <tr><td><code>entry</code></td><td>yes</td><td>Entry source, relative to the project <code>src</code> dir. The entry module's FQN is <code>&lt;id&gt;.&lt;entry without .mach&gt;</code>, with <code>/</code> turned into <code>.</code>.</td></tr>
-          <tr><td><code>out</code></td><td>yes</td><td>This artifact's output path, <strong>relative to the expanded project <code>out</code></strong> and rooted there automatically - write <code>bin/demo</code>, not <code>{project.out}/bin/demo</code>. An executable extension, where wanted, is written literally here.</td></tr>
-          <tr><td><code>targets</code></td><td>yes</td><td>Array of declared target names this artifact builds for; <code>["*"]</code> means every declared target.</td></tr>
+          <tr><td><code>entry</code></td><td>yes</td><td>Entry source, relative to the project <code>src</code> dir. The entry module FQN is <code>&lt;id&gt;.&lt;entry without .mach&gt;</code>, with <code>/</code> turned into <code>.</code>.</td></tr>
+          <tr><td><code>out</code></td><td>yes</td><td>This artifact output path, <strong>relative to the expanded project <code>out</code></strong> and rooted there automatically, such as <code>bin/demo</code> or <code>bin/demo{artifact.suffix}</code>.</td></tr>
+          <tr><td><code>targets</code></td><td>yes</td><td>Array of declared target names this artifact builds for, where <code>["*"]</code> means every declared target.</td></tr>
           <tr><td><code>link</code></td><td>yes</td><td>Array of <code>[link.X]</code> names this artifact links. <code>[]</code> for none.</td></tr>
-          <tr><td><code>need</code></td><td>yes</td><td>Array of <code>[step.X]</code> names this artifact demands directly, for step outputs that are not themselves link inputs. <code>[]</code> for none.</td></tr>
-          <tr><td><code>subsystem</code></td><td>no</td><td><code>"console"</code> (default) or <code>"gui"</code> - the environment a windows executable declares it runs under.</td></tr>
-          <tr><td><code>icon</code></td><td>no</td><td>Project-root-relative <code>.ico</code> path embedded in a Windows executable's PE resources. <code>bin</code> artifacts only.</td></tr>
-          <tr><td><code>manifest</code></td><td>no</td><td>Project-root-relative application-manifest path embedded byte-for-byte in a Windows executable's PE resources. <code>bin</code> artifacts only.</td></tr>
+          <tr><td><code>need</code></td><td>yes</td><td>Array of category-qualified requirements such as <code>step.generate</code>, <code>artifact.support</code>, and <code>artifact.shader-*</code>. Each glob matches only its named category. <code>[]</code> for none.</td></tr>
+          <tr><td><code>subsystem</code></td><td>no</td><td><code>"console"</code> (default) or <code>"gui"</code>, the environment a Windows executable declares it runs under. Refused on targets whose image format has no subsystem.</td></tr>
+          <tr><td><code>icon</code></td><td>no</td><td>Project-root-relative <code>.ico</code> path embedded in a Windows executable PE resources. <code>bin</code> artifacts only.</td></tr>
+          <tr><td><code>manifest</code></td><td>no</td><td>Project-root-relative application-manifest path embedded byte-for-byte in a Windows executable PE resources. <code>bin</code> artifacts only.</td></tr>
+          <tr><td><code>default</code></td><td>no</td><td><code>true</code> marks the artifact chosen when a command needs one artifact (such as <code>mach test</code> or <code>mach run</code>) and several declared artifacts support the selected target. Exactly one candidate may carry it.</td></tr>
         </tbody>
       </table>
       <ul>
         <li><strong><code>bin</code></strong> links an executable at the resolved <code>out</code> path.</li>
-        <li><strong><code>static</code></strong> materialises a real <code>ar</code> archive at the resolved <code>out</code> path - the per-module objects with an archive symbol index, the deliverable a consumer links as a <code>.a</code>.</li>
-        <li><strong><code>shared</code></strong> is reserved for a shared-library deliverable; its emission is a later phase.</li>
+        <li><strong><code>static</code></strong> materialises a real <code>ar</code> archive at the resolved <code>out</code> path: the per-module objects with an archive symbol index, the deliverable a consumer links as a <code>.a</code>.</li>
+        <li><strong><code>shared</code></strong> is reserved for a shared-library deliverable, with emission in a later phase.</li>
       </ul>
-      <p>Per-target extension or per-target entry is not a per-cell exception table - it is a second artifact stanza, so the condition stays visible like everything else.</p>
+      <p>Per-target extension or per-target entry is not a per-cell exception table. It is a second artifact stanza, so the condition stays visible like everything else.</p>
 
       <h3 id="windows-resources">Windows subsystem and resources</h3>
       <p>A PE executable records in its optional header which environment it wants, and the Windows loader honours it: <code>"console"</code> gets a console window attached to the process, <code>"gui"</code> does not. A graphical application sets <code>"gui"</code> to stop an empty console from opening behind it on launch. <code>--subsystem console|gui</code> overrides the key for one invocation.</p>
@@ -223,34 +225,35 @@ need      = []
 subsystem = <span class="str">"gui"</span>
 icon      = <span class="str">"assets/game.ico"</span>
 manifest  = <span class="str">"assets/game.manifest"</span></code></pre>
-      <p>These keys take no <code>os</code> filter and are not an error on a linux or darwin target. Only the PE writer consumes them, so on any other target they are accepted and inert - the manifest stays one declaration read by every build, rather than a per-platform file.</p>
+      <p>Only a PE image carries the subsystem field. A key written on an artifact planned for a target whose format has none (ELF, Mach-O, raw) is refused as unsupported, naming the key, the target, and the format. An omitted key is the console default and is never refused, so an artifact declaring no subsystem still builds everywhere. Resource keys like <code>icon</code> and <code>manifest</code> remain valid in a multi-target artifact, but are inert off Windows where Mach does not read either path.</p>
 
       <h2 id="profiles">Profiles</h2>
-      <p>A <code>[profile.&lt;name&gt;]</code> is a build variant. The optimization level and the debug-emission toggle live here because they are variant concerns.</p>
+      <p>A <code>[profile.&lt;name&gt;]</code> is a build variant. The optimization level, debug toggle, and SIMD levers live here because they are variant concerns.</p>
       <table>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><code>opt</code></td><td>yes</td><td>Optimization level: <code>0</code> selects the debug pipeline (the always-on passes only), <code>1</code> and <code>2</code> select the release pipeline. Any other integer is a manifest error.</td></tr>
           <tr><td><code>debug</code></td><td>yes</td><td>Emit debug info (DWARF on ELF / Mach-O, CodeView on COFF). Gates emission only, never the optimizer, so a <code>release</code> profile can keep symbols with <code>debug = true</code>.</td></tr>
           <tr><td><code>simd</code></td><td>yes</td><td>SIMD scalarization lever. <code>"scalarize"</code> builds for a target without hardware SIMD by emitting a defined unrolled scalar expansion of each vector operator; <code>"require"</code> makes a build for an incapable target a hard error naming the offending operator.</td></tr>
-          <tr><td><code>vectorize</code></td><td>no</td><td>Auto-vectorization lever, default <code>true</code>. When true, the release pipeline rewrites provably-safe counted loops to 128-bit SIMD on a target with hardware vectors; <code>false</code> skips the pass. It only ever subtracts, so it changes performance and never semantics.</td></tr>
-          <tr><td><code>float_reassoc</code></td><td>no</td><td>Permission to treat floating-point addition and multiplication as <strong>associative</strong>, default <code>false</code>. It lets the vectorizer reduce an <code>f32</code> / <code>f64</code> accumulator through lane-count partial sums, which changes the result. The only profile key that can change a program's computed answer.</td></tr>
+          <tr><td><code>vectorize</code></td><td>yes</td><td>Auto-vectorization lever. When <code>true</code>, the release pipeline rewrites provably safe counted loops to 128-bit SIMD on a target with hardware vectors. <code>false</code> skips the pass, changing performance but never semantics.</td></tr>
+          <tr><td><code>float_reassoc</code></td><td>yes</td><td>Permission to treat floating-point addition and multiplication as <strong>associative</strong>. It lets the vectorizer reduce an <code>f32</code> / <code>f64</code> accumulator through lane-count partial sums, which changes the result. The only profile key that can change a program computed answer.</td></tr>
+          <tr><td><code>default</code></td><td>no</td><td><code>true</code> marks the profile a build uses when several are declared and <code>--profile</code> is omitted. Exactly one profile may carry it.</td></tr>
         </tbody>
       </table>
-      <p>Emission of the human-readable IR and assembly side-artifacts is <strong>not</strong> a profile concern - it is controlled only by the <code>--emit-ir</code> / <code>--emit-asm</code> CLI flags.</p>
+      <p>All five keys (<code>opt</code>, <code>debug</code>, <code>simd</code>, <code>vectorize</code>, <code>float_reassoc</code>) are required in a declared root profile. Emission of the human-readable IR and assembly side-artifacts is not a profile concern. It is controlled only by the <code>--emit-ir</code> and <code>--emit-asm</code> CLI flags.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>The <code>simd</code>, <code>vectorize</code>, and <code>float_reassoc</code> levers are always the <strong>consumer's</strong>. A dependency's <code>[profile.*]</code> is parsed permissively and never read to build the consumer, so a library's values are inert. There is no ecosystem fork and no dual API.</p>
+        <p>The <code>simd</code>, <code>vectorize</code>, and <code>float_reassoc</code> levers are always the <strong>consumer's</strong>. A dependency <code>[profile.*]</code> is parsed permissively and never read to build the consumer, so a library's values are inert. There is no ecosystem fork and no dual API.</p>
       </div>
 
       <h2 id="link-inputs">Link requirements</h2>
-      <p>A <code>[link.&lt;name&gt;]</code> is a named external link requirement. Artifacts reference entries by name in their <code>link = [...]</code>; an entry whose filters do not match the build cell is skipped. An entry with <code>export = true</code> also applies to any project that links this project's modules, so a platform link requirement lives once - in the manifest that needs it - and cascades to consumers.</p>
+      <p>A <code>[link.&lt;name&gt;]</code> is a named external link requirement. Artifacts reference entries by name in their <code>link = [...]</code>, and an entry whose filters do not match the build cell is skipped. An entry with <code>export = true</code> also applies to any project that links this project's modules, so a platform link requirement lives once in the manifest that needs it and cascades to consumers.</p>
       <table>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><code>source</code></td><td>yes</td><td><code>"system"</code> (a system library resolved by name), <code>"framework"</code> (a macOS framework), or <code>"local"</code> (a file on disk).</td></tr>
-          <tr><td><code>name</code></td><td>shape</td><td>Library / framework name - required for <code>"system"</code> and <code>"framework"</code>, forbidden for <code>"local"</code>.</td></tr>
-          <tr><td><code>path</code></td><td>shape</td><td>File path - required for <code>"local"</code>, forbidden otherwise. A template.</td></tr>
+          <tr><td><code>name</code></td><td>shape</td><td>Library / framework name: required for <code>"system"</code> and <code>"framework"</code>, forbidden for <code>"local"</code>.</td></tr>
+          <tr><td><code>path</code></td><td>shape</td><td>File path: required for <code>"local"</code>, forbidden otherwise. A template.</td></tr>
           <tr><td><code>library</code></td><td>no</td><td>Stable logical name used by <code>#[library("...")]</code>; defaults to the table name.</td></tr>
           <tr><td><code>symbols</code></td><td>no</td><td>Array of symbol names this dependency provides, attributing imports that have no <code>ext</code> declaration to decorate.</td></tr>
           <tr><td><code>os</code> / <code>isa</code> / <code>abi</code></td><td>yes</td><td>Filter axes: a canonical value, <code>"*"</code> (any), an array of values, or <code>[]</code> (none). An entry applies to a cell when all three match.</td></tr>
@@ -268,58 +271,62 @@ abi     = <span class="str">"*"</span>
 export  = true</code></pre>
       <p><code>library</code> decouples source attribution from platform loader spelling. Give mutually exclusive platform entries the same logical value when they provide the same API; one unconditional <code>#[library("glfw")]</code> can then bind against <code>libglfw.so.3</code> on Linux, an install name on Darwin, and <code>glfw3.dll</code> on Windows.</p>
       <p><code>symbols</code> names the symbols the dependency provides. On a two-level-namespace format (PE, Mach-O) every import must identify its provider, and <code>#[library]</code> can only attribute a symbol your Mach source declares. A vendored static archive leaves its own undefined references with no declaration to decorate, so the entry that provides them claims them. A symbol may be claimed only once per link.</p>
-      <p>Whether an input links <strong>statically</strong> or <strong>dynamically</strong> follows the resolved file: a loose <code>.o</code> / <code>.obj</code> or static <code>.a</code> / <code>.lib</code> links statically; ELF <code>.so</code>, Mach-O <code>.dylib</code>, and PE <code>.dll</code> inputs are recorded using their format's canonical loader name.</p>
+      <p>Whether an input links <strong>statically</strong> or <strong>dynamically</strong> follows the resolved file: a loose <code>.o</code> / <code>.obj</code> or static <code>.a</code> / <code>.lib</code> links statically, while ELF <code>.so</code>, Mach-O <code>.dylib</code>, and PE <code>.dll</code> inputs are recorded using their format canonical loader name.</p>
 
       <h2 id="steps">Build steps</h2>
-      <p>A <code>[step.&lt;name&gt;]</code> is a command, make-recipe style, that produces files a build consumes - typically a <code>local</code> link input, such as a vendored-C object.</p>
+      <p>A <code>[step.&lt;name&gt;]</code> is a command, make-recipe style, that produces files a build consumes, typically a <code>local</code> link input such as a vendored-C object.</p>
       <table>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>cmd</code></td><td>yes</td><td>One command string, run through the platform shell (<code>sh -c</code> on posix, <code>cmd.exe /C</code> on windows) from the project root. Templates expand in it.</td></tr>
-          <tr><td><code>in</code></td><td>yes</td><td>Declared input file list. Accepts globs (<code>*</code>, <code>**</code>), expanded sorted for a stable fingerprint; a glob that matches nothing is a hard error.</td></tr>
-          <tr><td><code>out</code></td><td>yes</td><td>Declared output file list. Concrete paths only - a glob here is an error, since the demand match and cache key expand <code>out</code> verbatim.</td></tr>
-          <tr><td><code>need</code></td><td>yes</td><td>Array of other <code>[step.X]</code> names this step must run after. Cycles error. <code>[]</code> for none.</td></tr>
+          <tr><td><code>argv</code></td><td>yes</td><td>Nonempty array of strings, spawned directly with no shell. <code>argv[0]</code> names the executable, by path or resolved on the planner <code>PATH</code>. Templates expand in every element. To invoke a shell, write <code>["sh", "-c", "..."]</code>.</td></tr>
+          <tr><td><code>env</code></td><td>no</td><td>Table of string values added to the step process environment.</td></tr>
+          <tr><td><code>in</code></td><td>yes</td><td>Declared input file list. Accepts globs (<code>*</code>, <code>**</code>), expanded sorted for a stable fingerprint. A glob that matches nothing is an error.</td></tr>
+          <tr><td><code>out</code></td><td>yes</td><td>Declared output file list. Concrete paths only: a glob here is an error, since demand matching and caching expand <code>out</code> verbatim.</td></tr>
+          <tr><td><code>need</code></td><td>yes</td><td>Array of <code>step.&lt;name&gt;</code> requirements or <code>step.&lt;pattern&gt;</code> globs this step must run after. Steps may require only steps. Cycles error. <code>[]</code> for none.</td></tr>
+          <tr><td><code>timeout_seconds</code></td><td>no</td><td>Positive integer seconds after which the step process group is terminated and the build fails. Omit for an unbounded step.</td></tr>
         </tbody>
       </table>
       <p>Steps carry <strong>no filters</strong> and <strong>never run automatically</strong>. A step runs only when demanded: by a selected <code>[link.X]</code> whose <code>local</code> <code>path</code> matches the step's <code>out</code>, by another step's <code>need</code>, or by an artifact's <code>need</code>. Because a step has no filter of its own, the condition for running it lives in the link entry that demands it.</p>
-      <p>A step is cached by content: its <code>in</code> contents plus its expanded <code>cmd</code> fingerprint the step. An unchanged step whose outputs still exist is skipped. Every step process inherits the active build cell's target tuple as <code>MACH_TARGET_ISA</code>, <code>MACH_TARGET_OS</code>, and <code>MACH_TARGET_ABI</code>.</p>
+      <p>A step is cached by content: its declared inputs, resolved executable, expanded arguments, and effective environment contribute to its fingerprint. An unchanged step whose outputs still exist is skipped. Every step process inherits the active build cell target tuple as <code>MACH_TARGET_ISA</code>, <code>MACH_TARGET_OS</code>, and <code>MACH_TARGET_ABI</code>.</p>
 
       <h2 id="dependencies">Dependencies</h2>
-      <p>Each <code>[dep.&lt;alias&gt;]</code> names a dependency materialised under <code>dep/&lt;alias&gt;/</code>. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>src</code>. A module path whose head matches a dep's <code>id</code> resolves into that dep's tree. A stanza declares exactly one source key.</p>
+      <p>Each <code>[dep.&lt;id&gt;]</code> names a dependency materialised under <code>dep/&lt;id&gt;/</code>. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>src</code>. A module path whose head matches a dep <code>id</code> resolves into that dep tree. A stanza declares exactly one source key.</p>
       <table>
         <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>git</code></td><td>Git URL to clone into <code>dep/&lt;alias&gt;/</code>.</td></tr>
-          <tr><td><code>path</code></td><td>Local path to another project tree, resolved relative to this manifest; never fetched. <code>mach dep pull</code> materialises it at the vendor location as a relative symlink.</td></tr>
+          <tr><td><code>git</code></td><td>Git URL to clone into <code>dep/&lt;id&gt;/</code>.</td></tr>
+          <tr><td><code>path</code></td><td>Local path to another project tree, resolved relative to this manifest. It is never fetched: <code>mach dep pull</code> materialises it at the vendor location as a relative symlink.</td></tr>
           <tr><td><code>ref</code></td><td>Git ref to check out (with <code>git</code>): <code>tag/&lt;name&gt;</code>, <code>branch/&lt;name&gt;</code>, a bare tag or branch, or a commit SHA. An absent ref means the remote default branch.</td></tr>
         </tbody>
       </table>
-      <p>A git dep is pinned to a resolved commit in <code>mach.lock</code>; a path dep has no pinned content, so it carries no lock entry. <code>mach dep</code> performs only plain git operations, so a checkout you also commit as a submodule composes naturally; mach never invokes <code>git submodule</code>.</p>
+      <p>Dependencies are pinned by committed gitlinks under <code>dep/</code> in Git, or checked out cleanly at the declared ref. <code>mach dep pull &lt;path&gt;</code> materializes the flat closure at <code>dep/&lt;id&gt;/</code> one level deep. Builds never fetch and check offline that checkouts are clean and pinned.</p>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p>A registry-style <code>version =</code> key is reserved and rejected. Cloning, lockfile handling, and transitive resolution are covered in <a href="dependencies.html">Dependencies</a>.</p>
+        <p>A registry-style <code>version =</code> key is reserved and rejected. Cloning, gitlink pins, and transitive resolution are covered in <a href="dependencies.html">Dependencies</a>.</p>
       </div>
 
       <h2 id="bare-imports">Bare project-id imports</h2>
-      <p>A module path whose head segment matches a declared dependency's <code>[project].id</code> resolves into that dependency's source tree. The alias under <code>dep/</code> is a directory name; the <code>id</code> is what source code writes.</p>
+      <p>A module path whose head segment matches a declared dependency's <code>[project].id</code> resolves into that dependency's source tree. The directory under <code>dep/</code> and the <code>id</code> match what source code writes.</p>
 
       <h2 id="path-templates">Path templates</h2>
-      <p>Paths and <code>cmd</code>s expand over a closed, final set of six variables:</p>
+      <p>Paths and <code>argv</code> arguments expand over a closed, final set of eight variables:</p>
       <table>
         <thead><tr><th>Variable</th><th>Expands to</th></tr></thead>
         <tbody>
-          <tr><td><code>{project.out}</code></td><td>the <strong>root</strong> project's expanded <code>[project].out</code>, in every manifest of the closure</td></tr>
+          <tr><td><code>{project.out}</code></td><td>the <strong>root</strong> project expanded <code>[project].out</code>, in every manifest of the closure</td></tr>
           <tr><td><code>{target.name}</code></td><td>the resolved target name (never the literal <code>native</code>)</td></tr>
-          <tr><td><code>{target.isa}</code></td><td>the resolved target's <code>isa</code>, e.g. <code>x86_64</code></td></tr>
-          <tr><td><code>{target.os}</code></td><td>the resolved target's <code>os</code>, e.g. <code>linux</code></td></tr>
-          <tr><td><code>{target.abi}</code></td><td>the resolved target's <code>abi</code>, e.g. <code>sysv64</code></td></tr>
+          <tr><td><code>{target.isa}</code></td><td>the resolved target <code>isa</code>, e.g. <code>x86_64</code></td></tr>
+          <tr><td><code>{target.os}</code></td><td>the resolved target <code>os</code>, e.g. <code>linux</code></td></tr>
+          <tr><td><code>{target.abi}</code></td><td>the resolved target <code>abi</code>, e.g. <code>sysv64</code></td></tr>
           <tr><td><code>{profile.name}</code></td><td>the selected profile name</td></tr>
+          <tr><td><code>{artifact.suffix}</code></td><td>the conventional filename suffix of the artifact being named, for its kind on the selected target (such as <code>.exe</code>, <code>.a</code>, <code>.so</code>). Available only in an artifact's own <code>out</code>.</td></tr>
+          <tr><td><code>{artifact.&lt;id&gt;.out}</code></td><td>the output path of a required artifact, relative to the project root exactly as <code>{project.out}</code> is</td></tr>
         </tbody>
       </table>
       <p>An artifact's <code>out</code> is relative to the expanded project <code>out</code> and is rooted there automatically. Step <code>out</code> lists and local link <code>path</code>s are <strong>not</strong> auto-rooted: they name <code>{project.out}</code> explicitly, which is what homes a dependency's build products into the <em>consumer's</em> output tree rather than the dependency's checkout.</p>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p>There are no <code>{name}</code> / <code>{ext}</code> or bare <code>{target}</code> / <code>{profile}</code> aliases. An unresolvable <code>{...}</code> reference, or an unterminated <code>{</code>, is a strict-parse error. <code>{project.out}</code> is not available inside <code>[project].out</code> itself.</p>
+        <p>There are no <code>{name}</code> / <code>{ext}</code> or bare <code>{target}</code> / <code>{profile}</code> aliases. An unresolvable <code>{...}</code> reference, or an unterminated <code>{</code>, is a strict-parse error. <code>{project.out}</code> is not available inside <code>[project].out</code> itself, and <code>{artifact.&lt;id&gt;.out}</code> is not available inside an artifact's own <code>out</code>.</p>
       </div>
 
       <h2 id="build-matrix">The build matrix</h2>
@@ -336,8 +343,8 @@ export  = true</code></pre>
       <h3 id="native">native target resolution</h3>
       <p><code>native</code> resolves the host's <code>(isa, os)</code> against the <strong>declared</strong> targets only, never a synthesized tuple. Exactly one host match is chosen; several matching tuples is an ambiguity error naming the candidates; no match warns and falls back to the first declared target, so a cross-only project still builds on a foreign host.</p>
 
-      <h2 id="example">Annotated example</h2>
-      <p>A project that cross-compiles to linux and windows, links a system library on each, and vendors a C object through a build step. Note where the conditions live: <code>[step.miniz]</code> carries no filter of its own, so it runs only because <code>[link.miniz]</code> demands it - and that entry is gated to <code>os = "linux"</code>, since the host <code>cc</code> emits an ELF object. On the windows cell the entry filters out, the step is never demanded, and it never runs. To vendor C for the windows cell too, add a second step whose <code>cmd</code> cross-compiles (it can branch on <code>MACH_TARGET_OS</code>) and a second link entry gated to <code>os = "windows"</code>.</p>
+  <h2 id="example">Annotated example</h2>
+      <p>A project that cross-compiles to linux and windows, links a system library on each, and vendors a C object through a build step. Note where the conditions live: <code>[step.miniz]</code> carries no filter of its own, so it runs only because <code>[link.miniz]</code> demands it, and that entry is gated to <code>os = "linux"</code> since the host <code>cc</code> emits an ELF object. On the windows cell the entry filters out, the step is never demanded, and it never runs. To vendor C for the windows cell too, add a second step whose <code>argv</code> cross-compiles (it can branch on <code>MACH_TARGET_OS</code>) and a second link entry gated to <code>os = "windows"</code>.</p>
       <pre class="code"><code>[project]
 id      = <span class="str">"demo"</span>
 version = <span class="str">"0.1.0"</span>
@@ -345,9 +352,10 @@ src     = <span class="str">"src"</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>
 
 [target.linux]
-isa = <span class="str">"x86_64"</span>
-os  = <span class="str">"linux"</span>
-abi = <span class="str">"sysv64"</span>
+isa     = <span class="str">"x86_64"</span>
+os      = <span class="str">"linux"</span>
+abi     = <span class="str">"sysv64"</span>
+default = true
 
 [target.windows]
 isa = <span class="str">"x86_64"</span>
@@ -355,17 +363,22 @@ os  = <span class="str">"windows"</span>
 abi = <span class="str">"win64"</span>
 
 [profile.debug]
-opt   = <span class="num">0</span>
-debug = true
-simd  = <span class="str">"scalarize"</span>
+opt           = <span class="num">0</span>
+debug         = true
+simd          = <span class="str">"scalarize"</span>
+vectorize     = false
+float_reassoc = false
+default       = true
 
 [profile.release]
-opt   = <span class="num">2</span>
-debug = false
-simd  = <span class="str">"scalarize"</span>
+opt           = <span class="num">2</span>
+debug         = false
+simd          = <span class="str">"scalarize"</span>
+vectorize     = true
+float_reassoc = false
 
-[step.miniz]                            <span class="cmt"># builds the vendored C object the link entry below demands</span>
-cmd  = <span class="str">"cc -c vendor/miniz.c -o {project.out}/miniz.o"</span>
+[step.miniz]                            <span class="cmt"># builds the vendored c object the link entry below demands</span>
+argv = [<span class="str">"cc"</span>, <span class="str">"-c"</span>, <span class="str">"vendor/miniz.c"</span>, <span class="str">"-o"</span>, <span class="str">"{project.out}/miniz.o"</span>]
 in   = [<span class="str">"vendor/miniz.c"</span>]
 out  = [<span class="str">"{project.out}/miniz.o"</span>]
 need = []
@@ -373,7 +386,7 @@ need = []
 [link.miniz]
 source = <span class="str">"local"</span>
 path   = <span class="str">"{project.out}/miniz.o"</span>       <span class="cmt"># matches step.miniz's out, so it demands that step</span>
-os     = <span class="str">"linux"</span>                     <span class="cmt"># host `cc` emits an ELF object, so this entry is linux-only</span>
+os     = <span class="str">"linux"</span>                     <span class="cmt"># host cc emits an ELF object, so this entry is linux-only</span>
 isa    = <span class="str">"*"</span>
 abi    = <span class="str">"*"</span>
 export = false
@@ -389,7 +402,7 @@ export  = true
 [artifact.demo]
 kind    = <span class="str">"bin"</span>
 entry   = <span class="str">"main.mach"</span>
-out     = <span class="str">"bin/demo"</span>
+out     = <span class="str">"bin/demo{artifact.suffix}"</span>
 targets = [<span class="str">"*"</span>]
 link    = [<span class="str">"miniz"</span>, <span class="str">"kernel32"</span>]
 need    = []
@@ -402,7 +415,7 @@ ref = <span class="str">"branch/main"</span></code></pre>
         <h2>See also</h2>
         <ul>
           <li><a href="cli.html">CLI</a> - the flags that select a target, profile, and artifact</li>
-          <li><a href="dependencies.html">Dependencies</a> - <code>mach dep</code>, the lockfile, and transitive resolution</li>
+          <li><a href="dependencies.html">Dependencies</a> - <code>mach dep</code>, gitlink pins, and transitive resolution</li>
           <li><a href="project-layout.html">Project layout</a> - how <code>src</code> maps to module paths</li>
           <li><a href="decorators.html#library">Decorators</a> - <code>#[library]</code>, which resolves against a <code>[link.X]</code> identity</li>
         </ul>

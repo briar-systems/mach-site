@@ -87,18 +87,22 @@ core.add       <span class="cmt"># symbol from module core</span></code></pre>
 nil        <span class="cmt"># the nil value</span></code></pre>
 
       <h2 id="composite">Composite literals</h2>
-      <p>A type name followed by a brace-delimited initializer builds a record, array, or union value. For generics, the type arguments appear in brackets before the body.</p>
+      <p>A type name followed by a brace-delimited initializer builds a record, array, union, or tag value. For generics, the type arguments appear in brackets before the body.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">p</span>:    <span class="type">Point</span>         = <span class="type">Point</span>{ <span class="param">x</span>: <span class="num">1</span>, <span class="param">y</span>: <span class="num">2</span> };
 <span class="kw">val</span> <span class="param">a</span>:    [<span class="num">3</span>]<span class="type">i64</span>        = [<span class="num">3</span>]<span class="type">i64</span>{ <span class="num">10</span>, <span class="num">20</span>, <span class="num">30</span> };
 <span class="kw">val</span> <span class="param">u</span>:    <span class="type">Number</span>        = <span class="type">Number</span>{ <span class="param">i</span>: <span class="num">99</span> };
 <span class="kw">val</span> <span class="param">pair</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>] = <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]{ <span class="param">left</span>: <span class="num">5</span>, <span class="param">right</span>: <span class="num">6u8</span> };</code></pre>
+      <p>A tag value specifies the case name before the braces. A payload case supplies its value inside the braces, while a unit case uses empty braces.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">s</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">circle</span>{<span class="num">4.5</span>};
+<span class="kw">val</span> <span class="param">p</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">point</span>{};</code></pre>
       <p>A vector literal takes the same shape and is <strong>full-arity</strong>: one initializer per lane, with too few or too many a compile error. See <a href="types.html#vectors">Types</a>.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">v</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};</code></pre>
 
-      <h2 id="access">Field and index access</h2>
+      <h2 id="access">Field, index, and tag access</h2>
       <p>A field is read with the dot, an array element with a bracketed index.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">x</span>:     <span class="type">i64</span> = p.x;     <span class="cmt"># record field</span>
 <span class="kw">val</span> <span class="param">first</span>: <span class="type">i64</span> = <span class="param">a</span>[<span class="num">0</span>];    <span class="cmt"># array index</span></code></pre>
+      <p>A tag payload is read with <code>place.case</code> under a dominating guard that proves the case. In comptime reflection over <code>$cases(T)</code>, a tag case can also be accessed dynamically through <code>place.[case]</code>.</p>
 
       <h2 id="calls">Function calls</h2>
       <p>A call applies a function to a parenthesized argument list.</p>
@@ -139,14 +143,25 @@ nil        <span class="cmt"># the nil value</span></code></pre>
 <span class="kw">val</span> <span class="param">b</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">4.0</span>, <span class="num">3.0</span>, <span class="num">2.0</span>, <span class="num">1.0</span>};
 <span class="kw">val</span> <span class="param">sum</span>:  <span class="type">f32x4</span> = a + b;       <span class="cmt"># lane-wise -> {5.0, 5.0, 5.0, 5.0}</span>
 <span class="kw">val</span> <span class="param">mask</span>: <span class="type">u32x4</span> = a &lt; b;       <span class="cmt"># -> {0xFFFFFFFF, 0xFFFFFFFF, 0, 0}</span></code></pre>
-      <p>A legal operator means the same thing on every target, but not every target has a packed instruction for every one. The backend picks the packed form where the target has one, else a defined unrolled scalar expansion with lane-identical results - so neither choice changes the answer. Integer <code>*</code> is where that is most visible: <code>i32x4 * i32x4</code> is packed on NEON and a scalar expansion on the SSE2 baseline. A project that cannot afford an expansion sets <code>simd = "require"</code> in its profile, which turns the shortfall into a build error naming the operation, its lane width, the function, and the target.</p>
+      <h3 id="sel-operator">Case selection: sel</h3>
+      <p>The <code>sel place.case</code> expression tests the active case of a tag, returning a <code>bool</code>. In comptime reflection over <code>$cases(T)</code>, <code>sel place.[case]</code> tests the reflected case.</p>
+      <pre class="code"><code><span class="kw">if</span> (<span class="kw">sel</span> <span class="param">r</span>.<span class="param">ok</span>) {
+    <span class="kw">val</span> <span class="param">value</span>: <span class="type">i64</span> = <span class="param">r</span>.<span class="param">ok</span>;
+}</code></pre>
+
+      <h3 id="declassify-operator">Declassification: :&gt;T</h3>
+      <p>The declassify operator <code>x:&gt;T</code> converts a secret value of type <code>^T</code> into a public value of type <code>T</code>. The public destination type must always be written explicitly. See <a href="secrecy.html">Secrecy</a>.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">diff</span>: ^<span class="type">u64</span> = <span class="fn">ct_diff</span>(secret, given);
+<span class="kw">val</span> <span class="param">ok</span>:   <span class="type">bool</span> = (<span class="param">diff</span>:&gt;<span class="type">u64</span>) == <span class="num">0</span>;</code></pre>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
           <li><a href="statements.html">Statements</a> - how expressions appear inside statements</li>
           <li><a href="functions.html">Functions</a> - declarations, generic and comptime parameters</li>
-          <li><a href="types.html">Types</a> - record, array, union, and vector types</li>
+          <li><a href="records-unions.html">Records, unions, and tags</a> - tag declarations and lexical payload guards</li>
+          <li><a href="secrecy.html">Secrecy</a> - secret types and declassification rules</li>
+          <li><a href="types.html">Types</a> - record, array, union, tag, and vector types</li>
           <li><a href="values.html">Values and variables</a> - bindings and literal forms</li>
         </ul>
       </div>
@@ -159,13 +174,15 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <a href="#names">Names</a>
       <a href="#literals">Literals</a>
       <a href="#composite">Composite literals</a>
-      <a href="#access">Field and index access</a>
+      <a href="#access">Field, index, and tag access</a>
       <a href="#calls">Function calls</a>
       <a class="sub" href="#generic-calls">Generic calls</a>
       <a class="sub" href="#variadic-calls">Variadic calls</a>
-      <a class="sub" href="#vector-operators">Lane-wise operators</a>
       <a class="sub" href="#comptime-args">Comptime arguments</a>
       <a href="#operators">Operators</a>
+      <a class="sub" href="#vector-operators">Lane-wise operators</a>
+      <a class="sub" href="#sel-operator">Case selection: sel</a>
+      <a class="sub" href="#declassify-operator">Declassification: :&gt;T</a>
     </nav>
   </div>
 

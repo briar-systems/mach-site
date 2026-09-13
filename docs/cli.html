@@ -87,11 +87,13 @@
       <table>
         <thead><tr><th>Command</th><th>Summary</th></tr></thead>
         <tbody>
-          <tr><td><code>build</code></td><td>compile the project to objects and (for a <code>kind = "bin"</code> artifact) a linked binary</td></tr>
-          <tr><td><code>run</code></td><td>build, then execute the produced binary</td></tr>
-          <tr><td><code>test</code></td><td>build the test binary and run the collected tests</td></tr>
+          <tr><td><code>build</code></td><td>compile the project to objects and linked outputs</td></tr>
+          <tr><td><code>check</code></td><td>parse, resolve, and type-check without compiling or linking</td></tr>
+          <tr><td><code>run</code></td><td>execute an existing built binary without rebuilding</td></tr>
+          <tr><td><code>test</code></td><td>build the test dispatcher and run the collected tests</td></tr>
+          <tr><td><code>fmt</code></td><td>format source files to the canonical layout</td></tr>
           <tr><td><code>clean</code></td><td>remove the project's build output</td></tr>
-          <tr><td><code>dep</code></td><td>manage git-backed dependencies (clone, lock, vendor)</td></tr>
+          <tr><td><code>dep</code></td><td>manage git-backed dependencies</td></tr>
           <tr><td><code>init</code></td><td>scaffold a new project</td></tr>
           <tr><td><code>doc</code></td><td>generate Markdown reference docs from source doc-comments</td></tr>
           <tr><td><code>info</code></td><td>print compiler version, build host, and registered target capabilities</td></tr>
@@ -140,7 +142,7 @@
           <tr><td><code>-O1</code>, <code>-O2</code></td><td>-</td><td>select the release pipeline (both select the same one today)</td></tr>
           <tr><td><code>--emit &lt;kind&gt;</code></td><td>obj, exe</td><td><code>obj</code> stops at the objects; <code>exe</code> (default) links a binary</td></tr>
           <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>codegen worker threads (default: host CPUs; <code>1</code> serialises)</td></tr>
-          <tr><td><code>--explain</code></td><td>-</td><td>print the resolved build plan and exit without building</td></tr>
+          <tr><td><code>--plan</code></td><td>-</td><td>print the effective build plan and exit without building</td></tr>
           <tr><td><code>-L &lt;dir&gt;</code></td><td>dir</td><td>add a search directory for <code>-l</code>-resolved inputs; repeatable</td></tr>
           <tr><td><code>-l &lt;name&gt;</code></td><td>name</td><td>link a named object, archive, or shared library; repeatable</td></tr>
         </tbody>
@@ -160,12 +162,16 @@
         <p>Dynamic linking is implemented for the ELF (Linux) and PE (Windows) targets. The Mach-O (Darwin) import path is not yet implemented.</p>
       </div>
 
+      <h2 id="check">check</h2>
+      <pre class="code"><code>mach check &lt;path&gt; [options]</code></pre>
+      <p>Parses, resolves, and type-checks the source reachable from the selected artifacts through the compiler frontend. No code is generated, compiled, linked, or written to disk. It serves as a fast verification loop during development.</p>
+
       <h2 id="run">run</h2>
       <pre class="code"><code>mach run &lt;path&gt; [options] [-- args...]</code></pre>
-      <p>Executes the binary <code>mach build</code> already produced for <code>&lt;path&gt;</code> - a post-build convenience, not a rebuild. The build selection flags (<code>--target</code>, <code>--profile</code>, <code>--bin</code> / <code>--lib</code>) resolve <em>which</em> artifact to run; the build-only <code>-O0</code> / <code>-O1</code> / <code>-O2</code> are accepted but have no effect, and <code>--emit</code> is rejected. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>; the child's exit code becomes this command's exit code.</p>
-      <div class="callout warn">
-        <span class="callout-label">Changed</span>
-        <p><code>mach run</code> does not build. Run <code>mach build</code> first, or the binary it executes will be the one from your last build.</p>
+      <p>Executes the binary <code>mach build</code> already produced for <code>&lt;path&gt;</code> without rebuilding. The build selection flags (<code>--target</code>, <code>--profile</code>, <code>--bin</code> / <code>--lib</code>) resolve which artifact to run. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>, and the child's exit code becomes this command's exit code.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p><code>mach run</code> does not build. Run <code>mach build</code> first to produce or refresh the executable.</p>
       </div>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
@@ -191,35 +197,32 @@
       </table>
       <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
 
+      <h2 id="fmt">fmt</h2>
+      <pre class="code"><code>mach fmt &lt;path&gt; [--check]</code></pre>
+      <p>Rewrites project source files in the canonical layout. With <code>--check</code>, it reports files whose formatting differs without modifying them and exits non-zero if formatting is needed. There is no configuration, and formatting follows a single strict standard.</p>
+
       <h2 id="clean">clean</h2>
       <pre class="code"><code>mach clean &lt;path&gt;</code></pre>
       <p>Removes the project's build output: the output directory trees declared by the manifest's <code>out</code> / <code>obj</code> / <code>ir</code> / <code>asm</code> templates. <code>&lt;path&gt;</code> is a project directory or a manifest file. It is idempotent and takes no options. Exit codes are its own: <code>0</code> ok, <code>1</code> no project or a bad manifest, <code>2</code> an IO failure.</p>
 
       <h2 id="dep">dep</h2>
-      <pre class="code"><code>mach dep &lt;action&gt; [args]</code></pre>
-      <p>Manages the project's dependency tree. A dependency has exactly one source form: a <strong>git</strong> URL plus a ref, acquired into the dep directory with plain git operations, or a <strong>path</strong> to another project tree, materialised as a relative symlink so the build resolves it by the same vendor layout.</p>
+      <pre class="code"><code>mach dep &lt;action&gt; &lt;path&gt; [args]</code></pre>
+      <p>Manages the project's dependency tree. A dependency has exactly one source form: a <strong>git</strong> URL plus a ref, acquired into the <code>dep/</code> directory, or a <strong>path</strong> to another project tree, materialised as a relative symlink. Dependencies are pinned by committed git links under <code>dep/</code>.</p>
       <table>
         <thead><tr><th>Action</th><th>Args</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>pull</code></td><td>-</td><td>realise the manifest: clone missing git deps (transitively), link path deps, re-resolve a changed ref, repair drift, write <code>mach.lock</code>. Idempotent.</td></tr>
-          <tr><td><code>update</code></td><td><code>&lt;name&gt;</code> or <code>--all</code></td><td>the only lock-advancer: re-resolve branch refs to current remote tips. Tag/commit refs are a no-op. Never edits the manifest.</td></tr>
-          <tr><td><code>add</code></td><td><code>&lt;name&gt; --git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code></td><td>append a <code>[dep.&lt;name&gt;]</code> stanza, then <code>pull</code>.</td></tr>
-          <tr><td><code>remove</code></td><td><code>&lt;name&gt; [--purge]</code></td><td>drop the entry from <code>mach.toml</code> and <code>mach.lock</code>; <code>--purge</code> also deletes the vendored checkout.</td></tr>
-          <tr><td><code>list</code></td><td>-</td><td>print each entry with its source form, ref, locked commit, and state (synced, missing, drifted, path).</td></tr>
+          <tr><td><code>pull</code></td><td><code>&lt;path&gt;</code></td><td>realize declared dependencies without advancing revisions or refreshing existing path copies. Idempotent.</td></tr>
+          <tr><td><code>verify</code></td><td><code>&lt;path&gt;</code></td><td>check the realized dependency closure against the manifest without changing anything.</td></tr>
+          <tr><td><code>update</code></td><td><code>&lt;path&gt; (&lt;name&gt; | --all)</code></td><td>refresh path copies and advance branch references to current remote tips. Tag/commit refs are a no-op.</td></tr>
+          <tr><td><code>add</code></td><td><code>&lt;path&gt; &lt;name&gt; --git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code></td><td>append a <code>[dep.&lt;name&gt;]</code> stanza and realize the dependency.</td></tr>
+          <tr><td><code>remove</code></td><td><code>&lt;path&gt; &lt;name&gt; [--purge]</code></td><td>drop the entry from <code>mach.toml</code> (<code>--purge</code> also deletes the vendored checkout).</td></tr>
+          <tr><td><code>list</code></td><td><code>&lt;path&gt;</code></td><td>print declared dependencies and their state.</td></tr>
         </tbody>
       </table>
-      <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands (<code>pull</code>, <code>update</code>, <code>add</code>) use git, discovered on <code>PATH</code> and invoked with an allowlisted environment. Git's absence is a clean error naming the operation that needed it. The same name required from two different sources or refs is a hard error naming both requirers; there is no version resolution.</p>
+      <p><code>mach build</code> never requires git or the network: a project whose dependency tree is present builds on a bare machine. Only the network-shaped commands (<code>pull</code>, <code>update</code>, <code>add</code>) use git, discovered on <code>PATH</code>. The same name required from two different sources or refs is a hard error naming both requirers, and there is no version resolution.</p>
 
-      <h3 id="lockfile">Lockfile</h3>
-      <p>The manifest is intent; <code>mach.lock</code> is the record of resolving it. After a <code>pull</code>, <code>mach dep</code> writes a TOML file recording each git dep's <code>url</code>, <code>ref</code>, and resolved <code>commit</code> (path deps have no lock entry).</p>
-      <pre class="code"><code><span class="cmt"># generated by `mach dep pull`; do not edit by hand.</span>
-version = <span class="num">1</span>
-
-[dep.mach-std]
-url = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref = <span class="str">"branch/dev"</span>
-commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></code></pre>
-      <p><code>pull</code> honours the lock except where the manifest ref was edited, where it re-resolves loudly. A checked-out commit that differs from the lock is drift, repaired and reported, never silent. The writer is idempotent: an up-to-date lock is left untouched. Commit <code>mach.lock</code> to pin builds.</p>
+      <h3 id="pins">Dependency pins</h3>
+      <p>Dependencies are pinned by committed git links in the <code>dep/</code> directory. Each dependency lives directly under <code>dep/&lt;id&gt;/</code> in a flat closure, where the manifest key, directory name, and project ID must match.</p>
 
       <h2 id="init">init</h2>
       <pre class="code"><code>mach init [dir] [options]</code></pre>
@@ -239,9 +242,9 @@ commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></co
       <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
       <pre class="code"><code>mach <span data-mach-version></span>
 host: linux/x86_64
-isa: x86_64 aarch64 riscv64 riscv32 spirv mos6502
+isa: x86_64 aarch64 riscv64 riscv32 spirv
 os: linux darwin windows freestanding
-abi: sysv64 win64 aapcs64 lp64 lp64f lp64d ilp32 ilp32f ilp32d spirv mos6502
+abi: sysv64 win64 aapcs64 lp64 lp64f lp64d ilp32 ilp32f ilp32d spirv
 object: elf coff macho raw spv</code></pre>
       <p><strong><code>mach info targets</code></strong> prints the concrete <code>(os, isa)</code> tuples this binary can build, one per line. It is derived from the same joint capability declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
       <p>The capability lines are read from the binary's target registries, so they report exactly what this build can target. <code>mach info --version</code> prints the version string alone on one line, for tooling.</p>
@@ -257,15 +260,14 @@ object: elf coff macho raw spv</code></pre>
           <tr><td><code>2</code></td><td>internal error</td></tr>
         </tbody>
       </table>
-      <p><code>mach run</code> instead returns the child's exit code on a successful build, falling back to <code>1</code> on a build/user error and <code>2</code> internally.</p>
+      <p><code>mach run</code> returns the child process's exit code directly.</p>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
-          <li><a href="manifest.html">Manifest</a> - the <code>mach.toml</code> reference for targets, profiles, and libs</li>
-          <li><a href="dependencies.html">Dependencies</a> - git and path deps managed by <code>mach dep</code></li>
-          <li><a href="testing.html">Testing</a> - the <code>test</code> declaration behind <code>mach test</code></li>
-          <li><a href="project-layout.html">Project layout</a> - the directory shape <code>mach init</code> scaffolds</li>
+          <li><a href="manifest.html">Manifest</a> - the <code>mach.toml</code> schema and keys</li>
+          <li><a href="dependencies.html">Dependencies</a> - managing git and path dependencies in detail</li>
+          <li><a href="testing.html">Testing</a> - writing tests and the <code>mach test</code> runner</li>
         </ul>
       </div>
 
@@ -279,11 +281,13 @@ object: elf coff macho raw spv</code></pre>
       <a href="#global-flags">Global flags</a>
       <a href="#build">build</a>
       <a class="sub" href="#link-inputs">Link inputs</a>
+      <a href="#check">check</a>
       <a href="#run">run</a>
       <a href="#test">test</a>
+      <a href="#fmt">fmt</a>
       <a href="#clean">clean</a>
       <a href="#dep">dep</a>
-      <a class="sub" href="#lockfile">Lockfile</a>
+      <a class="sub" href="#pins">Dependency pins</a>
       <a href="#init">init</a>
       <a href="#utility">doc, info, and help</a>
       <a href="#exit-codes">Exit codes</a>

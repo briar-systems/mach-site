@@ -100,8 +100,6 @@
         <thead><tr><th>Read</th><th>Value</th></tr></thead>
         <tbody>
           <tr><td><code>$project.id</code></td><td>project id, from <code>[project]</code></td></tr>
-          <tr><td><code>$project.name</code></td><td>project name</td></tr>
-          <tr><td><code>$project.description</code></td><td>project description</td></tr>
           <tr><td><code>$project.version</code></td><td>whole version string, e.g. <code>"2.0.0"</code></td></tr>
           <tr><td><code>$project.version.major</code></td><td>major version component (folded integer)</td></tr>
           <tr><td><code>$project.version.minor</code></td><td>minor version component</td></tr>
@@ -112,29 +110,31 @@
           <tr><td><code>$bin.name</code></td><td>the artifact (build unit) being built</td></tr>
         </tbody>
       </table>
-      <p>The <code>$project.target.*</code> reads carry the manifest's declared string spellings, distinct from the numeric tags used for <code>$mach.build.*</code> comparison. The flat <code>$project.version</code> string and its structured <code>major</code>, <code>minor</code>, and <code>patch</code> components are all available.</p>
+      <p>The <code>$project.target.*</code> reads carry the manifest declared string spellings, distinct from the numeric tags used for <code>$mach.build.*</code> comparison. The flat <code>$project.version</code> string and its structured <code>major</code>, <code>minor</code>, and <code>patch</code> components are all available.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">ver</span>: <span class="type">str</span> = <span class="ct">$project.version</span>;                 <span class="cmt"># "2.0.0", from [project].version</span>
 <span class="ct">$if</span> (<span class="ct">$project.target.os</span> == <span class="str">"windows"</span>) { ... }    <span class="cmt"># the declared os string</span></code></pre>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>A root field the manifest does not declare (for example <code>$project.description</code> or <code>$bin.name</code> on a v1 manifest with no artifact stanza) reports the read as unavailable rather than folding to an empty string.</p>
+        <p>A path the root does not carry, such as <code>$project.name</code> or <code>$project.description</code>, is rejected as an unknown <code>$project.*</code> path.</p>
       </div>
 
       <h2 id="mach">The <code>$mach.*</code> namespace</h2>
-      <p>The <code>$mach.*</code> subtree is the compiler's view of the world: the resolved build context, the compiler identity, and source position. Every read is a comptime constant.</p>
+      <p>The <code>$mach.*</code> subtree is the compiler view of the world: the resolved build context, the compiler identity, and source position. Every read is a comptime constant.</p>
       <div class="callout note">
         <span class="callout-label">Implementation status</span>
-        <p>Live today: <code>$mach.build.os</code>, <code>$mach.build.arch</code>, <code>$mach.build.abi</code>, <code>$mach.build.pointer_width</code>, <code>$mach.build.mode</code>, the tag tables, <code>$mach.version</code> (with its components), <code>$mach.compiler.name</code>, and <code>$mach.compiler.version</code>. Reserved stubs: <code>$mach.build.timestamp</code>, <code>$mach.build.host</code>, <code>$mach.build.git.*</code>, <code>$mach.project.*</code>, and <code>$mach.source.*</code>. Reading a stub is a compile error ("not yet available").</p>
+        <p>Live today: <code>$mach.build.os</code>, <code>$mach.build.arch</code>, <code>$mach.build.abi</code>, <code>$mach.build.pointer_width</code>, <code>$mach.build.mode</code>, <code>$mach.build.pie</code>, <code>$mach.build.platform</code>, the tag tables, <code>$mach.version</code> (with its components), <code>$mach.compiler.name</code>, and <code>$mach.compiler.version</code>. Reserved stubs: <code>$mach.build.timestamp</code>, <code>$mach.build.host</code>, <code>$mach.build.git.*</code>, <code>$mach.project.*</code>, and <code>$mach.source.*</code>. Reading a stub is a compile error ("not yet available").</p>
       </div>
 
       <h3 id="build"><code>$mach.build.*</code> - what we build for</h3>
-      <p>The resolved active build's facts. <code>os</code>, <code>arch</code>, <code>abi</code>, and <code>mode</code> share the numeric tag space of <code>$mach.{os,arch,abi,mode}.*</code>, so a comparison is a plain integer compare.</p>
+      <p>The resolved active build facts. <code>os</code>, <code>arch</code>, <code>abi</code>, and <code>mode</code> share the numeric tag space of <code>$mach.{os,arch,abi,mode}.*</code>, so a comparison is a plain integer compare.</p>
       <pre class="code"><code><span class="ct">$mach.build.os</span>                  <span class="cmt"># compared against $mach.os.* tags</span>
 <span class="ct">$mach.build.arch</span>                <span class="cmt"># compared against $mach.arch.* tags</span>
 <span class="ct">$mach.build.abi</span>                 <span class="cmt"># compared against $mach.abi.* tags</span>
 <span class="ct">$mach.build.pointer_width</span>       <span class="cmt"># integer count of bytes</span>
-<span class="ct">$mach.build.mode</span>                <span class="cmt"># compared against $mach.mode.* tags</span></code></pre>
-      <p>A bare <code>$mach.build.&lt;name&gt;</code> that names none of the reserved facts resolves to the manifest comptime define of that name, or is a compile error when no such define was declared.</p>
+<span class="ct">$mach.build.mode</span>                <span class="cmt"># compared against $mach.mode.* tags</span>
+<span class="ct">$mach.build.pie</span>                 <span class="cmt"># 1 when building position-independent, else 0</span>
+<span class="ct">$mach.build.platform</span>            <span class="cmt"># target platform tag as a string, "" when unset</span></code></pre>
+      <p>The members above are the whole subtree, and no manifest key adds custom defines. An unknown <code>$mach.build.&lt;name&gt;</code> is a compile error at the use site. Project configuration constants are ordinary <code>val</code>s selected with <code>$if</code> over these build facts.</p>
 
       <h3 id="version-compiler">Version and compiler identity</h3>
       <pre class="code"><code><span class="ct">$mach.version</span>                   <span class="cmt"># the version string, e.g. "2.0.0"</span>
@@ -154,7 +154,7 @@
 <span class="ct">$mach.arch.riscv64</span>
 <span class="ct">$mach.arch.riscv32</span>
 
-<span class="ct">$mach.abi.sysv</span>
+<span class="ct">$mach.abi.sysv64</span>
 <span class="ct">$mach.abi.win64</span>
 <span class="ct">$mach.abi.aapcs64</span>
 <span class="ct">$mach.abi.lp64</span>

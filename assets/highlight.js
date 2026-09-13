@@ -8,8 +8,8 @@
   // cleanup `fin`; it has no `break`, `continue`, or `else`.
   var KEYWORDS = {
     asm: 1, brk: 1, cnt: 1, def: 1, ext: 1, fin: 1, for: 1, fun: 1, fwd: 1,
-    if: 1, in: 1, nil: 1, or: 1, pub: 1, rec: 1, ret: 1, test: 1, uni: 1,
-    use: 1, val: 1, var: 1
+    if: 1, in: 1, nil: 1, or: 1, pub: 1, rec: 1, ret: 1, sel: 1, tag: 1,
+    test: 1, uni: 1, use: 1, val: 1, var: 1
   };
 
   var PRIMITIVES = {
@@ -129,10 +129,10 @@
         continue;
       }
 
-      // 6b. the ':^' declassify cast - the one explicit way out of a secret.
-      // matched before the bare '^' below so its colon is not emitted plain.
-      if (c === ":" && src.charAt(i + 1) === "^") {
-        out += span("ct", ":^");
+      // 6b. the ':>' declassify cast, the explicit way out of a secret.
+      // matched before any bare '>' so its colon is not emitted plain.
+      if (c === ":" && src.charAt(i + 1) === ">") {
+        out += span("ct", ":>");
         i += 2;
         continue;
       }

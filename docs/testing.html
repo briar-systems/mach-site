@@ -96,25 +96,17 @@
       </div>
 
       <h2 id="result">Reporting pass and fail</h2>
-      <p>Each <code>test</code> lowers to a zero-parameter, <code>i32</code>-returning function, and its return value is read as a process-style status. There are no built-in assertion intrinsics; a test signals failure by returning non-zero, typically by returning early from a failed check.</p>
+      <p>Each <code>test</code> lowers to a zero-parameter function returning an ordinal in <code>0..255</code>. Returning a value outside this range is a compile error. A return value of <code>0</code> indicates success, while any non-zero value signals failure.</p>
       <pre class="code"><code><span class="kw">ret</span> <span class="num">0</span>;     <span class="cmt"># pass</span>
-<span class="kw">ret</span> <span class="num">1</span>;     <span class="cmt"># fail - any non-zero ret is a failure</span></code></pre>
-      <p>Falling off the end of a body returns <code>0</code> (the default terminator for a non-void function), so a body that never returns explicitly is treated as a pass. The compiler attaches no special meaning to particular non-zero codes.</p>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>The <code>0</code> = pass, non-zero = fail convention is the runner's interpretation of each exit status, not a rule enforced by the type system. Some older standard-library tests are inconsistent and even return <code>1</code> on success. When writing new tests, prefer <code>ret 0</code> for pass and a non-zero <code>ret</code> for failure.</p>
-      </div>
+<span class="kw">ret</span> <span class="num">1</span>;     <span class="cmt"># fail - any non-zero ordinal indicates failure</span></code></pre>
+      <p>Falling off the end of a body returns <code>0</code>, treating an empty or fallthrough body as a pass. Use positive integers to distinguish which assertion or condition failed in your test.</p>
 
       <h2 id="collection">Where tests live</h2>
-      <p>Tests are not tied to a single file. Write <code>test "..." { }</code> declarations directly in the relevant <code>src/</code> module, or group them under <code>src/test/</code>. The runner discovers every test across every module in the build automatically - there is no separate corpus project.</p>
-      <p>Because the build includes dependencies, every <code>test</code> in a dependency is collected too.</p>
-      <div class="callout warn">
-        <span class="callout-label">Restriction</span>
-        <p>A project that depends on a library whose tests do not follow the <code>0</code> = pass convention will see those tests reported as failures. Use <code>--filter</code> to scope a run to your own tests while a dependency's suite is being reconciled.</p>
-      </div>
+      <p>Tests are not tied to a single file. Write <code>test "..." { }</code> declarations directly in the relevant <code>src/</code> module, or group them under <code>src/test/</code>. The runner discovers every test across every module in the build automatically.</p>
+      <p>Because the build includes dependencies, tests in dependencies can also be discovered and run.</p>
 
       <h2 id="running">Running with mach test</h2>
-      <p><code>mach test</code> builds one standalone executable per <code>test</code> declaration - the test plus the project's transitive code, with a synthesized <code>main</code> calling just that test - then spawns each as a separate process and reports a per-test line.</p>
+      <p><code>mach test</code> builds a single test dispatcher binary for the project, then invokes each selected test in its own process and reports individual results.</p>
       <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
       <p>Each executed test prints a <code>name file:line PASS|FAIL</code> line. A crashing test reports its signal and the run continues. A test build always links executables, even for a library target.</p>
 
