@@ -72,32 +72,32 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>Dependencies</div>
       <h1>Dependencies</h1>
-      <p class="lead">A mach project declares its dependencies in <code>mach.toml</code> and vendors them into a flat <code>dep/</code> tree. <code>mach dep</code> realizes that tree from git or local paths; <code>mach build</code> then resolves everything by vendor layout alone, with no git and no network.</p>
+      <p class="lead">A mach project declares its dependencies in <code>mach.toml</code> and vendors them into a flat <code>dep/</code> tree. <code>mach dep</code> realizes that tree from git or local paths, and <code>mach build</code> then resolves everything by vendor layout alone, with no git and no network.</p>
 
       <h2 id="declaring">Declaring a dependency</h2>
-      <p>Each <code>[dep.&lt;alias&gt;]</code> stanza names a dependency materialized under <code>dep/&lt;alias&gt;/</code>. A stanza declares exactly one source key: a <code>git</code> URL or a local <code>path</code>.</p>
+      <p>Each <code>[dep.&lt;id&gt;]</code> stanza names a dependency materialized under <code>dep/&lt;id&gt;/</code>. A stanza declares exactly one source key: a <code>git</code> URL or a local <code>path</code>.</p>
       <pre class="code"><code><span class="cmt"># in mach.toml</span>
 [dep.mach-std]
 git = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref = <span class="str">"v0.4.0"</span>
+ref = <span class="str">"tag/v2.0.0"</span>
 
 [dep.local-lib]
 path = <span class="str">"../sibling/local-lib"</span></code></pre>
       <table>
         <thead><tr><th>Key</th><th>Type</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>git</code></td><td>string</td><td>Git URL cloned into <code>&lt;dep&gt;/&lt;alias&gt;/</code>.</td></tr>
-          <tr><td><code>path</code></td><td>string</td><td>Local path to another project tree, resolved relative to this manifest; never fetched.</td></tr>
+          <tr><td><code>git</code></td><td>string</td><td>Git URL cloned into <code>dep/&lt;id&gt;/</code>.</td></tr>
+          <tr><td><code>path</code></td><td>string</td><td>Local path to another project tree, resolved relative to this manifest. Never fetched.</td></tr>
           <tr><td><code>ref</code></td><td>string</td><td>Git ref to check out (with <code>git</code>). Absent means the remote default branch.</td></tr>
         </tbody>
       </table>
       <p>A <code>git</code> ref resolves in one of these forms:</p>
       <ul>
-        <li><code>tag/&lt;name&gt;</code> - the named tag.</li>
-        <li><code>branch/&lt;name&gt;</code> - the remote-tracking branch tip.</li>
-        <li><code>commit/&lt;name&gt;</code> or a 7-40 char hex SHA - the literal commit.</li>
-        <li>a bare name - auto-detected as a remote branch (tracking its tip), else a literal tag or commit.</li>
-        <li>the empty ref - the remote default branch.</li>
+        <li><code>tag/&lt;name&gt;</code>: the named tag.</li>
+        <li><code>branch/&lt;name&gt;</code>: the remote-tracking branch tip.</li>
+        <li><code>commit/&lt;name&gt;</code> or a 7-40 char hex SHA: the literal commit.</li>
+        <li>a bare name: auto-detected as a remote branch (tracking its tip), else a literal tag or commit.</li>
+        <li>the empty ref: the remote default branch.</li>
       </ul>
       <div class="callout note">
         <span class="callout-label">Note</span>
@@ -105,52 +105,53 @@ path = <span class="str">"../sibling/local-lib"</span></code></pre>
       </div>
 
       <h2 id="mach-dep">The mach dep command</h2>
-      <p><code>mach dep &lt;action&gt;</code> manages the tree under <code>&lt;dep&gt;</code>. It reads <code>mach.toml</code> from the current directory directly (it does not walk up to find a project root).</p>
+      <p><code>mach dep &lt;action&gt; &lt;path&gt;</code> manages the tree under <code>dep/</code>. Every action takes the project path first.</p>
       <table>
         <thead><tr><th>Action</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>pull</code></td><td>Realize the manifest: clone missing git deps (transitively), link path deps, re-resolve a changed ref, repair checkout drift, write <code>mach.lock</code>. Idempotent.</td></tr>
-          <tr><td><code>update</code></td><td>The only lock-advancer: re-resolve branch refs to current remote tips. Takes <code>&lt;name&gt;</code> or <code>--all</code>. Tag and commit refs are an immutable no-op; never edits the manifest.</td></tr>
-          <tr><td><code>add</code></td><td>Append a <code>[dep.&lt;name&gt;]</code> stanza to the manifest, then <code>pull</code>. Takes <code>--git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code>.</td></tr>
-          <tr><td><code>remove</code></td><td>Drop the entry from <code>mach.toml</code> and <code>mach.lock</code>; <code>--purge</code> also deletes <code>&lt;dep&gt;/&lt;name&gt;/</code>.</td></tr>
-          <tr><td><code>list</code></td><td>Print each entry with its source form, ref, locked commit, and state (<code>synced</code>, <code>missing</code>, <code>drifted</code>, <code>path</code>).</td></tr>
+          <tr><td><code>pull &lt;path&gt;</code></td><td>Realize declared dependencies: clone missing git deps (transitively into the flat root <code>dep/</code>), link path deps, re-resolve a changed ref, and repair checkout drift. Idempotent.</td></tr>
+          <tr><td><code>verify &lt;path&gt;</code></td><td>Check the realized dependency closure against the manifest offline without changing anything.</td></tr>
+          <tr><td><code>update &lt;path&gt;</code></td><td>Refresh path copies and advance branch references to current remote tips. Takes <code>&lt;id&gt;</code> or <code>--all</code>. Tag and commit refs are an immutable no-op. Never edits the manifest.</td></tr>
+          <tr><td><code>add &lt;path&gt; &lt;id&gt;</code></td><td>Declare a dependency in the manifest and realize the dependency tree. Takes <code>--git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code>.</td></tr>
+          <tr><td><code>remove &lt;path&gt; &lt;id&gt;</code></td><td>Drop the entry from <code>mach.toml</code>. <code>--purge</code> also deletes <code>dep/&lt;id&gt;/</code>.</td></tr>
+          <tr><td><code>list &lt;path&gt;</code></td><td>Print each entry with its source form, ref, commit, and state (such as <code>synced</code>, <code>missing</code>, <code>drifted</code>, <code>path</code>).</td></tr>
         </tbody>
       </table>
       <pre class="code"><code><span class="cmt"># add a git dep and vendor it in one step</span>
-mach dep add mach-std --git https://github.com/briar-systems/mach-std --ref v0.4.0</code></pre>
-      <p>A <strong>git</strong> dep is cloned, then checked out as a detached HEAD at the resolved commit. A <strong>path</strong> dep is never fetched: <code>pull</code> materializes it at <code>&lt;dep&gt;/&lt;alias&gt;/</code> as a relative symlink, so the build reaches it by the same vendor layout as a git dep. Linking is idempotent - a stale link is replaced, a correct one left in place, and a source already living at the vendor location is a no-op. A path pointing at a missing directory, a tree with no <code>mach.toml</code>, or a vendor slot occupied by a real directory is a hard error.</p>
+mach dep add . mach-std --git https://github.com/briar-systems/mach-std --ref tag/v2.0.0</code></pre>
+      <p>A <strong>git</strong> dep is cloned, then checked out as a detached HEAD at the resolved commit. A <strong>path</strong> dep is never fetched: <code>pull</code> materializes it at <code>dep/&lt;id&gt;/</code> as a relative symlink, so the build reaches it by the same vendor layout as a git dep. Linking is idempotent: a stale link is replaced, a correct one left in place, and a source already living at the vendor location is a no-op. A path pointing at a missing directory, a tree with no <code>mach.toml</code>, or a vendor slot occupied by a real directory is a hard error.</p>
 
-      <h2 id="lockfile">The lockfile</h2>
-      <p>The manifest is intent; <code>mach.lock</code> is the record of resolving it. After a <code>pull</code>, <code>mach dep</code> writes a TOML lock recording each git dep's <code>url</code>, <code>ref</code>, and resolved <code>commit</code>. Path deps carry no pinned content, so they have no lock entry.</p>
-      <pre class="code"><code><span class="cmt"># generated by `mach dep pull`; do not edit by hand.</span>
-version = <span class="num">1</span>
-
-[dep.mach-std]
-url    = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref    = <span class="str">"branch/dev"</span>
-commit = <span class="str">"6b78ae1e8c3c9cc45e4ab4b916fd191d61e76aff"</span></code></pre>
-      <p><code>pull</code> honours the lock except where the manifest ref was edited - there it re-resolves loudly. A checked-out commit that differs from the lock is drift, repaired by <code>pull</code> and reported, never silent. The writer is idempotent: an up-to-date lock is left untouched. Commit <code>mach.lock</code> to pin builds.</p>
+      <h2 id="pins">Pins and gitlinks</h2>
+      <p>Dependencies are pinned by committed gitlinks under <code>dep/</code> in Git, or checked out cleanly at the declared ref. A git dep is cloned and checked out as a detached HEAD at the resolved commit. When tracking the project with Git, committing the resulting directories under <code>dep/</code> records the exact gitlink pins directly in the repository history without a separate lockfile. A path dep has no pinned commit and is linked as a relative symlink. Builds verify offline that every Git dependency is clean at its pin and that all closure entries are present.</p>
 
       <h2 id="vendor-tree">The flat dep tree</h2>
-      <p>Transitive deps resolve into a <strong>flat</strong> tree: every git dep, direct or transitive, lives at <code>&lt;dep&gt;/&lt;name&gt;/</code>. The build resolves a dependency purely by vendor layout - it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>, and routes any module path whose head segment matches a dep's <code>id</code> into that tree.</p>
+      <p>Transitive deps resolve into a <strong>flat</strong> tree: every git dep, direct or transitive, lives directly at <code>dep/&lt;id&gt;/</code> under the root project. The root <code>dep/</code> holds the whole closure one level deep. Git materializes nested <code>dep/</code> directories as empty stubs that are neither verified nor descended into. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>, and routes any module path whose head segment matches a dep's <code>id</code> into that tree.</p>
       <p>The same name required from two different sources or refs is a hard error naming both requirers. There is no version reconciliation.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands - <code>pull</code>, <code>update</code>, <code>add</code> - use git, discovered on <code>PATH</code>. Git's absence is a clean error naming the operation that needed it.</p>
+        <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands like <code>pull</code>, <code>update</code>, and <code>add</code> use git, discovered on <code>PATH</code>. Git absence is a clean error naming the operation that needed it.</p>
       </div>
 
       <h2 id="importing">Importing a dependency</h2>
-      <p>Once vendored, a dependency's modules are imported by their full path - the head segment is the dep's <code>[project].id</code>, the rest mirrors its source tree. A dependency that declares a <code>[project].module</code> can also be imported by its bare id alone.</p>
-      <pre class="code"><code><span class="cmt"># in the dependency's manifest:</span>
-[project]
-id     = <span class="str">"glfw"</span>
-module = <span class="str">"glfw.mach"</span>   <span class="cmt"># the surface a bare use binds</span></code></pre>
+      <p>Once vendored, a dependency's modules are imported by their full path: the head segment is the dep's <code>[project].id</code>, and the rest mirrors its source tree.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std</span>.<span class="mod">print</span>;
+<span class="kw">use</span> <span class="mod">std</span>.<span class="mod">types</span>.<span class="mod">result</span>.<span class="type">res</span>;</code></pre>
+      <p>A one-segment <code>use</code> path equal to a dependency's id binds that project's public module. For a dependency, that is the <code>entry</code> shared by its library artifacts (<code>static</code> or <code>shared</code>) marked <code>default = true</code>.</p>
+      <pre class="code"><code><span class="cmt"># in the dependency manifest:</span>
+[artifact.lib]
+kind    = <span class="str">"static"</span>
+entry   = <span class="str">"mylib.mach"</span>
+out     = <span class="str">"lib/libmylib{artifact.suffix}"</span>
+targets = [<span class="str">"*"</span>]
+link    = []
+need    = []
+default = true</code></pre>
       <pre class="code"><code><span class="cmt"># in a consumer:</span>
-<span class="kw">use</span> <span class="mod">glfw</span>;   <span class="cmt"># binds glfw's [project].module</span></code></pre>
-      <p>A bare import of a project that declares no <code>module</code> is a resolution error naming the fix. Longer paths are unaffected, so this is purely additive.</p>
+<span class="kw">use</span> <span class="mod">mylib</span>;   <span class="cmt"># binds mylib.mach from the default library artifact</span></code></pre>
+      <p>A dependency that declares no default library artifact, or whose default library artifacts name different entries, has no public module. A bare import of it is an error naming the missing declaration, and callers import by full module path instead.</p>
 
       <h2 id="cascading-libs">Cascading link requirements</h2>
-      <p>A dependency declares its own external link requirements as <code>[link.X]</code> entries. An entry marked <code>export = true</code> also applies to any project that links this dependency's modules, so a platform link requirement lives once - in the manifest that needs it - and out of every consumer. A standalone build and a consumed build read the same entries, so nothing behaves differently as a dependency.</p>
+      <p>A dependency declares its own external link requirements as <code>[link.X]</code> entries. An entry marked <code>export = true</code> also applies to any project that links this dependency's modules, so a platform link requirement lives once in the manifest that needs it and out of every consumer. A standalone build and a consumed build read the same entries, so nothing behaves differently as a dependency.</p>
       <pre class="code"><code><span class="cmt"># in the dependency's manifest:</span>
 [link.kernel32]
 source = <span class="str">"system"</span>
@@ -158,8 +159,8 @@ name   = <span class="str">"kernel32.dll"</span>
 os     = <span class="str">"windows"</span>          <span class="cmt"># filtered out on any non-windows cell</span>
 isa    = <span class="str">"*"</span>
 abi    = <span class="str">"*"</span>
-export = true                <span class="cmt"># ... and cascades to every consumer</span></code></pre>
-      <p>An entry applies to a build cell when all three of its <code>os</code> / <code>isa</code> / <code>abi</code> axes match; target <em>names</em> are local to each manifest and are never matched on. Across dependencies the order is topological, then declaration order, and the union is deduplicated.</p>
+export = true                <span class="cmt"># and cascades to every consumer</span></code></pre>
+      <p>An entry applies to a build cell when all three of its <code>os</code> / <code>isa</code> / <code>abi</code> axes match. Target names are local to each manifest and are never matched on. Across dependencies the order is topological, then declaration order, and the union is deduplicated.</p>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -178,7 +179,7 @@ export = true                <span class="cmt"># ... and cascades to every consu
       <div class="toc-title">On this page</div>
       <a href="#declaring">Declaring a dependency</a>
       <a href="#mach-dep">The mach dep command</a>
-      <a href="#lockfile">The lockfile</a>
+      <a href="#pins">Pins and gitlinks</a>
       <a href="#vendor-tree">The flat dep tree</a>
       <a href="#importing">Importing a dependency</a>
       <a href="#cascading-libs">Cascading link requirements</a>
