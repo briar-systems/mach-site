@@ -324,8 +324,8 @@ v.[f]                   <span class="cmt"># comptime field projection: access th
         </tbody>
       </table>
       <p>The sequence is consumed by <code>$each c in $cases(T)</code>. Inside the body, <code>sel v.[c]</code> tests whether an instance holds that case, <code>v.[c]</code> accesses the payload under an active guard, and <code>T.[c]{...}</code> constructs an instance for case <code>c</code>.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">code_of</span>(<span class="param">v</span>: <span class="type">Reply</span>) <span class="type">u64</span> {
-    <span class="ct">$each</span> c <span class="kw">in</span> <span class="ct">$cases</span>(<span class="type">Reply</span>) {
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">code_of</span>[<span class="type">T</span>](<span class="param">v</span>: <span class="type">T</span>) <span class="type">u64</span> {
+    <span class="ct">$each</span> c <span class="kw">in</span> <span class="ct">$cases</span>(<span class="type">T</span>) {
         <span class="kw">if</span> (<span class="kw">sel</span> <span class="param">v</span>.[c]) {
             <span class="kw">ret</span> c.code;
         }
