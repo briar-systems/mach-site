@@ -1,24 +1,21 @@
-name: Install Forwarder Check
+name: CI
 
 on:
-  schedule:
-    - cron: '17 7 * * *'
-  push:
-    branches: [dev]
-    paths:
-      - install.sh
-      - install.ps1
-      - .github/workflows/install-check.yml
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  install-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # read each forwarder's target url straight from the script so the
       # check never drifts from what machlang.org/install.{sh,ps1} actually fetch
@@ -30,3 +27,12 @@ jobs:
             echo "$f -> $url"
             curl -fsSIL -o /dev/null "$url"
           done
+
+  gate:
+    if: always()
+    needs: [install-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: briar-systems/.github/.github/actions/gate@main
+        with:
+          needs: ${{ toJSON(needs) }}
