@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # read each forwarder's target url straight from the script so the
+      # check never drifts from what machlang.org/install.{sh,ps1} actually fetch
+      - name: HEAD the forwarder targets
+        run: |
+          set -eu
+          for f in install.sh install.ps1; do
+            url=$(grep -oE 'https://[^"| ]+' "$f" | head -n1)
+            echo "$f -> $url"
+            curl -fsSIL -o /dev/null "$url"
+          done
+
+  # required by the org ruleset. inline until briar-systems/.github's gate action reaches main
+  gate:
+    if: always()
+    needs: [install-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every needed job to succeed or skip
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            exit 1
+          fi
+          echo "all needed jobs passed"
