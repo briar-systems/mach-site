@@ -28,19 +28,11 @@ jobs:
             curl -fsSIL -o /dev/null "$url"
           done
 
-  # required by the org ruleset. inline until briar-systems/.github's gate action reaches main
   gate:
     if: always()
     needs: [install-check]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every needed job to succeed or skip
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          bad=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
-          if [ -n "$bad" ]; then
-            echo "$bad"
-            exit 1
-          fi
-          echo "all needed jobs passed"
+      - uses: briar-systems/.github/.github/actions/gate@main
+        with:
+          needs: ${{ toJSON(needs) }}
