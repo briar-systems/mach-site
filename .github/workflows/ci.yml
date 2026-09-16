@@ -22,6 +22,7 @@ jobs:
       - name: HEAD the forwarder targets
         run: |
           set -eu
+          exit 1
           for f in install.sh install.ps1; do
             url=$(grep -oE 'https://[^"| ]+' "$f" | head -n1)
             echo "$f -> $url"
