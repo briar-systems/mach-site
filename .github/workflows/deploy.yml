@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # started on main by redeploy.yml when a mach release lands
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,6 +23,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
+
+      - name: Bake the latest mach release into version.js
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/bake-version.sh
 
       - uses: actions/configure-pages@v6
 

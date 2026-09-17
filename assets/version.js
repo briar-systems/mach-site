@@ -1,11 +1,11 @@
-// single source of truth for the advertised mach version.
+// advertised mach version. the deploy replaces the placeholder with the latest
+// mach release (.github/scripts/bake-version.sh), so a local preview shows it raw.
 // populates every .badge-version span (prefixed with "v") and any
 // [data-mach-version] element (raw token, e.g. the cli "mach info" line).
 (function () {
   "use strict";
 
-  // the one place a release bumps the advertised mach version.
-  var MACH_VERSION = "5.4.0";
+  var MACH_VERSION = "@MACH_VERSION@";
 
   function apply() {
     Array.prototype.forEach.call(
