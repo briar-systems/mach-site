@@ -75,12 +75,12 @@
       <p class="lead">A mach project is a tree of <code>.mach</code> files under a source directory, anchored by a <code>mach.toml</code> manifest at the root. The project's <code>id</code> is the root of every module path the project exposes.</p>
 
       <h2 id="source-files">Source files</h2>
-      <p>Source files use the <code>.mach</code> extension. Two conventional entry files name a project's surface:</p>
+      <p>Source files use the <code>.mach</code> extension. <code>mach init</code> writes one of two conventional entry files under <code>src/</code>:</p>
       <ul>
-        <li><code>main.mach</code> - executable entry.</li>
-        <li><code>lib.mach</code> - library entry. Exposes code for other projects to import; produces no executable.</li>
+        <li><code>root.mach</code> - executable entry, written by <code>mach init</code>.</li>
+        <li><code>lib.mach</code> - library entry, written by <code>mach init --lib</code>. Exposes code for other projects to import and produces no executable.</li>
       </ul>
-      <p>These names are convention only (<code>mach init</code> names a binary's entry <code>root.mach</code>), and the compiler never looks for a function called <code>main</code>. An entry is simply the source file an <code>[artifact.*]</code> names with its <code>entry</code> key; what marks a function as the program's entry point is its exported symbol and signature, covered in <a href="hello-world.html">Hello world</a>. The artifact's <code>kind</code> fixes the role - <code>"bin"</code> links an executable, <code>"static"</code> produces an archive. A project may carry both files.</p>
+      <p>These names are convention only, and the compiler never looks for a function called <code>main</code>. An entry is simply the source file an <code>[artifact.*]</code> names with its <code>entry</code> key; what marks a function as the program's entry point is its exported symbol and signature, covered in <a href="hello-world.html">Hello world</a>. The artifact's <code>kind</code> fixes the role - <code>"bin"</code> links an executable, <code>"static"</code> produces an archive. A project may carry both files.</p>
 
       <h2 id="project-root">The project root</h2>
       <p>Every project has a <code>mach.toml</code> at its root, and every command takes the project explicitly as a directory or a manifest path. <code>mach init</code> writes a complete one. Abridged, a binary scaffold for a project named <code>myproj</code> on an x86_64 host looks like this:</p>
@@ -116,7 +116,7 @@ version = <span class="str">"^5.3.0"</span>      <span class="cmt"># newest std 
       <pre class="code"><code>myproj/
   mach.toml
   src/
-    main.mach          <span class="cmt"># myproj.main</span>
+    root.mach          <span class="cmt"># myproj.root</span>
     foo/
       bar.mach         <span class="cmt"># myproj.foo.bar</span></code></pre>
       <p>There is no <code>this.</code> self-prefix. Within a project, modules always reference each other by their full project-rooted path, so every reference is syntactically uniform no matter where it appears.</p>
