@@ -105,27 +105,151 @@
         <span class="callout-label">Note</span>
         <p>In practice a <code>{name}</code> binds the local's storage - typically a stack slot - so a pointer local's pointee is reached by staging the pointer through a scratch register first (<code>mov rcx, {ptr}</code> then <code>mov rax, [rcx]</code>), never by a direct <code>[{ptr}]</code> indirection.</p>
       </div>
+      <p>Only an identifier inside braces names a local. Any other braced text belongs to the ISA's own syntax, such as the aarch64 register list <code>{v0.16b}</code>, and reaches its grammar untouched.</p>
+
+      <h3 id="substitution-sp">A body that binds <code>{name}</code> may not move the stack pointer</h3>
+      <p>A <code>{name}</code> becomes a fixed displacement off a base register, measured once when the block is assembled. On aarch64 and riscv64 that base is the <strong>stack pointer</strong>, the only base whose displacement stays inside those ISAs' immediate forms however deep the frame is. A statement that moves the stack pointer would move every <code>{name}</code> in the block out from under its own address, so the compiler refuses the block rather than assembling a wrong one.</p>
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="type">i64</span> = <span class="num">0</span>;
+<span class="kw">asm</span> aarch64 {
+    ldr x9, {x}
+    stp x1, x2, [sp, -16]!   <span class="cmt"># refused: this body binds {x}</span>
+}</code></pre>
+      <p>The refusal covers the whole block, not just the statements after the write, because a backward branch reaches an earlier <code>{name}</code> again with the pointer already moved. Push and pop around the block instead, or drop the <code>{name}</code> and stage the address into a register yourself. A body that binds no <code>{name}</code> is unaffected, which is what a <code>#[naked]</code> function's hand-written prologue relies on.</p>
 
       <h2 id="inference">What the compiler infers</h2>
       <ul>
         <li><strong>Operand direction.</strong> Position within an instruction determines whether an operand is read or written.</li>
         <li><strong>Clobber set.</strong> The compiler reads each instruction, knows what registers and flags it touches, and adds them to the surrounding function's clobber set.</li>
         <li><strong>Memory clobber.</strong> Every <code>asm</code> block is conservatively assumed to modify arbitrary memory.</li>
+        <li><strong>Vector clobbers.</strong> A write to a vector register lands in the block's vector clobber set, kept apart from the general-purpose one. See <a href="#vector">Vector registers</a>.</li>
+        <li><strong>Raw encodings.</strong> A data directive is a stream the parser cannot read, so it clobbers every register in every bank unless it <a href="#raw-effects">declares what it writes</a>.</li>
       </ul>
 
-      <h2 id="calls">Calls (x86-64)</h2>
-      <p><code>call</code> takes three shapes, and which one a statement means is read off the operand.</p>
+      <h2 id="calls">Calls and jumps (x86-64)</h2>
+      <p><code>call</code> and <code>jmp</code> take the same three shapes, and which one a statement means is read off the operand.</p>
       <pre class="code"><code><span class="kw">asm</span> x86_64 {
     call some_symbol     <span class="cmt"># direct: E8 rel32, relocated against the symbol</span>
     call rax             <span class="cmt"># indirect through a register</span>
     call [0x100018]      <span class="cmt"># indirect through an absolute address</span>
     call [rax + 8]       <span class="cmt"># indirect through a computed address</span>
+
+    jmp  some_symbol     <span class="cmt"># direct: E9 rel32</span>
+    jmp  rax             <span class="cmt"># indirect through a register</span>
+    jmp  [rax + 8]       <span class="cmt"># ... and the same memory forms</span>
 }</code></pre>
-      <p>The absolute form exists for a fixed-address ABI - one whose entry points are addresses rather than symbols. Its displacement is sign-extended to 64 bits, so an address outside signed 32-bit range is refused rather than silently truncated. <code>call [symbol]</code> is refused too: the rip-relative form would mean "call the pointer <em>stored</em> at the symbol", which is not what the <code>call symbol</code> beside it means.</p>
-      <p>An indirect call clobbers exactly as a direct one does. The register or memory holding the target is <strong>read</strong>, not written.</p>
+      <p>The absolute form exists for a fixed-address ABI - one whose entry points are addresses rather than symbols. Its displacement is sign-extended to 64 bits, so an address outside signed 32-bit range is refused rather than silently truncated. <code>call [symbol]</code> and <code>jmp [symbol]</code> are refused too: the rip-relative form would mean "transfer to the pointer <em>stored</em> at the symbol", which is not what the direct form beside it means.</p>
+      <p>Both indirect operands are fixed 64-bit in long mode, so a narrower register (<code>jmp eax</code>) is refused rather than widened. An indirect call clobbers exactly as a direct one does. The register or memory holding the target is <strong>read</strong>, not written.</p>
+
+      <h2 id="operand-sizes">Operand sizes (x86-64)</h2>
+      <p>A register operand states its own width, so <code>mov eax, [rcx]</code> is a four-byte load and needs nothing else. A memory operand states none, and where the instruction does not settle it either, the width is written out in nasm's spelling.</p>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    movzx eax, word [rcx]     <span class="cmt"># a two-byte load, zero-extended into eax</span>
+    movsx rax, dword [rcx]    <span class="cmt"># a four-byte load, sign-extended (movsxd)</span>
+    mov dword [rcx], 1        <span class="cmt"># a four-byte store, not the machine word</span>
+    neg qword [rcx]           <span class="cmt"># an eight-byte read-modify-write</span>
+}</code></pre>
+      <p><code>byte</code>, <code>word</code>, <code>dword</code> and <code>qword</code> are accepted before a memory operand and nowhere else, so <code>mov qword rax, rcx</code> is refused rather than ignored. A vector instruction's memory operand takes <code>xmmword</code> instead (see <a href="#vector-x86-64">below</a>). <strong>A prefix that contradicts the instruction is a build error, not a dropped token</strong>, and what counts as a contradiction is per mnemonic:</p>
+      <table>
+        <thead><tr><th>Shape</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>most instructions</td><td>every operand shares one width, so a prefix must agree with any register operand, and with no register operand it <em>sets</em> the width</td></tr>
+          <tr><td><code>movzx</code> / <code>movsx</code></td><td>the source is narrower by design, so a memory source <strong>must</strong> be sized, and strictly narrower than the destination</td></tr>
+          <tr><td><code>push</code> / <code>pop</code>, indirect <code>call</code> / <code>jmp</code></td><td>fixed 64-bit in long mode, so any narrower prefix names no instruction</td></tr>
+          <tr><td><code>lidt</code></td><td>its pseudo-descriptor is ten bytes, which no keyword names</td></tr>
+        </tbody>
+      </table>
+      <p>So <code>mov eax, word [rcx]</code> is refused (two widths for one access), and so is <code>movzx eax, [rcx]</code>: an unsized source names no width, and reading it as a same-width move would silently assemble a plain <code>mov</code> where a zero-extending load was written.</p>
+
+      <h2 id="vector">Vector registers</h2>
+      <p>The x86-64 and aarch64 grammars take vector registers as operands. A vector register belongs to the floating-point and vector bank, so writing one adds it to the block's <strong>vector clobber set</strong>, and a live vector value crossing the block is kept the same way a general-purpose one is. The allocator and the call conventions both see those writes.</p>
+      <ul>
+        <li>A memory base or index is always a general-purpose register. A vector register there is refused by name.</li>
+        <li>A vector register in a general-purpose form is refused by name rather than encoded as something else.</li>
+      </ul>
+
+      <h3 id="vector-x86-64">x86-64</h3>
+      <p>The registers are <code>xmm0</code> to <code>xmm15</code>. A memory operand of a vector instruction is a whole 128-bit vector, written bare or as <code>xmmword [...]</code>. A narrower width prefix is refused. <code>[symbol]</code> addresses RIP-relative data, and the relocation is correct after a trailing immediate.</p>
+      <table>
+        <thead><tr><th>Form</th><th>Mnemonics</th></tr></thead>
+        <tbody>
+          <tr><td>move, either direction between a register and memory</td><td><code>movdqa</code> <code>movdqu</code> <code>movaps</code> <code>movups</code></td></tr>
+          <tr><td><code>xmm, xmm/m128</code></td><td>
+            integer arithmetic: <code>paddb</code> <code>paddw</code> <code>paddd</code> <code>paddq</code> <code>psubb</code> <code>psubw</code> <code>psubd</code> <code>psubq</code> <code>psubusb</code> <code>psubusw</code> <code>pmullw</code><br>
+            logic: <code>pand</code> <code>por</code> <code>pxor</code><br>
+            compares: <code>pcmpeqb</code> <code>pcmpeqw</code> <code>pcmpeqd</code> <code>pcmpgtb</code> <code>pcmpgtw</code> <code>pcmpgtd</code><br>
+            interleave and saturate: <code>punpcklbw</code> <code>punpcklwd</code> <code>punpckldq</code> <code>packsswb</code> <code>packssdw</code><br>
+            float arithmetic: <code>addps</code> <code>subps</code> <code>mulps</code> <code>divps</code> <code>addpd</code> <code>subpd</code> <code>mulpd</code> <code>divpd</code><br>
+            conversions: <code>cvtdq2ps</code> <code>cvttps2dq</code> <code>cvtdq2pd</code> <code>cvttpd2dq</code> <code>cvtps2pd</code> <code>cvtpd2ps</code></td></tr>
+          <tr><td><code>xmm, xmm/m128, imm8</code></td><td><code>pshufd</code> <code>cmpps</code> <code>cmppd</code></td></tr>
+        </tbody>
+      </table>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    movdqu xmm0, [rsi]            <span class="cmt"># load 16 bytes</span>
+    movdqu xmm1, xmmword [rdx]    <span class="cmt"># the same, with the width written out</span>
+    pxor xmm0, xmm1
+    pshufd xmm0, xmm0, 0x1b       <span class="cmt"># reverse the four 32-bit lanes</span>
+    movdqu [rdi], xmm0            <span class="cmt"># store</span>
+}</code></pre>
+
+      <h3 id="vector-aarch64">aarch64</h3>
+      <p>The registers are spelled <code>vN.16b</code>, <code>vN.8h</code>, <code>vN.4s</code> or <code>vN.2d</code>. The suffix is the lane arrangement, and every operand of one instruction shares it. <code>add</code>, <code>sub</code>, <code>and</code>, <code>orr</code>, <code>eor</code> and <code>mov</code> select their vector form when their operands are vector registers.</p>
+      <table>
+        <thead><tr><th>Form</th><th>Mnemonics</th></tr></thead>
+        <tbody>
+          <tr><td>three registers</td><td><code>add</code> <code>sub</code> <code>mul</code>, <code>and</code> <code>orr</code> <code>eor</code>, <code>cmeq</code> <code>cmgt</code> <code>cmge</code> <code>cmhi</code> <code>cmhs</code>, <code>fadd</code> <code>fsub</code> <code>fmul</code> <code>fdiv</code>, <code>fcmeq</code> <code>fcmgt</code> <code>fcmge</code></td></tr>
+          <tr><td>two registers</td><td><code>mov</code> <code>mvn</code></td></tr>
+          <tr><td>one element structure</td><td><code>ld1 {vT.&lt;lanes&gt;}, [Xn]</code>, <code>st1 {vT.&lt;lanes&gt;}, [Xn]</code></td></tr>
+        </tbody>
+      </table>
+      <p>Not every member exists at every arrangement:</p>
+      <table>
+        <thead><tr><th>Members</th><th>Arrangements</th></tr></thead>
+        <tbody>
+          <tr><td><code>and</code> <code>orr</code> <code>eor</code> <code>mov</code> <code>mvn</code></td><td><code>.16b</code> only</td></tr>
+          <tr><td>the float members (<code>fadd</code> through <code>fcmge</code>)</td><td><code>.4s</code> and <code>.2d</code> only</td></tr>
+          <tr><td><code>mul</code></td><td>every arrangement except <code>.2d</code></td></tr>
+        </tbody>
+      </table>
+      <p><code>ld1</code> and <code>st1</code> post-index their base, either by the structure size (<code>, 16</code>) or by an X register (<code>, x9</code>). Either form writes the base register.</p>
+      <pre class="code"><code><span class="kw">asm</span> aarch64 {
+    ld1 {v0.16b}, [x1], 16      <span class="cmt"># load 16 bytes, then x1 += 16</span>
+    ld1 {v1.16b}, [x1], 16
+    eor v0.16b, v0.16b, v1.16b
+    st1 {v0.16b}, [x2], x9      <span class="cmt"># store, then x2 += x9</span>
+}</code></pre>
+      <p>The braces in <code>{v0.16b}</code> are aarch64's register-list syntax, not a substitution: only an identifier inside braces names a local.</p>
+
+      <h3 id="vector-secrecy">Constant-time checking</h3>
+      <p>The multiply and float members are variable-latency operations, so the constant-time check in an <a href="secrecy.html#oblivious-asm"><code>#[oblivious]</code></a> function treats them as it treats their scalar counterparts. The check tracks secrets per register bank, so a secret in <code>xmm3</code> is never mistaken for a secret in <code>rbx</code>, which shares its index.</p>
+
+      <h3 id="vector-instruction-sets">Instruction-set availability</h3>
+      <p>The vector tables above hold only each architecture's baseline set: SSE2 on x86-64 and AdvSIMD on aarch64. An <code>asm</code> block may use any listed form on any target of its architecture, with no declaration.</p>
 
       <h2 id="privileged">Privileged and system instructions</h2>
-      <p>The privileged and system instruction families are reachable from inline assembly on every target: x86-64 port I/O (<code>in</code> / <code>out</code>), <code>cli</code> / <code>sti</code> / <code>lidt</code>, and <code>rdtsc</code> / <code>rdmsr</code> / <code>wrmsr</code>; aarch64 <code>mrs</code> / <code>msr</code>; and the RISC-V CSR family.</p>
+      <p>The privileged and system instruction families are reachable from inline assembly on every target: the x86-64 systems instructions below, aarch64 <code>mrs</code> / <code>msr</code> and the exception conduits, and the RISC-V CSR family.</p>
+
+      <h3 id="privileged-x86-64">Systems instructions (x86-64)</h3>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    cli                       <span class="cmt"># clear the interrupt flag</span>
+    sti                       <span class="cmt"># ... and set it</span>
+    cld                       <span class="cmt"># clear DF before entering a program</span>
+    hlt                       <span class="cmt"># park the core</span>
+    in al, dx                 <span class="cmt"># port i/o, through dx or by immediate port</span>
+    out dx, al
+    rdtsc                     <span class="cmt"># the time-stamp counter</span>
+    rdmsr                     <span class="cmt"># the model-specific registers</span>
+    wrmsr
+    lidt [rax]                <span class="cmt"># install an interrupt descriptor table</span>
+    pushfq                    <span class="cmt"># save RFLAGS</span>
+    popfq                     <span class="cmt"># ... and restore it</span>
+    swapgs                    <span class="cmt"># per-CPU state on a syscall entry</span>
+    iretq                     <span class="cmt"># return from an interrupt handler</span>
+    mov rax, cr2              <span class="cmt"># the faulting address in a page-fault handler</span>
+    mov cr3, rax              <span class="cmt"># switch page tables</span>
+    mov eax, cs               <span class="cmt"># the live selector, for programming STAR</span>
+}</code></pre>
+      <p>Control registers are <code>cr0</code>, <code>cr2</code>, <code>cr3</code>, <code>cr4</code> and <code>cr8</code>, and a control-register move takes a 64-bit general-purpose register on its other side. Segment registers (<code>es</code>, <code>cs</code>, <code>ss</code>, <code>ds</code>, <code>fs</code>, <code>gs</code>) can be <strong>read</strong> into a general-purpose register but not written through <code>mov</code>.</p>
+      <p>None of these writes a register the allocator tracks except <code>rdtsc</code> and <code>rdmsr</code>, which land their result in EDX:EAX. <code>iretq</code> does not fall through, but the effect model cannot say so: statements after it are unreachable without the compiler reporting it.</p>
 
       <h3 id="sysreg">System registers (aarch64)</h3>
       <p><code>mrs</code> and <code>msr</code> name a system register by its architectural name, in either case.</p>
@@ -140,6 +264,16 @@
     mrs x0, s3_3_c14_c0_2     <span class="cmt"># the same register as `mrs x0, cntvct_el0`</span>
 }</code></pre>
       <p>A field the architecture cannot hold is refused rather than truncated, because a truncated selector would name a <em>different</em> register than the text does. <code>msr &lt;field&gt;, #imm</code> writes a PSTATE field (<code>daifset</code>, <code>daifclr</code>, <code>spsel</code>, <code>pan</code>, <code>uao</code>, <code>ssbs</code>, <code>dit</code>, <code>tco</code>); the architecture spells these by name only, so there is no numeric escape for that form.</p>
+
+      <h3 id="conduits">Exception conduits and waits (aarch64)</h3>
+      <pre class="code"><code><span class="kw">asm</span> aarch64 {
+    svc 0                     <span class="cmt"># the kernel, at EL1</span>
+    hvc 0                     <span class="cmt"># the hypervisor, at EL2</span>
+    smc 0                     <span class="cmt"># the secure monitor, at EL3</span>
+    wfi                       <span class="cmt"># wait for an interrupt: the correct idle loop</span>
+    wfe                       <span class="cmt"># wait for an event</span>
+}</code></pre>
+      <p><code>hvc</code> and <code>smc</code> are how PSCI is reached, which is the only way to power off or restart a <code>virt</code> board. Both follow the SMC Calling Convention, so the compiler declares them as destroying <strong>x0 to x17</strong>. x18 to x30 and SP survive, which makes a conduit cheaper than an ordinary <code>bl</code>. The waits write nothing, so an idle loop holds every live value across them. <code>yield</code> is the weaker hint - it may do nothing at all.</p>
 
       <h3 id="csr">Control-and-status registers (riscv64)</h3>
       <p>The Zicsr extension's six instructions - read-write, read-set, and read-clear, each taking its source from a register or a five-bit immediate - reach a CSR by name.</p>
@@ -177,10 +311,40 @@
           <tr><td><code>.quad</code></td><td>8 bytes</td><td>8 bytes</td></tr>
         </tbody>
       </table>
-      <p>Values are written in the target's byte order, so <code>.word 0xd503201f</code> is the aarch64 <code>nop</code> as its manual prints it. A value the width cannot hold is refused rather than truncated, and one directive carries a whole sequence - up to 256 payload bytes - not four. On aarch64 and riscv64 a statement must emit a whole number of instruction words; x86-64 has no such constraint.</p>
+      <p>Values are written in the target's byte order, so <code>.word 0xd503201f</code> is the aarch64 <code>nop</code> as its manual prints it. A non-negative value is read unsigned (<code>.quad 0xFFFFFFFFFFFFFFFF</code> is a legal address), and a negative one is its two's complement at the directive's width. A value the width cannot hold is refused rather than truncated, and one directive carries a whole sequence - up to 256 payload bytes - not four. On aarch64 and riscv64 a statement must emit a whole number of instruction words (<code>.byte 0x1f, 0x20, 0x03</code> is refused there), and x86-64 has no such constraint.</p>
       <div class="callout warn">
         <span class="callout-label">Cost</span>
-        <p>A raw encoding is an instruction stream the parser cannot read, so the block's clobber set becomes <strong>every register in every bank</strong>, and an <a href="secrecy.html#oblivious-asm"><code>#[oblivious]</code></a> function may not contain one at all. A real mnemonic is always preferable where one exists.</p>
+        <p>A raw encoding is an instruction stream the parser cannot read, so by default the block's clobber set becomes <strong>every register in every bank</strong>, and an <a href="secrecy.html#oblivious-asm"><code>#[oblivious]</code></a> function may not contain one at all. A real mnemonic is always preferable where one exists.</p>
+      </div>
+
+      <h3 id="raw-effects">Declaring a raw encoding's effects</h3>
+      <p>That default is correct and expensive: with nothing held live across the statement, the allocator spills every value in a callee-saved register and the prologue saves every callee-saved register the function could reach. A raw encoding may instead state what it writes, with a <code>::</code> clause on the directive.</p>
+      <pre class="code"><code><span class="kw">asm</span> x86_64 {
+    mov dx, {port}
+    .byte 0xee :: writes()                 <span class="cmt"># out dx, al - reads dx and al, writes nothing</span>
+    .byte 0x0f, 0x31 :: writes(rax, rdx)   <span class="cmt"># rdtsc - lands its result in EDX:EAX</span>
+}
+
+<span class="kw">asm</span> aarch64 {
+    .word 0xd4000002 :: writes(x0, x1, x2, x3)   <span class="cmt"># hvc #0, returning per SMCCC</span>
+}
+
+<span class="kw">asm</span> riscv64 {
+    .word 0xc0102573 :: writes(a0)               <span class="cmt"># csrr a0, time</span>
+}</code></pre>
+      <p><code>writes()</code> with an empty list is a <strong>declaration</strong> that the encoding writes no register. Leaving the clause off keeps the conservative default. Registers are named in the target's own vocabulary, in either bank:</p>
+      <table>
+        <thead><tr><th>Target</th><th>General-purpose</th><th>Float / vector</th></tr></thead>
+        <tbody>
+          <tr><td>x86-64</td><td><code>rax</code> to <code>r15</code></td><td><code>xmm0</code> to <code>xmm15</code></td></tr>
+          <tr><td>aarch64</td><td><code>x0</code> to <code>x30</code>, <code>sp</code>, <code>xzr</code></td><td><code>v0</code> to <code>v31</code></td></tr>
+          <tr><td>riscv64</td><td><code>x0</code> to <code>x31</code>, psABI aliases (<code>a0</code>, <code>t0</code>, <code>sp</code>, ...)</td><td><code>f0</code> to <code>f31</code>, psABI aliases (<code>fa0</code>, <code>ft0</code>, ...)</td></tr>
+        </tbody>
+      </table>
+      <p>A width is not a register: <code>eax</code>, <code>w0</code> and <code>v2.4s</code> are refused, because the allocator tracks each register's bits as a unit. A malformed clause, an unknown register, and an unknown attribute all fail the build. A clause may only follow a data directive, so it can only narrow the conservative default and never contradict an effect the compiler derived from a mnemonic. <code>writes(...)</code> is the only attribute today.</p>
+      <div class="callout warn">
+        <span class="callout-label">Not checked</span>
+        <p>The compiler does not decode the payload, so it cannot verify that the bytes write only what the clause says. <strong>Under-declaring is a miscompile</strong>: the allocator will keep a value in a register the encoding overwrites. Declare everything the instruction's manual says it writes, including implicit destinations. A declaration buys allocation quality, not verification, and an <code>#[oblivious]</code> function still refuses a data directive whether or not it is declared.</p>
       </div>
 
       <h2 id="dispatch">Multi-arch dispatch</h2>
@@ -216,12 +380,22 @@
       <div class="toc-title">On this page</div>
       <a href="#grammar">Grammar</a>
       <a href="#substitution">Operand substitution</a>
+      <a class="sub" href="#substitution-sp">The stack pointer</a>
       <a href="#inference">What the compiler infers</a>
-      <a href="#calls">Calls (x86-64)</a>
+      <a href="#calls">Calls and jumps (x86-64)</a>
+      <a href="#operand-sizes">Operand sizes (x86-64)</a>
+      <a href="#vector">Vector registers</a>
+      <a class="sub" href="#vector-x86-64">x86-64</a>
+      <a class="sub" href="#vector-aarch64">aarch64</a>
+      <a class="sub" href="#vector-secrecy">Constant-time checking</a>
+      <a class="sub" href="#vector-instruction-sets">Instruction-set availability</a>
       <a href="#privileged">Privileged and system instructions</a>
+      <a class="sub" href="#privileged-x86-64">Systems instructions (x86-64)</a>
       <a class="sub" href="#sysreg">System registers (aarch64)</a>
+      <a class="sub" href="#conduits">Exception conduits (aarch64)</a>
       <a class="sub" href="#csr">CSRs (riscv64)</a>
       <a href="#raw">Raw encodings</a>
+      <a class="sub" href="#raw-effects">Declaring effects</a>
       <a href="#dispatch">Multi-arch dispatch</a>
       <a href="#when">When to use it</a>
     </nav>
