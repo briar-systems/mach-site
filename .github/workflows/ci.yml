@@ -28,9 +28,27 @@ jobs:
             curl -fsSIL -o /dev/null "$url"
           done
 
+  bake-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Bake the latest mach release into version.js
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/bake-version.sh
+
+      - name: Check the baked module loads with the version
+        run: |
+          node -e '
+            const v = require("./assets/version.js").MACH_VERSION;
+            if (!/^\d+\.\d+\.\d+$/.test(v)) { console.error("bad version: " + v); process.exit(1); }
+            console.log("version.js exports " + v);
+          '
+
   gate:
     if: always()
-    needs: [install-check]
+    needs: [install-check, bake-version]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
