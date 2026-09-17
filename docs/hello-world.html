@@ -75,7 +75,7 @@
       <p class="lead">A complete mach program in a handful of lines: a couple of imports, an entry point, and one printed line. Every piece is explicit, so nothing runs that you did not write.</p>
 
       <h2 id="program">The program</h2>
-      <p>This is the whole thing. It imports the runtime and the print module, declares an entry point, prints a line, and returns a zero exit code.</p>
+      <p>This is the whole thing, and it is exactly the <code>src/root.mach</code> that <code>mach init</code> writes. It imports the runtime and the print module, declares an entry point, prints a line, and returns a zero exit code.</p>
       <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;
 <span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
 
@@ -86,7 +86,7 @@
 }</code></pre>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>The examples rely on the standard library as a dependency. Run <code>mach init</code> to scaffold a project wired up to build, or clone the standalone <a href="https://github.com/briar-systems/mach-sieve" target="_blank">Mach Sieve</a> starting point.</p>
+        <p>The program relies on the standard library as a dependency. <code>mach init</code> scaffolds a project with std already declared and fetched, or clone the standalone <a href="https://github.com/briar-systems/mach-sieve" target="_blank">Mach Sieve</a> starting point.</p>
       </div>
 
       <h2 id="imports">Imports</h2>
@@ -116,11 +116,12 @@
       <p>The <code>::i64</code> casts the literal to a concrete type. Because <code>printf</code> writes the string verbatim, include the trailing <code>\n</code> yourself.</p>
 
       <h2 id="build">Build and run</h2>
-      <p>Build with the same single toolchain that vendors dependencies and links. From the project root:</p>
-      <pre class="code"><code>mach init          <span class="cmt"># scaffold a new project</span>
-mach dep pull      <span class="cmt"># fetch dependencies (std)</span>
-mach build .       <span class="cmt"># compile to out/&lt;target&gt;/bin/</span></code></pre>
-      <p>The compiled binary lands in <code>out/&lt;target&gt;/bin/</code>, where <code>&lt;target&gt;</code> is the selected target name. Run it directly from there. See the <a href="cli.html">CLI</a> reference for the full command set.</p>
+      <p>The same toolchain scaffolds, fetches dependencies, builds and links:</p>
+      <pre class="code"><code>mach init hello    <span class="cmt"># scaffold hello/ with src/root.mach and std</span>
+cd hello
+mach build .       <span class="cmt"># compile and link</span>
+mach run .         <span class="cmt"># build and run: Hello, World!</span></code></pre>
+      <p>The binary lands at <code>out/&lt;target&gt;/&lt;profile&gt;/bin/hello</code>, for example <code>out/linux-x86_64/debug/bin/hello</code>. <code>mach init</code> already fetches std, so there is no separate fetch step. See the <a href="cli.html">CLI</a> reference for the full command set.</p>
 
       <div class="see-also">
         <h2>See also</h2>
