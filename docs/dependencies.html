@@ -72,64 +72,168 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Tooling<span class="sep">/</span>Dependencies</div>
       <h1>Dependencies</h1>
-      <p class="lead">A mach project declares its dependencies in <code>mach.toml</code> and vendors them into a flat <code>dep/</code> tree. <code>mach dep</code> realizes that tree from git or local paths, and <code>mach build</code> then resolves everything by vendor layout alone, with no git and no network.</p>
+      <p class="lead">A mach project declares its dependencies in <code>mach.toml</code> and vendors them into a flat <code>dep/</code> tree. A git dependency selects releases by version range, or one exact commit, tag, or branch by ref. <code>mach dep</code> resolves and realizes that tree, and <code>mach build</code> then verifies it offline, with no network.</p>
 
       <h2 id="declaring">Declaring a dependency</h2>
-      <p>Each <code>[dep.&lt;id&gt;]</code> stanza names a dependency materialized under <code>dep/&lt;id&gt;/</code>. A stanza declares exactly one source key: a <code>git</code> URL or a local <code>path</code>.</p>
+      <p>A dependency is named by its <strong>project id</strong>, and that one name appears in three places: the manifest key <code>[dep.&lt;id&gt;]</code>, the directory <code>dep/&lt;id&gt;/</code>, and the head segment of every module path the dependency exposes (<code>use &lt;id&gt;.x;</code>). The compiler checks that all three agree, so <code>dep/&lt;id&gt;/mach.toml</code> must declare <code>id = "&lt;id&gt;"</code>. A dependency whose id is the declaring project's own is refused where it is declared.</p>
       <pre class="code"><code><span class="cmt"># in mach.toml</span>
-[dep.mach-std]
-git = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref = <span class="str">"tag/v2.0.0"</span>
+[dep.std]
+git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
+version = <span class="str">"^5.3.0"</span>                <span class="cmt"># any release from 5.3.0 up to, not including, 6.0.0</span>
 
-[dep.local-lib]
-path = <span class="str">"../sibling/local-lib"</span></code></pre>
+[dep.gfx]
+git = <span class="str">"https://example.com/gfx"</span>
+ref = <span class="str">"tag/v1.4.0"</span>                 <span class="cmt"># one exact tag</span>
+
+[dep.util]
+path = <span class="str">"../util"</span>                   <span class="cmt"># a local project tree, never fetched</span></code></pre>
       <table>
         <thead><tr><th>Key</th><th>Type</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>git</code></td><td>string</td><td>Git URL cloned into <code>dep/&lt;id&gt;/</code>.</td></tr>
-          <tr><td><code>path</code></td><td>string</td><td>Local path to another project tree, resolved relative to this manifest. Never fetched.</td></tr>
-          <tr><td><code>ref</code></td><td>string</td><td>Git ref to check out (with <code>git</code>). Absent means the remote default branch.</td></tr>
+          <tr><td><code>git</code></td><td>string</td><td>Git URL. The dependency is a git submodule at <code>dep/&lt;id&gt;/</code>, pinned by the gitlink the root repository commits. Requires <code>version</code> or <code>ref</code>.</td></tr>
+          <tr><td><code>version</code></td><td>string</td><td>A <a href="#version-ranges">version range</a> over the dependency's releases. Valid only with <code>git</code>.</td></tr>
+          <tr><td><code>ref</code></td><td>string</td><td>Exact selector for <code>git</code>: <code>branch/&lt;name&gt;</code>, <code>tag/&lt;name&gt;</code>, or <code>commit/&lt;full-object-id&gt;</code>.</td></tr>
+          <tr><td><code>path</code></td><td>string</td><td>Local project tree, resolved relative to this manifest's directory. Never fetched. Forbids <code>version</code> and <code>ref</code>.</td></tr>
         </tbody>
       </table>
-      <p>A <code>git</code> ref resolves in one of these forms:</p>
+      <p>A stanza names exactly one source, <code>git</code> or <code>path</code>. A <code>git</code> stanza also names exactly one selector, <code>version</code> or <code>ref</code>, and naming both is an error (<code>[dep.std] names both 'ref' and 'version'; keep one</code>). <code>version</code> selects among releases. <code>ref</code> selects one exact tag or commit, or follows a branch. Any other <code>ref</code> spelling is rejected: there are no bare names, short hashes, or empty refs.</p>
+      <p>A <strong>path</strong> dependency is copied into <code>dep/&lt;id&gt;/</code>, without the source's own <code>dep/</code>, its Git metadata, or its build output. When the source lives in a git work tree, only what git keeps is copied: tracked files and the untracked files its ignore rules keep. Copied files are not staged automatically.</p>
+
+      <h2 id="version-ranges">Version ranges</h2>
+      <p><code>[dep.&lt;id&gt;].version</code> and the compiler range <a href="manifest.html#compiler-range"><code>[project].mach</code></a> share one range grammar:</p>
+      <pre class="code"><code>range   = clause *( "," clause )        <span class="cmt">; the intersection of every clause</span>
+clause  = op partial
+op      = "^" / "~" / ">=" / ">" / "&lt;=" / "&lt;" / "="
+partial = major [ "." minor [ "." patch [ "-" pre ] ] ]</code></pre>
+      <p>A version satisfies a range when it satisfies every clause. Each clause names its operator, so a bare <code>1.2</code> is refused (<code>a clause needs an operator, such as ^1.2 or &gt;=1.2</code>). Whitespace is allowed around <code>,</code> and between an operator and its version, and nowhere else. A missing component is 0.</p>
+      <table>
+        <thead><tr><th>Clause</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td><code>^1.2.3</code></td><td><code>&gt;=1.2.3, &lt;2.0.0</code></td></tr>
+          <tr><td><code>^1.2</code></td><td><code>&gt;=1.2.0, &lt;2.0.0</code></td></tr>
+          <tr><td><code>^1</code></td><td><code>&gt;=1.0.0, &lt;2.0.0</code></td></tr>
+          <tr><td><code>~1.2.3</code></td><td><code>&gt;=1.2.3, &lt;1.3.0</code></td></tr>
+          <tr><td><code>~1.2</code></td><td><code>&gt;=1.2.0, &lt;1.3.0</code></td></tr>
+          <tr><td><code>~1</code></td><td><code>&gt;=1.0.0, &lt;2.0.0</code></td></tr>
+          <tr><td><code>&gt;=1.2</code>, <code>&gt;1.2</code>, <code>&lt;=1.2</code>, <code>&lt;2</code></td><td>the bound with missing components as 0, so <code>&gt;1.2</code> is <code>&gt;1.2.0</code></td></tr>
+          <tr><td><code>=1.2.3</code></td><td>exactly <code>1.2.3</code>. <code>=</code> needs all three components.</td></tr>
+        </tbody>
+      </table>
+      <p>Below 1.0 a minor release is breaking, so caret fixes everything up to the first nonzero component:</p>
+      <table>
+        <thead><tr><th>Clause</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td><code>^0.4.2</code></td><td><code>&gt;=0.4.2, &lt;0.5.0</code></td></tr>
+          <tr><td><code>^0.4</code></td><td><code>&gt;=0.4.0, &lt;0.5.0</code></td></tr>
+          <tr><td><code>^0.0.3</code></td><td><code>=0.0.3</code></td></tr>
+          <tr><td><code>^0.0</code></td><td><code>&gt;=0.0.0, &lt;0.1.0</code></td></tr>
+          <tr><td><code>^0</code></td><td><code>&gt;=0.0.0, &lt;1.0.0</code></td></tr>
+        </tbody>
+      </table>
+      <p>A pre-release version (<code>1.3.0-rc.1</code>) satisfies a range only when one of its clauses names a pre-release of that same release. So <code>^1.2</code> never selects <code>1.3.0-rc.1</code>, and <code>&gt;=1.3.0-rc.1, &lt;2</code> does. Build metadata (<code>+...</code>) is refused in a range and ignored in a release's version. There is no <code>*</code> and no <code>||</code>.</p>
+
+      <h2 id="resolution">Releases and resolution</h2>
+      <p>A <strong>release</strong> of a git dependency is a tag <code>vX.Y.Z</code> (or <code>vX.Y.Z-pre</code>) together with the <code>mach.toml</code> at that tag. A tag whose manifest's <code>[project].version</code> differs from the tag name is not a candidate.</p>
+      <p>Resolution runs in exactly three places: <code>mach dep add</code>, <code>mach dep update</code>, and <code>mach dep outdated</code>. <strong>Builds never resolve.</strong> They <a href="#verify">verify</a>, offline. For every identity in the closure that some manifest selects by <code>version</code>, resolution picks one release such that:</p>
+      <ol>
+        <li>every requirer's range contains it,</li>
+        <li>its own <code>[project].mach</code> contains the running compiler, and</li>
+        <li>the closure its own manifest implies also resolves.</li>
+      </ol>
+      <p>Among the choices that satisfy all three, it takes the highest release of each identity, and writes the result as gitlinks like any other pin. <code>mach dep update &lt;path&gt; &lt;name&gt;</code> keeps every other identity at its current release while that release still fits, so an update moves as little as it can. <code>--all</code> resolves from scratch. When nothing fits, the error lists every requirement that took part, including a release that needs a newer compiler, and names the identity the root can settle:</p>
+      <pre class="code"><code>error: no set of releases satisfies every requirement:
+    root requires b ^1.2
+    a 1.0.0 requires b ^2.0
+  the root decides by declaring the identity itself, for example:
+    [dep.b]
+    version = "&lt;a range the root can use&gt;"</code></pre>
+      <p>Resolution never silently settles for a lower release than the ranges allow.</p>
       <ul>
-        <li><code>tag/&lt;name&gt;</code>: the named tag.</li>
-        <li><code>branch/&lt;name&gt;</code>: the remote-tracking branch tip.</li>
-        <li><code>commit/&lt;name&gt;</code> or a 7-40 char hex SHA: the literal commit.</li>
-        <li>a bare name: auto-detected as a remote branch (tracking its tip), else a literal tag or commit.</li>
-        <li>the empty ref: the remote default branch.</li>
+        <li><strong>What <code>add</code> writes.</strong> With <code>--git &lt;url&gt;</code> alone, <code>version = "^X.Y.Z"</code> of the release resolution picked, so the lower bound is the release actually tested when the dependency was added. With <code>--version &lt;range&gt;</code>, that range. With <code>--ref &lt;selector&gt;</code>, that selector. <code>mach init</code> adds std the same way.</li>
+        <li><strong><code>--offline</code>.</strong> Resolution normally reads candidates from each dependency's repository: one <code>git ls-remote --tags</code> per URL, and the manifest at a release through a shallow fetch of its tag. <code>update --offline</code> and <code>outdated --offline</code> use only the tags already present in the realized checkouts, and say so. A resolution that needs a candidate it doesn't have fails, naming the identity.</li>
+        <li><strong><code>--lowest</code>.</strong> <code>mach dep update &lt;path&gt; --all --lowest</code> picks the lowest release every range accepts. A library's CI runs it in a scratch checkout and then builds and tests, which proves its declared lower bounds are honest. Run it in a release or manually dispatched job, never a scheduled one.</li>
+        <li><strong><code>mach dep outdated &lt;path&gt;</code></strong> prints, for each version-selected identity, the pinned release, the highest release resolution would pick now, and the highest release published. A newer release held back by a range or by the compiler is marked as such.</li>
+        <li><strong>No yanking.</strong> A bad release is fixed forward with a new one. A consumer that must avoid one raises its range's lower bound (<code>^3.2.1</code>).</li>
+        <li><strong>Forks.</strong> Identity is the project id, not the URL. A root that declares a fork's URL makes that fork the candidate source, so its <code>vX.Y.Z</code> tags compete under the same ranges. A fork that wants to stay distinguishable tags pre-releases (<code>v1.4.3-fork.1</code>), and a consumer opts in by naming the pre-release in its range.</li>
       </ul>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>A registry-style <code>version =</code> key is reserved and rejected. There is no version resolution: dependencies are pinned by git ref or local path, nothing more.</p>
+
+      <h3 id="root-declarations">Root declarations: narrowing and overriding</h3>
+      <p>A root <code>version</code> for an identity <strong>narrows</strong>: it is intersected with every requirer's range, and resolution and verification hold the pin to all of them. A root <code>ref</code> or <code>path</code> <strong>overrides</strong>: the requirers' ranges and selectors for that identity no longer apply, and <code>add</code> and <code>update</code> print each one they override. A range is never widened silently, and the escape hatch is one visible line in the root manifest.</p>
+      <div class="callout warn">
+        <span class="callout-label">Overrides are unchecked</span>
+        <p>Because the closure is flat, a requirer's <code>use b.*</code> binds to whatever the root selected, even a major that requirer was never built or tested against. A passing build only shows that the code it reached compiled. <code>mach dep verify</code> prints a note for every edge an override replaced, without failing. Treat each note as a claim to confirm.</p>
       </div>
 
+      <h3 id="release-rule">A release selects only releases</h3>
+      <p>A dependency reached through a <strong>release</strong> (a <code>version</code> range or an exact <code>tag/</code>) may itself select dependencies only by <code>version</code> or <code>tag/</code>, so a release is reproducible from its tag all the way down. A dependency reached through <code>branch/</code> or <code>commit/</code> is in development, and its manifest may use any selector. A release that breaks the rule is refused wherever it is reached, naming the chain and the offending line, unless the root declares the offending dependency itself. <code>mach dep verify &lt;path&gt; --release</code> holds the project itself to the same rule, so a library's release workflow catches the mistake before it tags.</p>
+
       <h2 id="mach-dep">The mach dep command</h2>
-      <p><code>mach dep &lt;action&gt; &lt;path&gt;</code> manages the tree under <code>dep/</code>. Every action takes the project path first.</p>
+      <p><code>mach dep &lt;action&gt; &lt;path&gt;</code> manages the tree under <code>dep/</code>. Every action takes the project path first and accepts <code>--quiet</code> / <code>-q</code>.</p>
       <table>
         <thead><tr><th>Action</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>pull &lt;path&gt;</code></td><td>Realize declared dependencies: clone missing git deps (transitively into the flat root <code>dep/</code>), link path deps, re-resolve a changed ref, and repair checkout drift. Idempotent.</td></tr>
-          <tr><td><code>verify &lt;path&gt;</code></td><td>Check the realized dependency closure against the manifest offline without changing anything.</td></tr>
-          <tr><td><code>update &lt;path&gt;</code></td><td>Refresh path copies and advance branch references to current remote tips. Takes <code>&lt;id&gt;</code> or <code>--all</code>. Tag and commit refs are an immutable no-op. Never edits the manifest.</td></tr>
-          <tr><td><code>add &lt;path&gt; &lt;id&gt;</code></td><td>Declare a dependency in the manifest and realize the dependency tree. Takes <code>--git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code>.</td></tr>
-          <tr><td><code>remove &lt;path&gt; &lt;id&gt;</code></td><td>Drop the entry from <code>mach.toml</code>. <code>--purge</code> also deletes <code>dep/&lt;id&gt;/</code>.</td></tr>
-          <tr><td><code>list &lt;path&gt;</code></td><td>Print each entry with its source form, ref, commit, and state (such as <code>synced</code>, <code>missing</code>, <code>drifted</code>, <code>path</code>).</td></tr>
+          <tr><td><code>add &lt;path&gt; &lt;name&gt;</code></td><td>Declare a dependency and realize the tree. Takes <code>--git &lt;url&gt;</code> with an optional <code>--version &lt;range&gt;</code> or <code>--ref &lt;ref&gt;</code>, or <code>--path &lt;dir&gt;</code>. Without a selector it writes the caret range of the highest compatible release.</td></tr>
+          <tr><td><code>update &lt;path&gt; (&lt;name&gt; | --all)</code></td><td>The only command that moves a pin. Refreshes path copies, advances branch refs to their remote tips, moves exact refs to the commit they name, and resolves version ranges. Takes <code>--lowest</code> and <code>--offline</code>. Never edits the manifest.</td></tr>
+          <tr><td><code>outdated &lt;path&gt;</code></td><td>Report each version-selected dependency's pinned, highest compatible, and latest release. Takes <code>--offline</code>.</td></tr>
+          <tr><td><code>pull &lt;path&gt;</code></td><td>Realize the declared closure without advancing revisions or refreshing existing path copies. Idempotent.</td></tr>
+          <tr><td><code>verify &lt;path&gt;</code></td><td>Check the realized closure against the manifests without changing anything, and print <code>ok</code>. <code>--release</code> also applies the <a href="#release-rule">release rule</a> to the project itself.</td></tr>
+          <tr><td><code>remove &lt;path&gt; &lt;name&gt;</code></td><td>Drop the entry from <code>mach.toml</code>. <code>--purge</code> also deletes <code>dep/&lt;name&gt;/</code>.</td></tr>
+          <tr><td><code>list &lt;path&gt;</code></td><td>Print each declared entry with its source, ref, staged pin, and whether it is <code>realized</code> or <code>missing</code>.</td></tr>
         </tbody>
       </table>
-      <pre class="code"><code><span class="cmt"># add a git dep and vendor it in one step</span>
-mach dep add . mach-std --git https://github.com/briar-systems/mach-std --ref tag/v2.0.0</code></pre>
-      <p>A <strong>git</strong> dep is cloned, then checked out as a detached HEAD at the resolved commit. A <strong>path</strong> dep is never fetched: <code>pull</code> materializes it at <code>dep/&lt;id&gt;/</code> as a relative symlink, so the build reaches it by the same vendor layout as a git dep. Linking is idempotent: a stale link is replaced, a correct one left in place, and a source already living at the vendor location is a no-op. A path pointing at a missing directory, a tree with no <code>mach.toml</code>, or a vendor slot occupied by a real directory is a hard error.</p>
+      <pre class="code"><code><span class="cmt"># add std at the caret range of its newest compatible release</span>
+mach dep add . std --git https://github.com/briar-systems/mach-std
 
-      <h2 id="pins">Pins and gitlinks</h2>
-      <p>Dependencies are pinned by committed gitlinks under <code>dep/</code> in Git, or checked out cleanly at the declared ref. A git dep is cloned and checked out as a detached HEAD at the resolved commit. When tracking the project with Git, committing the resulting directories under <code>dep/</code> records the exact gitlink pins directly in the repository history without a separate lockfile. A path dep has no pinned commit and is linked as a relative symlink. Builds verify offline that every Git dependency is clean at its pin and that all closure entries are present.</p>
+<span class="cmt"># or state the range, or pin one exact tag</span>
+mach dep add . std --git https://github.com/briar-systems/mach-std --version <span class="str">"^5.3"</span>
+mach dep add . std --git https://github.com/briar-systems/mach-std --ref tag/v5.3.0
+
+<span class="cmt"># see what newer releases exist, then move to them</span>
+mach dep outdated .
+mach dep update . std</code></pre>
+      <p><code>pull</code> looks at what a git dependency's <code>dep/&lt;id&gt;</code> holds together with its record (the staged gitlink, its <code>.gitmodules</code> entry, and any module directory Git retained) and takes the one step that brings it to what a build verifies. A staged gitlink with nothing checked out is initialized in place, a checkout at the wrong commit is checked out at its gitlink, a clean unregistered checkout is registered, and with neither the submodule is added at its selector. A symlink, a file, a directory that is not a checkout of its own, and a dirty checkout are refused and left alone. A version-selected dependency that has no pin yet is refused, with the <code>mach dep update</code> command to run.</p>
+      <p><code>update &lt;name&gt;</code> looks the name up in the whole closure, so it can re-pin a transitive dependency the root does not declare. For an identity reached by more than one path, the root's selector wins if the root declares it. Otherwise the requirers must agree, or the command stops, prints both chains, and names the root declaration that would decide.</p>
+
+      <h2 id="pins">Pins are gitlinks</h2>
+      <p>The record of which commit a dependency is at is the <strong>gitlink</strong> committed in the root repository, generated into <code>.gitmodules</code> by <code>mach dep</code>. Nothing else records a pin. There is no lock file, and a <code>mach.lock</code> in the project root is an unrelated file no command reads. The verifier reads the git index, so a freshly realized dependency is verifiable before it is committed.</p>
+      <p>A project does not need its own Git repository. A project root is identified by its own <code>mach.toml</code>. In a repository root, git dependencies use the staged gitlinks as their pins. In a plain directory, or a project nested inside an unrelated repository, they are plain clones whose own checkout commits are verified. Path dependencies are verified from their copies.</p>
 
       <h2 id="vendor-tree">The flat dep tree</h2>
-      <p>Transitive deps resolve into a <strong>flat</strong> tree: every git dep, direct or transitive, lives directly at <code>dep/&lt;id&gt;/</code> under the root project. The root <code>dep/</code> holds the whole closure one level deep. Git materializes nested <code>dep/</code> directories as empty stubs that are neither verified nor descended into. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>, and routes any module path whose head segment matches a dep's <code>id</code> into that tree.</p>
-      <p>The same name required from two different sources or refs is a hard error naming both requirers. There is no version reconciliation.</p>
+      <p>The root's <code>dep/</code> holds every identity in its <strong>transitive</strong> closure, one directory each, one level deep. The root manifest declares only what the root uses directly, plus any override. A dependency's own dependencies reach the root's <code>dep/</code> through closure computation and need no declaration in the consumer. With a root that declares <code>a</code>, and <code>a</code> that declares <code>b</code>, the layout is <code>dep/a/</code> and <code>dep/b/</code>, and <code>a</code>'s <code>use b.*</code> resolves against the root's <code>dep/b/</code>. Git materializes <code>a</code>'s own gitlink as an empty <code>dep/a/dep/b/</code> that is neither realized, verified, nor descended into. <code>dep</code> itself must be a physical directory, not a symlink.</p>
+      <p>The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>[project].src</code>, and routes any module path whose head segment matches a dep's <code>id</code> into that tree.</p>
+
+      <h3 id="one-identity">One identity, one commit</h3>
+      <p>One identity resolves to exactly one commit per build, with no exception for majors. Two different selections of one identity is a <strong>clash</strong>, and the diagnostic prints both chains and the root declaration that would resolve it:</p>
+      <pre class="code"><code>error: dependency conflict: project id 'b' is reached with two different selections:
+    root -> a -> b requires git &lt;url&gt; @ tag/v1.0.0
+    root -> c -> b requires git &lt;url&gt; @ tag/v2.0.0
+  the root decides by declaring the identity itself, for example:
+    [dep.b]
+    git = "&lt;url&gt;"
+    ref = "tag/v2.0.0"</code></pre>
+      <p>The root's declaration may point at upstream or at a fork carrying the same id, with no change to any consumer. Two unrelated packages claiming one id is a collision and is rejected. URL disagreement is a mirror, not a conflict: the root's declared URL wins, else the first declaring path's, and verification compares commits, never URLs.</p>
+
+      <h3 id="removed-forms">Removed forms</h3>
+      <p><code>pull</code>, <code>verify</code>, and every build refuse two shapes of a realized closure:</p>
+      <ul>
+        <li>a <strong>key that is not the project id</strong>, such as <code>[dep.foo]</code> whose realized project declares <code>id = "std"</code>. Rename the table to <code>[dep.std]</code> and the directory to <code>dep/std</code>.</li>
+        <li>a <strong>nested realization</strong>, a <code>dep/&lt;id&gt;/dep/&lt;x&gt;/mach.toml</code>. The root's <code>dep/</code> owns the flat closure, so delete <code>dep/&lt;id&gt;/dep</code>. The empty directory git materializes for a consumed dependency's own gitlink is not a realization and passes.</li>
+      </ul>
+
+      <h2 id="verify">What a build verifies</h2>
+      <p>Builds never fetch and never write under <code>dep/</code>. Every build, and <code>mach dep verify</code>, checks offline that:</p>
+      <ol>
+        <li>every git dependency is a clean checkout at its applicable pin, and every path dependency is a contained tree without repository metadata,</li>
+        <li>its project id equals its directory name,</li>
+        <li>the closure computed from the realized manifests equals the set of directories under <code>dep/</code>, with nothing missing and nothing extra,</li>
+        <li>there are no cycles,</li>
+        <li>every realized manifest's <a href="manifest.html#compiler-range"><code>[project].mach</code></a> accepts the running compiler, and</li>
+        <li>for every identity selected by <code>version</code>, the pinned commit carries a release tag that is inside every requirer's range, the root's included, and every release in the closure <a href="#release-rule">selects only releases</a>.</li>
+      </ol>
+      <p>A pin outside a range names the requirer chain, the range, the pinned release, and the <code>mach dep update</code> command that re-pins it. For an identity the root does not declare, every requirer's exact <code>tag/</code> or <code>commit/</code> selector must match the realized commit. A root <code>ref</code> or <code>path</code> is the override, so the root's gitlink is its pin. A <code>branch/</code> selector is an input to <code>update</code>, never something a build checks.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p><code>mach build</code> never requires git or the network: a project whose dep tree is present builds on a bare machine. Only the network-shaped commands like <code>pull</code>, <code>update</code>, and <code>add</code> use git, discovered on <code>PATH</code>. Git absence is a clean error naming the operation that needed it.</p>
+        <p><code>mach build</code> never requires the network: a project whose dep tree is present builds on a bare machine. Only <code>add</code>, <code>update</code>, <code>outdated</code>, and <code>pull</code> reach a remote, through git discovered on <code>PATH</code>. A failed git command names the command, its exit status, and git's own message.</p>
       </div>
 
       <h2 id="importing">Importing a dependency</h2>
@@ -165,7 +269,7 @@ export = true                <span class="cmt"># and cascades to every consumer<
       <div class="see-also">
         <h2>See also</h2>
         <ul>
-          <li><a href="manifest.html">Manifest</a> - the full <code>mach.toml</code> reference, including <code>[dep.*]</code> and <code>[link.*]</code> requirements</li>
+          <li><a href="manifest.html">Manifest</a> - the full <code>mach.toml</code> reference, including <code>[project].mach</code>, <code>[dep.*]</code>, and <code>[link.*]</code></li>
           <li><a href="cli.html">CLI</a> - every <code>mach</code> command, including <code>mach dep</code> actions</li>
           <li><a href="modules.html">Modules</a> - how source files map to importable module paths</li>
           <li><a href="project-layout.html">Project layout</a> - where <code>dep/</code> and the manifest live in a project</li>
@@ -178,9 +282,16 @@ export = true                <span class="cmt"># and cascades to every consumer<
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
       <a href="#declaring">Declaring a dependency</a>
+      <a href="#version-ranges">Version ranges</a>
+      <a href="#resolution">Releases and resolution</a>
+      <a class="sub" href="#root-declarations">Narrowing and overriding</a>
+      <a class="sub" href="#release-rule">A release selects only releases</a>
       <a href="#mach-dep">The mach dep command</a>
-      <a href="#pins">Pins and gitlinks</a>
+      <a href="#pins">Pins are gitlinks</a>
       <a href="#vendor-tree">The flat dep tree</a>
+      <a class="sub" href="#one-identity">One identity, one commit</a>
+      <a class="sub" href="#removed-forms">Removed forms</a>
+      <a href="#verify">What a build verifies</a>
       <a href="#importing">Importing a dependency</a>
       <a href="#cascading-libs">Cascading link requirements</a>
     </nav>
