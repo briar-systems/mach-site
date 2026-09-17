@@ -85,6 +85,7 @@ id      = <span class="str">"demo"</span>                       <span class="cmt
 version = <span class="str">"0.1.0"</span>                      <span class="cmt"># required</span>
 src     = <span class="str">"src"</span>                        <span class="cmt"># required: source dir, project-root-relative</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>  <span class="cmt"># required: output-path template root</span>
+mach    = <span class="str">"^5.4"</span>                       <span class="cmt"># the compiler versions this project builds with</span>
 
 [target.linux]                        <span class="cmt"># a platform: a fully-spelled tuple</span>
 default = true
@@ -110,23 +111,32 @@ link    = []                          <span class="cmt"># [link.X] names this ar
 need    = []                          <span class="cmt"># category-qualified names demanded directly</span>
 
 [dep.std]                             <span class="cmt"># a dependency: directory, manifest key, and id match</span>
-git = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref = <span class="str">"branch/main"</span></code></pre>
+git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
+version = <span class="str">"^5.3.0"</span>                  <span class="cmt"># a release range, or ref = "tag/..." for one exact selection</span></code></pre>
 
       <h2 id="project"><code>[project]</code></h2>
       <table>
         <thead><tr><th>Key</th><th>Type</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><code>id</code></td><td>string</td><td>Root segment of every module path the project exposes: a file at <code>&lt;src&gt;/foo/bar.mach</code> is reachable as <code>&lt;id&gt;.foo.bar</code>. Must be a plain identifier - letters, digits, <code>_</code>, <code>-</code> - since it names the dependency store and keys step stamp files. Read by <code>$project.id</code>.</td></tr>
-          <tr><td><code>version</code></td><td>string</td><td>Project version. Read by <code>$project.version</code>; the source of truth a <code>tag/&lt;version&gt;</code> acquisition checks.</td></tr>
+          <tr><td><code>version</code></td><td>string</td><td>Project version. Read by <code>$project.version</code> and <code>$project.version.{major,minor,patch}</code>, and stamped into a Windows executable's version resource. A release tag <code>vX.Y.Z</code> is a <a href="dependencies.html#resolution">release</a> only when this matches it.</td></tr>
           <tr><td><code>src</code></td><td>string</td><td>Source root, project-root-relative. Module paths resolve under it.</td></tr>
           <tr><td><code>out</code></td><td>string</td><td>The output-path template root, referenced as <code>{project.out}</code> by artifact <code>out</code>, step paths, and <code>cmd</code>s.</td></tr>
+          <tr><td><code>mach</code></td><td>string</td><td>The compiler versions this project builds with, as a <a href="dependencies.html#version-ranges">version range</a> such as <code>"^5.4"</code>. See <a href="#compiler-range">Compiler range</a>.</td></tr>
         </tbody>
       </table>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p><code>[project]</code> permits only <code>id</code>, <code>version</code>, <code>src</code>, and <code>out</code>. Any other key is an unknown-key error in a root manifest.</p>
+        <p><code>[project]</code> permits only <code>id</code>, <code>version</code>, <code>src</code>, <code>out</code>, and <code>mach</code>. Any other key, <code>name</code> and <code>description</code> included, is an unknown-key error.</p>
       </div>
+
+      <h3 id="compiler-range">Compiler range</h3>
+      <p><code>mach</code> states which compilers a project builds with. Every command that reads the dependency closure - <code>build</code>, <code>test</code>, <code>check</code>, <code>mach dep verify</code>, and the language server - checks it for the root and for every realized dependency. A compiler outside any of those ranges is refused once, with every unmet requirement and the chain that states it:</p>
+      <pre class="code"><code>error: this is mach 5.2.1, and the dependency closure does not accept it:
+    app (mach.toml) requires mach ^5.3
+    app -> gfx -> glfw requires mach >=5.4, &lt;6</code></pre>
+      <p>A root manifest without <code>mach</code> still builds, with a warning that prints the line to add. A later release makes the key required. A dependency without it states no constraint. <code>mach init</code> writes the running compiler's caret range, such as <code>mach = "^5.4"</code>. Dependency resolution also reads it: a release whose <code>mach</code> range excludes the running compiler is never selected.</p>
+      <p>The compiler's version is the last release it was built from. A build from an unreleased tree reports that release, so a project cannot require an unreleased feature by version.</p>
 
       <h2 id="targets">Targets</h2>
       <p>Each <code>&lt;name&gt;</code> in <code>[target.&lt;name&gt;]</code> is a selector you pass to <code>--target &lt;name&gt;</code>. A target is a fully-spelled platform tuple; nothing is inferred from another key.</p>
@@ -233,7 +243,7 @@ manifest  = <span class="str">"assets/game.manifest"</span></code></pre>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><code>opt</code></td><td>yes</td><td>Optimization level: <code>0</code> selects the debug pipeline (the always-on passes only), <code>1</code> and <code>2</code> select the release pipeline. Any other integer is a manifest error.</td></tr>
-          <tr><td><code>debug</code></td><td>yes</td><td>Emit debug info (DWARF on ELF / Mach-O, CodeView on COFF). Gates emission only, never the optimizer, so a <code>release</code> profile can keep symbols with <code>debug = true</code>.</td></tr>
+          <tr><td><code>debug</code></td><td>yes</td><td>Emit debug info (DWARF, including in <code>.debug_*</code> sections of COFF objects and PE images). Gates emission only, never the optimizer, so a <code>release</code> profile can keep symbols with <code>debug = true</code>.</td></tr>
           <tr><td><code>simd</code></td><td>yes</td><td>SIMD scalarization lever. <code>"scalarize"</code> builds for a target without hardware SIMD by emitting a defined unrolled scalar expansion of each vector operator; <code>"require"</code> makes a build for an incapable target a hard error naming the offending operator.</td></tr>
           <tr><td><code>vectorize</code></td><td>yes</td><td>Auto-vectorization lever. When <code>true</code>, the release pipeline rewrites provably safe counted loops to 128-bit SIMD on a target with hardware vectors. <code>false</code> skips the pass, changing performance but never semantics.</td></tr>
           <tr><td><code>float_reassoc</code></td><td>yes</td><td>Permission to treat floating-point addition and multiplication as <strong>associative</strong>. It lets the vectorizer reduce an <code>f32</code> / <code>f64</code> accumulator through lane-count partial sums, which changes the result. The only profile key that can change a program computed answer.</td></tr>
@@ -290,19 +300,20 @@ export  = true</code></pre>
       <p>A step is cached by content: its declared inputs, resolved executable, expanded arguments, and effective environment contribute to its fingerprint. An unchanged step whose outputs still exist is skipped. Every step process inherits the active build cell target tuple as <code>MACH_TARGET_ISA</code>, <code>MACH_TARGET_OS</code>, and <code>MACH_TARGET_ABI</code>.</p>
 
       <h2 id="dependencies">Dependencies</h2>
-      <p>Each <code>[dep.&lt;id&gt;]</code> names a dependency materialised under <code>dep/&lt;id&gt;/</code>. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>src</code>. A module path whose head matches a dep <code>id</code> resolves into that dep tree. A stanza declares exactly one source key.</p>
+      <p>Each <code>[dep.&lt;id&gt;]</code> names a dependency realized under <code>dep/&lt;id&gt;/</code>. The key, the directory, and the dependency's own <code>[project].id</code> are one name. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>src</code>. A module path whose head matches a dep <code>id</code> resolves into that dep tree. A stanza declares exactly one source, <code>git</code> or <code>path</code>, and a <code>git</code> stanza exactly one selector, <code>version</code> or <code>ref</code>.</p>
       <table>
         <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td><code>git</code></td><td>Git URL to clone into <code>dep/&lt;id&gt;/</code>.</td></tr>
-          <tr><td><code>path</code></td><td>Local path to another project tree, resolved relative to this manifest. It is never fetched: <code>mach dep pull</code> materialises it at the vendor location as a relative symlink.</td></tr>
-          <tr><td><code>ref</code></td><td>Git ref to check out (with <code>git</code>): <code>tag/&lt;name&gt;</code>, <code>branch/&lt;name&gt;</code>, a bare tag or branch, or a commit SHA. An absent ref means the remote default branch.</td></tr>
+          <tr><td><code>git</code></td><td>Git URL. The dependency is a git submodule at <code>dep/&lt;id&gt;/</code>, pinned by the root repository's gitlink. Requires <code>version</code> or <code>ref</code>.</td></tr>
+          <tr><td><code>version</code></td><td>A <a href="dependencies.html#version-ranges">version range</a> over the dependency's <code>vX.Y.Z</code> release tags, such as <code>"^5.3.0"</code>. Valid only with <code>git</code>. Resolved by <code>mach dep add</code> and <code>update</code>, never by a build.</td></tr>
+          <tr><td><code>ref</code></td><td>Exact selector (with <code>git</code>): <code>branch/&lt;name&gt;</code>, <code>tag/&lt;name&gt;</code>, or <code>commit/&lt;full-object-id&gt;</code>. Any other spelling is rejected. Cannot be combined with <code>version</code>.</td></tr>
+          <tr><td><code>path</code></td><td>Local project tree, resolved relative to this manifest and never fetched. <code>mach dep</code> copies its files into <code>dep/&lt;id&gt;/</code>. Forbids <code>version</code> and <code>ref</code>.</td></tr>
         </tbody>
       </table>
-      <p>Dependencies are pinned by committed gitlinks under <code>dep/</code> in Git, or checked out cleanly at the declared ref. <code>mach dep pull &lt;path&gt;</code> materializes the flat closure at <code>dep/&lt;id&gt;/</code> one level deep. Builds never fetch and check offline that checkouts are clean and pinned.</p>
-      <div class="callout warn">
-        <span class="callout-label">Restriction</span>
-        <p>A registry-style <code>version =</code> key is reserved and rejected. Cloning, gitlink pins, and transitive resolution are covered in <a href="dependencies.html">Dependencies</a>.</p>
+      <p>Pins are the gitlinks committed in the root repository, and there is no lock file. <code>mach dep pull &lt;path&gt;</code> realizes the whole transitive closure flat at <code>dep/&lt;id&gt;/</code>, one level deep. Builds never fetch or resolve. They check offline that every checkout is clean at its pin, that each version-selected pin is a release inside every requirer's range, and that every <a href="#compiler-range"><code>mach</code> range</a> in the closure accepts the compiler.</p>
+      <div class="callout note">
+        <span class="callout-label">Note</span>
+        <p>The range grammar, how resolution picks releases, root narrowing and overriding, and everything a build verifies are covered in <a href="dependencies.html">Dependencies</a>.</p>
       </div>
 
       <h2 id="bare-imports">Bare project-id imports</h2>
@@ -348,6 +359,7 @@ export  = true</code></pre>
       <pre class="code"><code>[project]
 id      = <span class="str">"demo"</span>
 version = <span class="str">"0.1.0"</span>
+mach    = <span class="str">"^5.4"</span>
 src     = <span class="str">"src"</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>
 
@@ -407,15 +419,15 @@ targets = [<span class="str">"*"</span>]
 link    = [<span class="str">"miniz"</span>, <span class="str">"kernel32"</span>]
 need    = []
 
-[dep.mach-std]
-git = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-ref = <span class="str">"branch/main"</span></code></pre>
+[dep.std]
+git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
+version = <span class="str">"^5.3.0"</span></code></pre>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
           <li><a href="cli.html">CLI</a> - the flags that select a target, profile, and artifact</li>
-          <li><a href="dependencies.html">Dependencies</a> - <code>mach dep</code>, gitlink pins, and transitive resolution</li>
+          <li><a href="dependencies.html">Dependencies</a> - version ranges, release resolution, <code>mach dep</code>, and gitlink pins</li>
           <li><a href="project-layout.html">Project layout</a> - how <code>src</code> maps to module paths</li>
           <li><a href="decorators.html#library">Decorators</a> - <code>#[library]</code>, which resolves against a <code>[link.X]</code> identity</li>
         </ul>
@@ -428,6 +440,7 @@ ref = <span class="str">"branch/main"</span></code></pre>
       <div class="toc-title">On this page</div>
       <a href="#schema">The schema</a>
       <a href="#project">[project]</a>
+      <a class="sub" href="#compiler-range">Compiler range</a>
       <a href="#targets">Targets</a>
       <a class="sub" href="#recognized-tuples">Accepted tuple values</a>
       <a class="sub" href="#finished-modules">Finished-module targets</a>

@@ -76,11 +76,11 @@
 
       <h2 id="invocation">Invocation</h2>
       <pre class="code"><code>mach &lt;command&gt; [options]</code></pre>
-      <p>The compiler dispatches on <code>argv[1]</code>. With no command, or an unknown one, it prints usage and exits non-zero. The project commands - <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code> - take the project root as a <strong>required</strong> positional and walk up from it until a <code>mach.toml</code> is found. A bare invocation with no path is a user error.</p>
+      <p>The compiler dispatches on <code>argv[1]</code>. With no command, or an unknown one, it prints usage and exits non-zero. The project commands - <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code> - take the project as a <strong>required</strong> positional: a directory, whose <code>mach.toml</code> is read, or a manifest file directly. The manifest is never guessed from the working directory, and a bare invocation with no path is a user error.</p>
       <p>Flags are matched exactly: <code>--flag value</code> (the value follows in the next argument) or a bare <code>--flag</code> toggle.</p>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p>The combined <code>--flag=value</code> form and bundled short flags are <strong>not</strong> recognized. Each flag and its value are separate arguments.</p>
+        <p>Bundled short flags are <strong>not</strong> recognized, and a value is its own argument. The one exception is <code>--emit-ir</code>, whose optional form attaches to the same argument (<code>--emit-ir=listing</code>) and never consumes the next one. A lone <code>-</code> is a positional operand, not a flag.</p>
       </div>
 
       <h2 id="commands">Commands</h2>
@@ -93,8 +93,8 @@
           <tr><td><code>test</code></td><td>build the test dispatcher and run the collected tests</td></tr>
           <tr><td><code>fmt</code></td><td>format source files to the canonical layout</td></tr>
           <tr><td><code>clean</code></td><td>remove the project's build output</td></tr>
-          <tr><td><code>dep</code></td><td>manage git-backed dependencies</td></tr>
-          <tr><td><code>init</code></td><td>scaffold a new project</td></tr>
+          <tr><td><code>dep</code></td><td>manage project dependencies: resolve, realize, verify, and update</td></tr>
+          <tr><td><code>init</code></td><td>scaffold a new project, with std added at its newest compatible release</td></tr>
           <tr><td><code>doc</code></td><td>generate Markdown reference docs from source doc-comments</td></tr>
           <tr><td><code>info</code></td><td>print compiler version, build host, and registered target capabilities</td></tr>
           <tr><td><code>help</code></td><td>print usage; <code>mach help &lt;command&gt;</code> for detail</td></tr>
@@ -119,13 +119,13 @@
           <tr><td><code>--pie</code></td><td>-</td><td>emit a position-independent (<code>ET_DYN</code>) executable</td></tr>
           <tr><td><code>--subsystem &lt;kind&gt;</code></td><td>console, gui</td><td>the environment a windows executable declares; overrides the artifact's <code>subsystem</code> key, inert off windows</td></tr>
           <tr><td><code>--emit-asm</code></td><td>-</td><td>emit per-module <code>.s</code> assembly text beside each object</td></tr>
-          <tr><td><code>--emit-ir</code></td><td>-</td><td>emit per-module <code>.ir</code> SSA text beside each object</td></tr>
+          <tr><td><code>--emit-ir[=&lt;form&gt;]</code></td><td>debug, listing</td><td>emit per-module <code>.ir</code> text beside each object. Bare (or <code>=debug</code>) writes the ir-debug dump. <code>=listing</code> writes a readable listing with language-spelled types and <code>line:column</code> positions, whose format is a stable contract.</td></tr>
           <tr><td><code>--verify-ir</code></td><td>-</td><td>run the IR verifier after each optimisation pass</td></tr>
         </tbody>
       </table>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>IR and assembly emission is a CLI concern only - there is no profile key for it. There are no <code>--no-emit-*</code> inverses, no <code>--release</code> flag (use <code>-O1</code> / <code>-O2</code> or <code>--profile</code>), no <code>--color</code> flag, and no <code>--verbose</code> long form.</p>
+        <p>IR and assembly emission is a CLI concern only - there is no profile key for it. There are no <code>--no-emit-*</code> inverses, no <code>--release</code> flag (use <code>-O2</code> or <code>--profile</code>), no <code>--color</code> flag, and no <code>--verbose</code> long form.</p>
       </div>
       <div class="callout note">
         <span class="callout-label">Note</span>
@@ -139,15 +139,17 @@
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
           <tr><td><code>-O0</code></td><td>-</td><td>force the debug pipeline, overriding the profile</td></tr>
-          <tr><td><code>-O1</code>, <code>-O2</code></td><td>-</td><td>select the release pipeline (both select the same one today)</td></tr>
+          <tr><td><code>-O2</code></td><td>-</td><td>select the release pipeline, overriding the profile</td></tr>
           <tr><td><code>--emit &lt;kind&gt;</code></td><td>obj, exe</td><td><code>obj</code> stops at the objects; <code>exe</code> (default) links a binary</td></tr>
           <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>codegen worker threads (default: host CPUs; <code>1</code> serialises)</td></tr>
           <tr><td><code>--plan</code></td><td>-</td><td>print the effective build plan and exit without building</td></tr>
+          <tr><td><code>--cache</code></td><td>-</td><td>reuse and publish persistent object images under the output directory (default off)</td></tr>
+          <tr><td><code>--no-cache</code></td><td>-</td><td>force an uncached build: no persistent object images and no build-step reuse</td></tr>
           <tr><td><code>-L &lt;dir&gt;</code></td><td>dir</td><td>add a search directory for <code>-l</code>-resolved inputs; repeatable</td></tr>
           <tr><td><code>-l &lt;name&gt;</code></td><td>name</td><td>link a named object, archive, or shared library; repeatable</td></tr>
         </tbody>
       </table>
-      <p>Plus the global flags. An <code>-O&lt;n&gt;</code> flag overrides the selected profile's <code>opt</code> for this invocation; absent one, the profile decides. A bare <code>.o</code> / <code>.a</code> / <code>.so</code> / <code>.dylib</code> / <code>.dll</code> argument, or any <code>/</code>-bearing path, is linked verbatim.</p>
+      <p>Plus the global flags. <code>-O0</code> or <code>-O2</code> overrides the selected profile's <code>opt</code> for this invocation; absent one, the profile decides. <code>-O1</code> was removed and is refused (<code>-O1 was removed; use -O0 or -O2</code>). <code>--cache</code> and <code>--no-cache</code> cannot be combined. A bare <code>.o</code> / <code>.a</code> / <code>.so</code> / <code>.dylib</code> / <code>.dll</code> argument, or any <code>/</code>-bearing path, is linked verbatim.</p>
 
       <h3 id="link-inputs">Link inputs</h3>
       <p><code>ext fun</code> declarations are forward references resolved at link time by external precompiled code - a loose <code>.o</code> object, a static <code>.a</code> archive, or a shared <code>.so</code> library. Inputs come from the command line and from the manifest's merged <code>libs</code> overlay; both sets are linked. An input that resolves to no existing file is a hard error, so a typo never silently drops a dependency.</p>
@@ -177,6 +179,7 @@
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
           <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>execute the binary as <code>&lt;cmd&gt; &lt;binary&gt; &lt;args...&gt;</code> instead of directly</td></tr>
+          <tr><td><code>--timeout_seconds &lt;n&gt;</code></td><td>count</td><td>terminate the run and its process group after <code>n</code> seconds, exiting <code>3</code> (default unbounded)</td></tr>
         </tbody>
       </table>
       <p><code>--runner</code> names a host-side launcher for binaries the host cannot exec directly, for example <code>mach run . --target windows --runner wine</code>. <code>&lt;cmd&gt;</code> is a single command name or path (no shell-style word splitting); a bare name is resolved on <code>PATH</code>. Without the flag the binary is exec'd directly, and a launch failure reports exit <code>127</code> when <code>execve</code> rejects the binary, with no auto-detection.</p>
@@ -193,49 +196,66 @@
           <tr><td><code>--format &lt;kind&gt;</code></td><td>human, json</td><td><code>human</code> (default), or a <code>json</code> NDJSON event stream for tooling</td></tr>
           <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>run up to <code>n</code> test processes at once, and size the build's codegen workers</td></tr>
           <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt; &lt;idx&gt;</code> instead of exec'ing it directly</td></tr>
+          <tr><td><code>--timeout_seconds &lt;n&gt;</code></td><td>count</td><td>terminate a test process and its process group after <code>n</code> seconds (default unbounded)</td></tr>
+          <tr><td><code>--cache</code>, <code>--no-cache</code></td><td>-</td><td>as on <code>build</code></td></tr>
         </tbody>
       </table>
       <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
 
       <h2 id="fmt">fmt</h2>
-      <pre class="code"><code>mach fmt &lt;path&gt; [--check]</code></pre>
-      <p>Rewrites project source files in the canonical layout. With <code>--check</code>, it reports files whose formatting differs without modifying them and exits non-zero if formatting is needed. There is no configuration, and formatting follows a single strict standard.</p>
+      <pre class="code"><code>mach fmt &lt;path&gt;|&lt;file&gt;|- [--check]</code></pre>
+      <p>Rewrites source in the one canonical layout. There is no configuration. The operand decides what is formatted:</p>
+      <ul>
+        <li><strong>a directory or <code>mach.toml</code></strong> - rewrites that project's own source files in place, walking only <code>[project].src</code>, so no <code>[profile.*]</code> is needed. Dependencies are never visited or fetched.</li>
+        <li><strong>any other file</strong> - rewrites that one source file, with no manifest read.</li>
+        <li><strong><code>-</code></strong> - reads source from stdin and writes its canonical layout to stdout, touching nothing on disk. Diagnostics go to stderr.</li>
+      </ul>
+      <p>With <code>--check</code>, nothing is written and every input whose layout differs is named on stdout (the stream as <code>&lt;stdin&gt;</code>). A file that does not parse is reported and left unchanged. Exit codes: <code>0</code> formatted or already canonical, <code>1</code> an input differs under <code>--check</code>, is malformed, or the invocation is a user error, <code>2</code> internal failure, <code>3</code> filesystem failure.</p>
+      <pre class="code"><code>mach fmt .                       <span class="cmt"># the whole project</span>
+mach fmt src/root.mach           <span class="cmt"># one file</span>
+mach fmt - &lt; draft.mach          <span class="cmt"># stdin to stdout, for editors</span>
+mach fmt . --check               <span class="cmt"># ci: fail if anything is unformatted</span></code></pre>
 
       <h2 id="clean">clean</h2>
       <pre class="code"><code>mach clean &lt;path&gt;</code></pre>
       <p>Removes the project's build output: the output directory trees declared by the manifest's <code>out</code> / <code>obj</code> / <code>ir</code> / <code>asm</code> templates. <code>&lt;path&gt;</code> is a project directory or a manifest file. It is idempotent and takes no options. Exit codes are its own: <code>0</code> ok, <code>1</code> no project or a bad manifest, <code>2</code> an IO failure.</p>
 
       <h2 id="dep">dep</h2>
-      <pre class="code"><code>mach dep &lt;action&gt; &lt;path&gt; [args]</code></pre>
-      <p>Manages the project's dependency tree. A dependency has exactly one source form: a <strong>git</strong> URL plus a ref, acquired into the <code>dep/</code> directory, or a <strong>path</strong> to another project tree, materialised as a relative symlink. Dependencies are pinned by committed git links under <code>dep/</code>.</p>
+      <pre class="code"><code>mach dep &lt;action&gt; &lt;path&gt; [args] [options]</code></pre>
+      <p>Manages the project's dependency tree. A dependency is either a <strong>git</strong> URL, realized as a submodule under <code>dep/</code> and selected by a <code>version</code> range or an exact <code>ref</code>, or a <strong>path</strong> to another project tree, copied into <code>dep/</code>. Every action accepts <code>--quiet</code> / <code>-q</code>.</p>
       <table>
         <thead><tr><th>Action</th><th>Args</th><th>Effect</th></tr></thead>
         <tbody>
+          <tr><td><code>list</code></td><td><code>&lt;path&gt;</code></td><td>list declared dependencies with their source, ref, staged pin, and state (<code>realized</code> or <code>missing</code>).</td></tr>
+          <tr><td><code>add</code></td><td><code>&lt;path&gt; &lt;name&gt; (--git &lt;url&gt; [--ref &lt;ref&gt; | --version &lt;range&gt;] | --path &lt;dir&gt;)</code></td><td>declare a dependency and realize the tree. With <code>--git</code> alone, writes <code>version = "^X.Y.Z"</code> of the highest release every range and the running compiler accept.</td></tr>
+          <tr><td><code>remove</code></td><td><code>&lt;path&gt; &lt;name&gt; [--purge]</code></td><td>remove the declaration. <code>--purge</code> also deletes the dependency directory.</td></tr>
+          <tr><td><code>update</code></td><td><code>&lt;path&gt; (&lt;name&gt; | --all) [--lowest] [--offline]</code></td><td>refresh path copies, advance branch refs, and resolve version ranges to the releases they select. <code>&lt;name&gt;</code> may be any identity in the closure, and the others stay put while they still fit. <code>--lowest</code> selects the lowest release every range accepts. <code>--offline</code> resolves from releases already fetched.</td></tr>
           <tr><td><code>pull</code></td><td><code>&lt;path&gt;</code></td><td>realize declared dependencies without advancing revisions or refreshing existing path copies. Idempotent.</td></tr>
-          <tr><td><code>verify</code></td><td><code>&lt;path&gt;</code></td><td>check the realized dependency closure against the manifest without changing anything.</td></tr>
-          <tr><td><code>update</code></td><td><code>&lt;path&gt; (&lt;name&gt; | --all)</code></td><td>refresh path copies and advance branch references to current remote tips. Tag/commit refs are a no-op.</td></tr>
-          <tr><td><code>add</code></td><td><code>&lt;path&gt; &lt;name&gt; --git &lt;url&gt; [--ref &lt;ref&gt;]</code> or <code>--path &lt;dir&gt;</code></td><td>append a <code>[dep.&lt;name&gt;]</code> stanza and realize the dependency.</td></tr>
-          <tr><td><code>remove</code></td><td><code>&lt;path&gt; &lt;name&gt; [--purge]</code></td><td>drop the entry from <code>mach.toml</code> (<code>--purge</code> also deletes the vendored checkout).</td></tr>
-          <tr><td><code>list</code></td><td><code>&lt;path&gt;</code></td><td>print declared dependencies and their state.</td></tr>
+          <tr><td><code>outdated</code></td><td><code>&lt;path&gt; [--offline]</code></td><td>report each version-selected dependency's pinned, highest compatible, and latest release.</td></tr>
+          <tr><td><code>verify</code></td><td><code>&lt;path&gt; [--release]</code></td><td>check the realized closure against the manifests without changing anything. <code>--release</code> also requires every dependency of the project itself to be selected by <code>version</code> or an exact <code>tag/</code>.</td></tr>
         </tbody>
       </table>
-      <p><code>mach build</code> never requires git or the network: a project whose dependency tree is present builds on a bare machine. Only the network-shaped commands (<code>pull</code>, <code>update</code>, <code>add</code>) use git, discovered on <code>PATH</code>. The same name required from two different sources or refs is a hard error naming both requirers, and there is no version resolution.</p>
+      <p><code>add</code> takes exactly one of <code>--git</code> or <code>--path</code>. <code>--ref</code> and <code>--version</code> are valid only with <code>--git</code> and cannot be combined. <code>update</code> takes a name or <code>--all</code>, not both.</p>
+      <p>Resolution runs only in <code>add</code>, <code>update</code>, and <code>outdated</code>. <code>mach build</code> never resolves and never needs the network: it verifies the realized tree offline, including that each version-selected pin is a release inside every requirer's range. Two different selections of one identity are a hard error that names both chains and the root declaration that would decide. See <a href="dependencies.html">Dependencies</a> for the range grammar and the full rules.</p>
 
       <h3 id="pins">Dependency pins</h3>
-      <p>Dependencies are pinned by committed git links in the <code>dep/</code> directory. Each dependency lives directly under <code>dep/&lt;id&gt;/</code> in a flat closure, where the manifest key, directory name, and project ID must match.</p>
+      <p>Dependencies are pinned by the gitlinks the root repository commits under <code>dep/</code>. There is no lock file. Each dependency in the transitive closure lives directly under <code>dep/&lt;id&gt;/</code>, where the manifest key, directory name, and project id must match.</p>
 
       <h2 id="init">init</h2>
       <pre class="code"><code>mach init [dir] [options]</code></pre>
-      <p>Scaffolds a new project in <code>[dir]</code> (default: the current directory). Writes a complete <code>mach.toml</code> with a <code>[project]</code> block, <code>[target.*]</code> platforms for linux/windows/darwin, one artifact, debug and release profiles, a <code>[dep.mach-std]</code> dependency, a starter source file, and a cloned <code>mach-std</code>. Every collision is checked before any file is written, so a refused init leaves nothing behind.</p>
+      <p>Scaffolds a new project in <code>[dir]</code> (default: the current directory). An absent directory is created, and an existing one is filled in. It writes a complete <code>mach.toml</code> - a <code>[project]</code> block whose <code>mach</code> key is the running compiler's caret range (<code>mach = "^5.4"</code>), <code>[target.&lt;os&gt;-&lt;isa&gt;]</code> entries for linux, windows, and darwin on the host architecture, one artifact, and debug and release profiles - plus a starter source file. It then initializes a Git repository and adds std as <code>mach dep add &lt;dir&gt; std --git https://github.com/briar-systems/mach-std</code> would: at the caret range of the newest std release whose <code>[project].mach</code> admits the running compiler, checked out at that release. Every refusal happens before the first write, so a refused init changes nothing.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>--name &lt;name&gt;</code></td><td>name</td><td>project id (default: the directory base name)</td></tr>
-          <tr><td><code>--force</code></td><td>-</td><td>scaffold even when <code>mach.toml</code>, <code>src/main.mach</code>, or <code>src/lib.mach</code> already exists</td></tr>
-          <tr><td><code>--lib</code></td><td>-</td><td>library layout: write <code>src/lib.mach</code> and scaffold a <code>kind = "static"</code> artifact instead of a <code>kind = "bin"</code> one</td></tr>
+          <tr><td><code>--name &lt;id&gt;</code></td><td>id</td><td>project id (default: the directory name). Letters, digits, <code>_</code>, and <code>-</code> only.</td></tr>
+          <tr><td><code>--force</code></td><td>-</td><td>overwrite an existing <code>mach.toml</code> and entry file</td></tr>
+          <tr><td><code>--lib</code></td><td>-</td><td>library layout: write <code>src/lib.mach</code> and a <code>kind = "static"</code> artifact marked <code>default = true</code>, instead of <code>src/root.mach</code> and a <code>kind = "bin"</code> artifact</td></tr>
+          <tr><td><code>--no-deps</code></td><td>-</td><td>resolve and declare std without checking it out. Resolving still needs the network.</td></tr>
+          <tr><td><code>--no-git</code></td><td>-</td><td>skip Git initialization and realize dependencies as plain checkouts</td></tr>
+          <tr><td><code>--quiet</code>, <code>-q</code></td><td>-</td><td>suppress non-error output</td></tr>
         </tbody>
       </table>
-      <p>The first non-flag argument is the target directory. A default binary scaffold links and runs from <code>mach build .</code> without further manifest edits.</p>
+      <p>The first non-flag argument is the target directory. A default binary scaffold links and runs from <code>mach build .</code> without further manifest edits. Offline, init fails to add std, says so, prints the <code>mach dep add</code> command to run once connected, and writes no <code>[dep.std]</code> table. Exit codes: <code>0</code> success, <code>1</code> an invalid id or refused overwrite, <code>2</code> internal failure, <code>3</code> the std dependency could not be added.</p>
 
       <h2 id="utility">doc, info, and help</h2>
       <p><strong><code>mach doc &lt;path&gt;</code></strong> loads the module graph and generates Markdown reference docs from source doc-comments - one page per module plus an index. Each <code>pub</code> declaration is paired with the run of <code>#</code> comment lines immediately preceding it. <code>--out &lt;dir&gt;</code> sets the output directory (default <code>doc/api</code>); <code>--target &lt;name&gt;</code> selects a target for module discovery. The hand-written language material is never touched.</p>
@@ -258,6 +278,7 @@ object: elf coff macho raw spv</code></pre>
           <tr><td><code>0</code></td><td>success (for <code>test</code>, all tests passed)</td></tr>
           <tr><td><code>1</code></td><td>user error: missing project path, no <code>mach.toml</code>, unknown target, compile errors, an unresolvable link input (for <code>test</code>, any test failed)</td></tr>
           <tr><td><code>2</code></td><td>internal error</td></tr>
+          <tr><td><code>3</code></td><td>environment failure, where a command documents it: a filesystem failure in <code>fmt</code>, an unaddable dependency in <code>init</code>, an expired <code>--timeout_seconds</code> in <code>run</code></td></tr>
         </tbody>
       </table>
       <p><code>mach run</code> returns the child process's exit code directly.</p>
@@ -266,7 +287,7 @@ object: elf coff macho raw spv</code></pre>
         <h2>See also</h2>
         <ul>
           <li><a href="manifest.html">Manifest</a> - the <code>mach.toml</code> schema and keys</li>
-          <li><a href="dependencies.html">Dependencies</a> - managing git and path dependencies in detail</li>
+          <li><a href="dependencies.html">Dependencies</a> - version ranges, resolution, and git and path dependencies in detail</li>
           <li><a href="testing.html">Testing</a> - writing tests and the <code>mach test</code> runner</li>
         </ul>
       </div>
