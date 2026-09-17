@@ -90,13 +90,25 @@
     <span class="fn">info</span>(nil);
     <span class="kw">ret</span> <span class="num">0</span>;
 }</code></pre>
+      <p>Every build resolves and type-checks each test body in the modules it reaches, and ordinary builds omit test bodies from IR and object files.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p>A <code>pub</code> modifier is syntactically accepted before <code>test</code> but carries no meaning - a test is never part of a module's public surface.</p>
       </div>
 
+      <h2 id="helpers">Test-only helpers</h2>
+      <p>A helper or fixture that exists only for tests is marked <a href="decorators.html#testing"><code>#[testing]</code></a>. It gets the same treatment as a test body: checked in every build, omitted from ordinary ones, and emitted under <code>mach test</code>. Only a test body or another <code>#[testing]</code> declaration may reference it.</p>
+      <pre class="code"><code><span class="deco">#[testing]</span>
+<span class="kw">fun</span> <span class="fn">sample_year</span>() <span class="type">i64</span> { <span class="kw">ret</span> <span class="num">2000</span>; }
+
+<span class="kw">test</span> <span class="str">"date: sample year is leap"</span> {
+    <span class="kw">if</span> (!<span class="fn">is_leap_year</span>(<span class="fn">sample_year</span>())) { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
+
       <h2 id="result">Reporting pass and fail</h2>
-      <p>Each <code>test</code> lowers to a zero-parameter function returning an ordinal in <code>0..255</code>. Returning a value outside this range is a compile error. A return value of <code>0</code> indicates success, while any non-zero value signals failure.</p>
+      <p>A test body is checked against an <code>i32</code> return type, and each <code>test</code> lowers to a zero-parameter function whose result becomes the test process's exit status, in <code>0..255</code>. A return value of <code>0</code> indicates success, while any value in <code>1..255</code> signals failure and is reported as <code>(exit N)</code>.</p>
+      <p>A <code>ret</code> whose value is a literal (or a literal-shaped expression) outside <code>0..255</code> is a compile error. A value computed at run time that lands outside the range is folded to <code>255</code> and always fails, so a result of <code>256</code> can never read as a pass.</p>
       <pre class="code"><code><span class="kw">ret</span> <span class="num">0</span>;     <span class="cmt"># pass</span>
 <span class="kw">ret</span> <span class="num">1</span>;     <span class="cmt"># fail - any non-zero ordinal indicates failure</span></code></pre>
       <p>Falling off the end of a body returns <code>0</code>, treating an empty or fallthrough body as a pass. Use positive integers to distinguish which assertion or condition failed in your test.</p>
@@ -135,6 +147,7 @@ mach test . --list          <span class="cmt"># enumerate tests, run nothing</sp
         <h2>See also</h2>
         <ul>
           <li><a href="cli.html">CLI</a> - the full <code>mach</code> command surface, including <code>mach test</code></li>
+          <li><a href="decorators.html#testing">Decorators</a> - <code>#[testing]</code> for declarations that exist only for tests</li>
           <li><a href="functions.html">Functions</a> - a test body is checked like a function body</li>
           <li><a href="statements.html">Statements</a> - <code>if</code>, <code>ret</code>, and the blocks a test body uses</li>
           <li><a href="project-layout.html">Project layout</a> - where <code>src/</code> modules and tests live</li>
@@ -147,6 +160,7 @@ mach test . --list          <span class="cmt"># enumerate tests, run nothing</sp
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
       <a href="#declaring">Declaring a test</a>
+      <a href="#helpers">Test-only helpers</a>
       <a href="#result">Reporting pass and fail</a>
       <a href="#collection">Where tests live</a>
       <a href="#running">Running with mach test</a>

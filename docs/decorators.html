@@ -72,11 +72,11 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Decorators</div>
       <h1>Decorators</h1>
-      <p class="lead">A decorator is a codegen directive attached to a declaration. It controls how the compiler emits a symbol - its linker name, alignment, section placement, inlining, or PE import routing - and nothing else.</p>
+      <p class="lead">A decorator attaches metadata to a declaration. It can carry a source-use notice, confine a declaration to tests, or control how the compiler emits the symbol - its linker name, alignment, section placement, inlining, dynamic import attribution, constant-time obligations, or exclusion from auto-vectorization.</p>
 
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>Decorators are codegen-only. Visibility (<code>pub</code> / <code>ext</code>) is a separate concern and is never controlled by a decorator.</p>
+        <p>Visibility (<code>pub</code> / <code>ext</code>) is a separate concern and is never controlled by a decorator.</p>
       </div>
 
       <h2 id="surface">Surface</h2>
@@ -110,6 +110,36 @@
     <span class="deco">#[deprecated(<span class="str">"use ready"</span>)]</span>
     <span class="param">pending</span>;
 }</code></pre>
+
+      <h3 id="testing"><code>testing</code> - test-only declaration</h3>
+      <p>Marks a declaration as existing only for tests, giving a helper or fixture the semantics a <a href="testing.html"><code>test</code></a> block already has. It takes no arguments and may appear once.</p>
+      <ul>
+        <li><strong>Checked in every build.</strong> A <code>#[testing]</code> declaration is resolved and type-checked in every build, so it cannot rot, and a type error in one fails <code>mach build</code> as well as <code>mach test</code>.</li>
+        <li><strong>Emitted only for tests.</strong> It is omitted from IR and object files in ordinary builds, emitted under <code>mach test</code>, and left out of <code>mach doc</code>.</li>
+        <li><strong>Referenced only from tests.</strong> A reference is legal only from a <code>test</code> body or from another <code>#[testing]</code> declaration, including its decorators. Any other reference is an error at the use site. Every kind of reference is checked - value references, calls, address-of, type references (a field, parameter or return type of a production declaration), generic instantiation, comptime evaluation and decorator arguments - and there is no same-module exemption.</li>
+      </ul>
+      <pre class="code"><code><span class="cmt"># file: src/queue.mach</span>
+<span class="deco">#[testing]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">filled</span>(<span class="param">n</span>: <span class="type">u32</span>) <span class="type">Queue</span> { ... }
+
+<span class="kw">test</span> <span class="str">"queue: drains in order"</span> {
+    <span class="kw">var</span> <span class="param">q</span>: <span class="type">Queue</span> = <span class="fn">filled</span>(<span class="num">3</span>);          <span class="cmt"># a test body may use the fixture</span>
+    ...
+}
+
+<span class="deco">#[testing]</span>
+<span class="kw">fun</span> <span class="fn">drained</span>() <span class="type">Queue</span> { <span class="kw">ret</span> <span class="fn">filled</span>(<span class="num">0</span>); } <span class="cmt"># so may another testing declaration</span>
+
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">reset</span>() <span class="type">Queue</span> { <span class="kw">ret</span> <span class="fn">filled</span>(<span class="num">0</span>); }
+<span class="cmt"># error: `filled` is a `#[testing]` declaration: only a test body or another</span>
+<span class="cmt">#        `#[testing]` declaration may reference it</span></code></pre>
+      <p>The mark follows imports. A plain <code>use</code> of a testing declaration is itself testing, so every reference through it is checked, and a <code>#[testing] use</code> confines its alias even when the target is an ordinary declaration. A <code>fwd</code> of a testing declaration must itself be marked <code>#[testing]</code>, because an unmarked <code>fwd</code> puts the name on a production surface. <code>pub #[testing]</code> is valid, and a dependency's testing helper is usable from a dependent's tests.</p>
+      <ul>
+        <li>It applies to <code>fun</code>, <code>rec</code>, <code>uni</code>, <code>tag</code>, <code>def</code>, <code>val</code>, <code>var</code>, <code>use</code> and <code>fwd</code> declarations at module scope. <code>test</code> blocks reject it because they are already test-only, and comptime directives reject it too.</li>
+        <li>It cannot combine with <code>ext</code>, <code>symbol</code>, <code>section</code>, <code>stage</code>, or the shader interface decorators (<code>input</code>, <code>output</code>, <code>builtin</code>, <code>uniform</code>, <code>storage</code>, <code>sampler</code>). Each names a consumer outside mach source that the check cannot see.</li>
+        <li>Inline <code>asm</code> <code>{name}</code> operands bind only locals, so they never reference a declaration.</li>
+        <li>The mark is not a cycle escape: <code>mach test</code> builds with testing declarations present, so a <code>use</code> cycle that only tests need is still an error.</li>
+      </ul>
 
       <h3 id="symbol"><code>symbol(str)</code> - linker name</h3>
       <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
@@ -273,6 +303,7 @@
         </thead>
         <tbody>
           <tr><td><code>deprecated</code></td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+          <tr><td><code>testing</code></td><td>yes</td><td>no</td><td>yes</td><td>yes</td></tr>
           <tr><td><code>symbol</code></td><td>yes</td><td>yes</td><td>yes</td><td>no</td></tr>
           <tr><td><code>library</code></td><td>no</td><td>yes</td><td>no</td><td>no</td></tr>
           <tr><td><code>inline</code></td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
@@ -294,11 +325,12 @@
           <tr><td><code>handle</code></td><td colspan="4">a bodyless <code>def</code> only</td></tr>
         </tbody>
       </table>
-      <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused. <code>deprecated</code> also applies to <code>def</code>, <code>use</code>, <code>fwd</code>, and individual tag cases.</p>
+      <p>The <code>val</code> / <code>var</code> column is shared, but <code>embed</code> accepts only <code>val</code> - a <code>var</code> is refused. <code>deprecated</code> also applies to <code>def</code>, <code>use</code>, <code>fwd</code>, and individual tag cases. <code>testing</code> also applies to <code>def</code>, <code>use</code> and <code>fwd</code>, but not to a tag case.</p>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
+          <li><a href="testing.html">Testing</a> - <code>test</code> blocks, whose semantics <code>testing</code> gives a declaration</li>
           <li><a href="visibility.html">Visibility</a> - <code>pub</code> / <code>ext</code>, the separate concern decorators never touch</li>
           <li><a href="intrinsics.html">Intrinsics</a> - <code>$size_of</code> and <code>$align_of</code> as <code>align</code> arguments</li>
           <li><a href="secrecy.html">Secrecy</a> - the <code>^</code> qualifier <code>oblivious</code> is the codegen contract for</li>
@@ -316,6 +348,7 @@
       <a href="#placement">Placement</a>
       <a href="#directives">Directives</a>
       <a class="sub" href="#deprecated">deprecated</a>
+      <a class="sub" href="#testing">testing</a>
       <a class="sub" href="#symbol">symbol</a>
       <a class="sub" href="#library">library</a>
       <a class="sub" href="#inline">inline</a>
