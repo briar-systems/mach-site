@@ -96,7 +96,7 @@
           <tr><td><code>dep</code></td><td>manage project dependencies: resolve, realize, verify, and update</td></tr>
           <tr><td><code>init</code></td><td>scaffold a new project, with std added at its newest compatible release</td></tr>
           <tr><td><code>doc</code></td><td>generate Markdown reference docs from source doc-comments</td></tr>
-          <tr><td><code>info</code></td><td>print compiler version, build host, and registered target capabilities</td></tr>
+          <tr><td><code>info</code></td><td>print the compiler version and the host target it resolves, or every buildable target</td></tr>
           <tr><td><code>help</code></td><td>print usage; <code>mach help &lt;command&gt;</code> for detail</td></tr>
         </tbody>
       </table>
@@ -259,15 +259,22 @@ mach fmt . --check               <span class="cmt"># ci: fail if anything is unf
 
       <h2 id="utility">doc, info, and help</h2>
       <p><strong><code>mach doc &lt;path&gt;</code></strong> loads the module graph and generates Markdown reference docs from source doc-comments - one page per module plus an index. Each <code>pub</code> declaration is paired with the run of <code>#</code> comment lines immediately preceding it. <code>--out &lt;dir&gt;</code> sets the output directory (default <code>doc/api</code>); <code>--target &lt;name&gt;</code> selects a target for module discovery. The hand-written language material is never touched.</p>
-      <p><strong><code>mach info</code></strong> prints an at-a-glance identity of the binary: its version, the host it was built for, and the registered capability surface. It needs no project. The output is line-oriented and stable for scripts.</p>
+      <p><strong><code>mach info</code></strong> prints the compiler's version and the host target it resolves for the machine it runs on, one dimension per line. It needs no project. Every value is taken from the target the host request resolves to, so on an x86_64 Linux machine it prints:</p>
       <pre class="code"><code>mach <span data-mach-version></span>
-host: linux/x86_64
-isa: x86_64 aarch64 riscv64 riscv32 spirv
-os: linux darwin windows freestanding
-abi: sysv64 win64 aapcs64 lp64 lp64f lp64d ilp32 ilp32f ilp32d spirv
-object: elf coff macho raw spv</code></pre>
-      <p><strong><code>mach info targets</code></strong> prints the concrete <code>(os, isa)</code> tuples this binary can build, one per line. It is derived from the same joint capability declarations composition reads, so it never advertises a tuple that would fail to resolve.</p>
-      <p>The capability lines are read from the binary's target registries, so they report exactly what this build can target. <code>mach info --version</code> prints the version string alone on one line, for tooling.</p>
+host: linux-x86_64
+isa: x86_64
+os: linux
+abi: sysv64
+object: elf</code></pre>
+      <p><strong><code>mach info targets</code></strong> prints every target the registries compose end to end, one full tuple per line. A name appears once for each ABI and object format it supports, so it never advertises a tuple that would fail to resolve. Abridged:</p>
+      <pre class="code"><code>linux-x86_64          isa=x86_64    os=linux         abi=sysv64   object=elf
+linux-aarch64         isa=aarch64   os=linux         abi=aapcs64  object=elf
+linux-riscv64         isa=rv64gc    os=linux         abi=lp64d    object=elf
+darwin-aarch64        isa=aarch64   os=darwin        abi=aapcs64  object=macho
+windows-x86_64        isa=x86_64    os=windows       abi=win64    object=coff
+freestanding-riscv32  isa=rv32imac  os=freestanding  abi=ilp32    object=raw
+freestanding-spirv    isa=spirv     os=freestanding  abi=spirv    object=spv</code></pre>
+      <p><code>mach info --version</code> prints the version alone on one line, for tooling. Combining <code>--version</code> with <code>targets</code>, or passing any other verb, is a usage error. The exit status is <code>0</code> on success, <code>1</code> for a usage error, and <code>2</code> when target registration or host resolution fails.</p>
       <p><strong><code>mach help [command]</code></strong> prints the top-level usage summary, or - with a known command - that command's detail page. An unknown command prints usage and exits non-zero.</p>
 
       <h2 id="exit-codes">Exit codes</h2>

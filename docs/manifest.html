@@ -104,7 +104,7 @@ float_reassoc = false                 <span class="cmt"># associative float tran
 [artifact.demo]                       <span class="cmt"># a produced artifact</span>
 default = true
 kind    = <span class="str">"bin"</span>                       <span class="cmt"># "bin" | "static" | "shared"</span>
-entry   = <span class="str">"main.mach"</span>                 <span class="cmt"># entry source, relative to src</span>
+entry   = <span class="str">"root.mach"</span>                 <span class="cmt"># entry source, relative to src</span>
 out     = <span class="str">"bin/demo"</span>                  <span class="cmt"># output path, relative to the project out</span>
 targets = [<span class="str">"*"</span>]                        <span class="cmt"># which declared targets build it ("*" = all)</span>
 link    = []                          <span class="cmt"># [link.X] names this artifact links</span>
@@ -219,7 +219,7 @@ platform = <span class="str">"bmos"</span></code></pre>
       <ul>
         <li><strong><code>bin</code></strong> links an executable at the resolved <code>out</code> path.</li>
         <li><strong><code>static</code></strong> materialises a real <code>ar</code> archive at the resolved <code>out</code> path: the per-module objects with an archive symbol index, the deliverable a consumer links as a <code>.a</code>.</li>
-        <li><strong><code>shared</code></strong> is reserved for a shared-library deliverable, with emission in a later phase.</li>
+        <li><strong><code>shared</code></strong> links a shared library at the resolved <code>out</code> path (<code>.so</code> on ELF, <code>.dylib</code> on Mach-O, <code>.dll</code> on Windows). It exports the root project's <code>pub</code> declarations and the names its modules re-export with <code>fwd</code>. A dependency's <code>pub</code> surface is not part of the library's ABI, <code>#[symbol]</code> chooses a name rather than a visibility, and every other definition is hidden while still resolving inside the link. A shared artifact that exports nothing is refused. A loaderless target (<code>os = "freestanding"</code>) refuses it by name.</li>
       </ul>
       <p>Per-target extension or per-target entry is not a per-cell exception table. It is a second artifact stanza, so the condition stays visible like everything else.</p>
 
@@ -227,7 +227,7 @@ platform = <span class="str">"bmos"</span></code></pre>
       <p>A PE executable records in its optional header which environment it wants, and the Windows loader honours it: <code>"console"</code> gets a console window attached to the process, <code>"gui"</code> does not. A graphical application sets <code>"gui"</code> to stop an empty console from opening behind it on launch. <code>--subsystem console|gui</code> overrides the key for one invocation.</p>
       <pre class="code"><code>[artifact.game]
 kind      = <span class="str">"bin"</span>
-entry     = <span class="str">"main.mach"</span>
+entry     = <span class="str">"root.mach"</span>
 out       = <span class="str">"bin/game.exe"</span>
 targets   = [<span class="str">"*"</span>]
 link      = []
@@ -413,7 +413,7 @@ export  = true
 
 [artifact.demo]
 kind    = <span class="str">"bin"</span>
-entry   = <span class="str">"main.mach"</span>
+entry   = <span class="str">"root.mach"</span>
 out     = <span class="str">"bin/demo{artifact.suffix}"</span>
 targets = [<span class="str">"*"</span>]
 link    = [<span class="str">"miniz"</span>, <span class="str">"kernel32"</span>]
