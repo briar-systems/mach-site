@@ -38,13 +38,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/bake-version.sh
 
-      - name: Check the baked module loads with the version
-        run: |
-          node -e '
-            const v = require("./assets/version.js").MACH_VERSION;
-            if (!/^\d+\.\d+\.\d+$/.test(v)) { console.error("bad version: " + v); process.exit(1); }
-            console.log("version.js exports " + v);
-          '
+      - name: Run the version.js tests against the baked file
+        run: node --test test/version.test.js
 
   gate:
     if: always()
