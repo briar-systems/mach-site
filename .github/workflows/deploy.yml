@@ -3,7 +3,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-  # started on main by redeploy.yml when a mach release lands
   workflow_dispatch:
 
 permissions:
