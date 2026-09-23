@@ -41,9 +41,17 @@ jobs:
       - name: Run the version.js tests against the baked file
         run: node --test test/version.test.js
 
+  highlight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the highlighter tests
+        run: node --test test/highlight.test.js
+
   gate:
     if: always()
-    needs: [install-check, bake-version]
+    needs: [install-check, bake-version, highlight]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
