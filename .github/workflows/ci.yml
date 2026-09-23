@@ -41,6 +41,19 @@ jobs:
       - name: Run the version.js tests against the baked file
         run: node --test test/version.test.js
 
+  ecosystem:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the ecosystem tests
+        run: node --test test/ecosystem.test.js
+
+      - name: Bake the ecosystem catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/bake-ecosystem.js
+
   highlight:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +64,7 @@ jobs:
 
   gate:
     if: always()
-    needs: [install-check, bake-version, highlight]
+    needs: [install-check, bake-version, ecosystem, highlight]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
