@@ -302,8 +302,31 @@
     return i;
   }
 
-  // browser loader: highlight every [data-src] element on load.
+  // highlights a toml manifest fragment: table heads, keys, strings and comments.
+  function toml(src) {
+    return src.split("\n").map(function (line) {
+      var hash = line.search(/#(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+      var body = hash < 0 ? line : line.slice(0, hash);
+      var cmt = hash < 0 ? "" : span("cmt", line.slice(hash));
+      if (/^\s*\[/.test(body)) return span("toml-head", body) + cmt;
+      var m = body.match(/^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(.*)$/);
+      if (!m) return esc(body) + cmt;
+      var value = esc(m[4]).replace(/"[^"]*"/g, function (s) {
+        return '<span class="str">' + s + "</span>";
+      });
+      return esc(m[1]) + span("toml-key", m[2]) + esc(m[3]) + value + cmt;
+    }).join("\n");
+  }
+
+  // browser loader: highlight inline [data-mach] / [data-toml] blocks from
+  // their own text, and fetch every [data-src] file.
   function load() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-mach]"), function (el) {
+      el.innerHTML = tokenize(el.textContent);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-toml]"), function (el) {
+      el.innerHTML = toml(el.textContent);
+    });
     var els = document.querySelectorAll("[data-src]");
     Array.prototype.forEach.call(els, function (el) {
       fetch(el.dataset.src)
@@ -322,8 +345,9 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { tokenize: tokenize };
+    module.exports = { tokenize: tokenize, toml: toml };
   } else if (typeof document !== "undefined") {
+    window.machHighlight = { tokenize: tokenize, toml: toml };
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", load);
     } else {
