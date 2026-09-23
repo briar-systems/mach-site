@@ -142,19 +142,19 @@
                             <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macos</button>
                             <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">windows</button>
                         </div>
-                        <div class="install-panel" data-os="linux">
+                        <div class="install-panel os-only" data-os="linux">
                             <div class="cmd">
                                 <span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
                                 <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
                             </div>
                         </div>
-                        <div class="install-panel" data-os="macos">
+                        <div class="install-panel os-only" data-os="macos">
                             <div class="cmd">
                                 <span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
                                 <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
                             </div>
                         </div>
-                        <div class="install-panel" data-os="windows">
+                        <div class="install-panel os-only" data-os="windows">
                             <div class="cmd">
                                 <span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code>
                                 <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
@@ -164,7 +164,7 @@
                         <p class="note">
                             installs the latest
                             <a href="https://github.com/briar-systems/mach/releases" target="_blank">release</a>
-                            to <code>~/.local/bin</code>
+                            to <code class="os-only" data-os="linux macos">~/.local/bin</code><span class="os-only" data-os=""> or </span><code class="os-only" data-os="windows">%LOCALAPPDATA%\mach\bin</code>
                         </p>
                     </div>
                     <div class="actions">
@@ -492,7 +492,7 @@ $or {
                 <div class="split split-even">
                     <div class="section-head">
                         <p class="label">start</p>
-                        <h2 id="start-title">Four steps in.</h2>
+                        <h2 id="start-title">Getting started</h2>
                         <ol class="steps">
                             <li>
                                 <div class="step-head">
@@ -504,9 +504,9 @@ $or {
                                     </div>
                                 </div>
                                 <div class="step-body">
-                                    <div class="install-panel" data-os="linux"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
-                                    <div class="install-panel" data-os="macos"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
-                                    <div class="install-panel" data-os="windows"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code></div></div>
+                                    <div class="install-panel os-only" data-os="linux"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel os-only" data-os="macos"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel os-only" data-os="windows"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code></div></div>
                                 </div>
                             </li>
                             <li>
