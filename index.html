@@ -6,19 +6,17 @@
         <title>Mach Programming Language</title>
         <meta
             name="description"
-            content="Mach is a statically-typed, compiled systems language designed to be simple, explicit, and fast."
+            content="Mach is a small, explicit systems language for compilers, kernels, runtimes and games: anywhere performance is a requirement and hidden behavior is a liability."
         />
+        <meta name="theme-color" content="#000000" />
+        <link rel="icon" type="image/svg+xml" href="assets/mach-tile.svg" />
+        <link rel="icon" type="image/png" sizes="32x32" href="assets/mach_32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="assets/mach_16.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            rel="icon"
-            type="image/png"
-            sizes="32x32"
-            href="assets/mach_32.png"
-        />
-        <link
-            rel="icon"
-            type="image/png"
-            sizes="16x16"
-            href="assets/mach_16.png"
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap"
         />
         <link rel="stylesheet" href="style.css" />
         <script>
@@ -27,32 +25,19 @@
                 var root = document.documentElement;
                 root.classList.add("js");
                 var p = (
-                    (navigator.userAgentData &&
-                        navigator.userAgentData.platform) ||
+                    (navigator.userAgentData && navigator.userAgentData.platform) ||
                     navigator.platform ||
                     navigator.userAgent ||
                     ""
                 ).toLowerCase();
-                var os =
-                    p.indexOf("win") > -1
-                        ? "windows"
-                        : p.indexOf("mac") > -1
-                          ? "macos"
-                          : "linux";
+                var os = p.indexOf("win") > -1 ? "windows" : p.indexOf("mac") > -1 ? "macos" : "linux";
                 root.classList.add("os-" + os);
                 function select(next) {
                     root.classList.remove("os-linux", "os-macos", "os-windows");
                     root.classList.add("os-" + next);
-                    document
-                        .querySelectorAll(".install-os-btn")
-                        .forEach(function (b) {
-                            b.setAttribute(
-                                "aria-pressed",
-                                b.getAttribute("data-os") === next
-                                    ? "true"
-                                    : "false",
-                            );
-                        });
+                    document.querySelectorAll(".install-os-btn").forEach(function (b) {
+                        b.setAttribute("aria-pressed", b.getAttribute("data-os") === next ? "true" : "false");
+                    });
                 }
                 document.addEventListener("click", function (e) {
                     var pick = e.target.closest(".install-os-btn");
@@ -69,25 +54,18 @@
                             clearTimeout(copy._t);
                             copy._t = setTimeout(function () {
                                 copy.classList.remove("copied");
-                                label.textContent = "Copy";
+                                label.textContent = "copy";
                             }, 1500);
                         };
                         if (!navigator.clipboard) {
-                            flash("Failed", false);
+                            flash("failed", false);
                             return;
                         }
                         navigator.clipboard
-                            .writeText(
-                                copy.parentElement.querySelector("code")
-                                    .textContent,
-                            )
+                            .writeText(copy.parentElement.querySelector("code").textContent)
                             .then(
-                                function () {
-                                    flash("Copied", true);
-                                },
-                                function () {
-                                    flash("Failed", false);
-                                },
+                                function () { flash("copied", true); },
+                                function () { flash("failed", false); },
                             );
                     }
                 });
@@ -99,680 +77,451 @@
     </head>
     <body>
         <svg style="display: none" aria-hidden="true">
-            <symbol id="icon-discord" viewBox="0 0 24 24">
+            <symbol id="mark" viewBox="0 0 64 64">
                 <path
-                    d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"
+                    d="M48.27 23.49 L6.00 0.32 L6.00 8.88 L44.66 30.06 A11.5 11.5 0 0 1 48.27 23.49 Z M48.27 40.51 L6.00 63.68 L6.00 55.12 L44.66 33.94 A11.5 11.5 0 0 0 48.27 40.51 Z"
                 />
+                <circle cx="56" cy="32" r="5.5" />
+            </symbol>
+            <symbol id="icon-github" viewBox="0 0 16 16">
+                <path
+                    d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                />
+            </symbol>
+            <symbol id="icon-copy" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+                <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+            </symbol>
+            <symbol id="icon-arrow" viewBox="0 0 24 24">
+                <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"></path>
             </symbol>
         </svg>
 
-        <!-- Navigation -->
         <nav class="nav">
-            <div class="nav-inner">
-                <a href="#" class="nav-logo">
-                    <img
-                        src="assets/mach_32.png"
-                        alt="Mach"
-                        width="24"
-                        height="24"
-                    />
+            <div class="wrap nav-inner">
+                <a href="./" class="brand">
+                    <svg class="mark" aria-hidden="true"><use href="#mark" /></svg>
                     <span>mach</span>
                 </a>
                 <div class="nav-links">
-                    <a href="#why">Why mach?</a>
-                    <a href="#tags">Tags &amp; sel</a>
-                    <a href="#targets">Targets</a>
-                    <a href="#get-started">Get Started</a>
-                    <a href="docs/">Docs</a>
-                    <a
-                        href="https://github.com/briar-systems/mach"
-                        target="_blank"
-                        class="nav-github"
-                        aria-label="GitHub"
-                    >
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                        >
-                            <path
-                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-                            />
-                        </svg>
-                    </a>
-                    <a
-                        href="https://discord.com/invite/dfWG9NhGj7"
-                        target="_blank"
-                        class="nav-discord"
-                        aria-label="Discord"
-                    >
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                        >
-                            <use href="#icon-discord" />
-                        </svg>
+                    <a href="docs/">docs</a>
+                    <a href="#start" class="nav-extra">install</a>
+                    <a href="#targets" class="nav-extra">targets</a>
+                    <a href="https://github.com/briar-systems/mach/blob/main/CHANGELOG.md" target="_blank" class="nav-extra">changelog</a>
+                    <a href="https://discord.com/invite/dfWG9NhGj7" target="_blank" class="nav-extra">discord</a>
+                    <a href="https://github.com/briar-systems/mach" target="_blank" class="nav-github">
+                        <svg aria-hidden="true"><use href="#icon-github" /></svg><span>github</span>
                     </a>
                 </div>
             </div>
         </nav>
 
-        <!-- Hero -->
-        <section class="hero">
-            <div class="hero-inner">
-                <div class="hero-identity">
-                    <div class="hero-brand">
-                        <img
-                            src="assets/mach_128.png"
-                            alt=""
-                            class="hero-brand-icon"
-                            width="48"
-                            height="48"
-                        />
-                        <h1>mach</h1>
-                    </div>
-                    <p class="hero-tagline">
-                        A systems programming language with no hidden behavior.
+        <header class="hero">
+            <svg
+                class="hero-cone"
+                viewBox="0 0 1440 800"
+                preserveAspectRatio="xMidYMid slice"
+                data-cone="2"
+                data-apex-x="1150"
+                data-apex-y="400"
+                role="img"
+                aria-label="A Mach cone: wavefronts spread from a body moving at twice their speed, bounded by a shock envelope"
+            ></svg>
+            <div class="wrap hero-inner">
+                <div class="hero-copy">
+                    <p class="label">systems programming language<span class="badge-version"></span></p>
+                    <h1>MACH</h1>
+                    <p class="lede">
+                        Mach is a small, explicit systems language for compilers,
+                        kernels, runtimes and games: anywhere performance is a
+                        requirement and hidden behavior is a liability.
                     </p>
-                    <p class="hero-sub">
-                        One binary compiles, links, tests, and cross-compiles
-                        it. There is nothing else to install.
-                    </p>
-                    <div class="hero-install">
-                        <p class="step-note install-intro">
-                            Installs the latest
-                            <a
-                                href="https://github.com/briar-systems/mach/releases"
-                                target="_blank"
-                                >release</a
-                            >
-                            to <code>~/.local/bin</code>.
-                        </p>
-                        <div class="install" id="install">
-                            <div
-                                class="install-os"
-                                role="group"
-                                aria-label="Select your operating system"
-                            >
-                                <button
-                                    type="button"
-                                    class="install-os-btn"
-                                    data-os="linux"
-                                    aria-pressed="false"
-                                >
-                                    Linux
-                                </button>
-                                <button
-                                    type="button"
-                                    class="install-os-btn"
-                                    data-os="macos"
-                                    aria-pressed="false"
-                                >
-                                    macOS
-                                </button>
-                                <button
-                                    type="button"
-                                    class="install-os-btn"
-                                    data-os="windows"
-                                    aria-pressed="false"
-                                >
-                                    Windows
-                                </button>
-                            </div>
-                            <div class="install-panel" data-os="linux">
-                                <p class="step-note install-label">On Linux:</p>
-                                <div class="code-block install-cmd">
-                                    <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
-                                    <button
-                                        type="button"
-                                        class="copy-btn"
-                                        aria-label="Copy command"
-                                    >
-                                        <span class="copy-label">Copy</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="install-panel" data-os="windows">
-                                <p class="step-note install-label">
-                                    On Windows, run it in PowerShell:
-                                </p>
-                                <div class="code-block install-cmd">
-                                    <pre><code>irm https://machlang.org/install.ps1 | iex</code></pre>
-                                    <button
-                                        type="button"
-                                        class="copy-btn"
-                                        aria-label="Copy command"
-                                    >
-                                        <span class="copy-label">Copy</span>
-                                    </button>
-                                </div>
-                                <p class="step-note install-hint">
-                                    Run it in PowerShell.
-                                </p>
-                            </div>
-                            <div class="install-panel" data-os="macos">
-                                <p class="step-note install-label">On macOS (Apple Silicon):</p>
-                                <div class="code-block install-cmd">
-                                    <pre><code>curl -fsSL https://machlang.org/install.sh | sh</code></pre>
-                                    <button
-                                        type="button"
-                                        class="copy-btn"
-                                        aria-label="Copy command"
-                                    >
-                                        <span class="copy-label">Copy</span>
-                                    </button>
-                                </div>
+                    <div class="install" id="install">
+                        <div class="install-os" role="group" aria-label="Select your operating system">
+                            <button type="button" class="install-os-btn" data-os="linux" aria-pressed="false">linux</button>
+                            <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macos</button>
+                            <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">windows</button>
+                        </div>
+                        <div class="install-panel" data-os="linux">
+                            <div class="cmd">
+                                <span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
+                                <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
                             </div>
                         </div>
-                    </div>
-                    <div class="hero-actions">
-                        <a href="#get-started" class="btn btn-primary"
-                            >Get Started</a
-                        >
-                        <a
-                            href="https://github.com/briar-systems/mach"
-                            target="_blank"
-                            class="btn btn-secondary"
-                            >View Source</a
-                        >
-                        <a href="docs/" class="btn btn-secondary">View Docs</a>
-                    </div>
-                </div>
-                <div class="hero-code">
-                    <div class="code-header">
-                        <span class="code-dot"></span>
-                        <span class="code-dot"></span>
-                        <span class="code-dot"></span>
-                        <span class="code-filename">main.mach</span>
-                    </div>
-                    <pre><code data-src="examples/main.mach"></code></pre>
-                    <noscript
-                        ><a class="example-fallback" href="examples/main.mach"
-                            >View main.mach</a
-                        ></noscript
-                    >
-                </div>
-            </div>
-        </section>
-
-        <!-- Why mach: code demonstrations -->
-        <section class="section demos" id="why">
-            <div class="section-inner">
-                <!-- demo code mirrors the mach README, mach-sieve src/main.mach, and doc/language/variadics.md; valid syntax for the latest mach release (baked into assets/version.js at deploy) (#[...] decorators, {}-hole printf, $each packs); update alongside upstream -->
-                <div class="why-explorer">
-                    <div class="why-intro">
-                        <h2>Why mach?</h2>
-                        <p class="why-lead">
-                            Every cost is visible. No garbage collector, no
-                            exceptions, no hidden allocation, and no runtime
-                            that starts before your code does. What the language
-                            does for you, it does at compile time - where you
-                            can read it. Mach compiles itself: the binary you
-                            download was built by the release before it.
-                        </p>
-                        <div
-                            class="why-selector"
-                            role="tablist"
-                            aria-label="What makes mach mach"
-                        >
-                        <button
-                            class="why-option active"
-                            type="button"
-                            role="tab"
-                            aria-selected="true"
-                            data-demo="hello"
-                            data-file="hello.mach"
-                        >
-                            <span class="why-principle">No hidden runtime</span>
-                            <span class="why-desc"
-                                >The entry point is ordinary code: you name the
-                                symbol and import the runtime yourself. What you
-                                read is what executes; nothing runs that you
-                                didn't write.</span
-                            >
-                        </button>
-                        <button
-                            class="why-option"
-                            type="button"
-                            role="tab"
-                            aria-selected="false"
-                            data-demo="alloc"
-                            data-file="alloc.mach"
-                        >
-                            <span class="why-principle">Manual memory</span>
-                            <span class="why-desc"
-                                >No garbage collector, no hidden allocation.
-                                Memory flows through allocators you create and
-                                pass explicitly, and the same one frees what it
-                                allocated.</span
-                            >
-                        </button>
-                        <button
-                            class="why-option"
-                            type="button"
-                            role="tab"
-                            aria-selected="false"
-                            data-demo="parse"
-                            data-file="parse.mach"
-                        >
-                            <span class="why-principle">Errors are values</span>
-                            <span class="why-desc"
-                                >A fallible call returns a
-                                <code>res</code> tag you read like any other
-                                value. No exceptions, no hidden unwinding, you
-                                check the error with <code>sel</code> before you reach the
-                                result.</span
-                            >
-                        </button>
-                        <button
-                            class="why-option"
-                            type="button"
-                            role="tab"
-                            aria-selected="false"
-                            data-demo="comptime"
-                            data-file="comptime.mach"
-                        >
-                            <span class="why-principle"
-                                >Comptime, not runtime</span
-                            >
-                            <span class="why-desc"
-                                >Variadics resolve entirely at compile time.
-                                <code>$each</code> unrolls the pack per argument
-                                and <code>$type_of</code> picks the path per
-                                element, monomorphizing into exactly the types
-                                you pass.</span
-                            >
-                        </button>
-                        <button
-                            class="why-option"
-                            type="button"
-                            role="tab"
-                            aria-selected="false"
-                            data-demo="secret"
-                            data-file="secret.mach"
-                        >
-                            <span class="why-principle">Secrets the compiler guards</span>
-                            <span class="why-desc"
-                                >A program can give away a password without
-                                ever printing it - how long it took to check is
-                                enough. Mark a value secret and the compiler
-                                refuses the code that would leak it, and keeps
-                                refusing it through optimization.</span
-                            >
-                        </button>
-                        <button
-                            class="why-option"
-                            type="button"
-                            role="tab"
-                            aria-selected="false"
-                            data-demo="test"
-                            data-file="test.mach"
-                        >
-                            <span class="why-principle">Tests are built in</span>
-                            <span class="why-desc"
-                                >Write a test beside the code it tests.
-                                <code>mach test</code> finds it, builds it, and
-                                runs it in its own process. No framework to
-                                choose, nothing to add to your manifest.</span
-                            >
-                        </button>
-                    </div>
-                    </div>
-
-                    <div class="why-stage code-window">
-                        <div class="code-header">
-                            <span class="code-dot"></span
-                            ><span class="code-dot"></span
-                            ><span class="code-dot"></span>
-                            <span class="code-filename" data-why-filename
-                                >hello.mach</span
-                            >
+                        <div class="install-panel" data-os="macos">
+                            <div class="cmd">
+                                <span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
+                                <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
+                            </div>
                         </div>
-                        <pre
-                            class="why-code"
-                            data-demo="hello"
-                        ><code data-src="examples/hello.mach"></code></pre>
-                        <pre
-                            class="why-code"
-                            data-demo="alloc"
-                            hidden
-                        ><code data-src="examples/alloc.mach"></code></pre>
-                        <pre
-                            class="why-code"
-                            data-demo="parse"
-                            hidden
-                        ><code data-src="examples/parse.mach"></code></pre>
-                        <pre
-                            class="why-code"
-                            data-demo="comptime"
-                            hidden
-                        ><code data-src="examples/comptime.mach"></code></pre>
-                        <pre
-                            class="why-code"
-                            data-demo="secret"
-                            hidden
-                        ><code data-src="examples/secret.mach"></code></pre>
-                        <pre
-                            class="why-code"
-                            data-demo="test"
-                            hidden
-                        ><code data-src="examples/test.mach"></code></pre>
-                        <noscript
-                            ><a
-                                class="example-fallback"
-                                href="examples/hello.mach"
-                                >View the examples in examples/</a
-                            ></noscript
-                        >
+                        <div class="install-panel" data-os="windows">
+                            <div class="cmd">
+                                <span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code>
+                                <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
+                            </div>
+                            <p class="note">run it in powershell</p>
+                        </div>
+                        <p class="note">
+                            installs the latest
+                            <a href="https://github.com/briar-systems/mach/releases" target="_blank">release</a>
+                            to <code>~/.local/bin</code>
+                        </p>
+                    </div>
+                    <div class="actions">
+                        <a href="docs/" class="btn btn-primary">read the reference <svg aria-hidden="true"><use href="#icon-arrow" /></svg></a>
+                        <a href="https://github.com/briar-systems/mach" target="_blank" class="btn">source</a>
                     </div>
                 </div>
             </div>
-        </section>
+        </header>
 
-        <!-- Tag and sel -->
-        <section class="section tags" id="tags">
-            <div class="section-inner">
-                <h2>Discriminated values with tag and sel</h2>
-                <p class="section-lead">
-                    Mach defines discriminated values with <code>tag</code>, where an explicit discriminator integer fixes the storage width and each case holds a single payload or none. Reading a payload requires a compile-time lexical guard: <code>sel</code> tests the active case, and only guarded branches can read the value.
-                </p>
+        <main>
+            <section class="section wrap" aria-labelledby="principles-label">
+                <p class="label" id="principles-label">principles</p>
+                <div class="principles">
+                    <div class="panel channel">
+                        <span class="channel-id">CH1</span>
+                        <h3>No hidden control flow</h3>
+                        <p>No exceptions, no destructors, no overloaded operators. Execution goes where the code says and nowhere else.</p>
+                    </div>
+                    <div class="panel channel">
+                        <span class="channel-id">CH2</span>
+                        <h3>No hidden allocation</h3>
+                        <p>No garbage collector and no runtime quietly reaching for the heap. Memory moves when you move it.</p>
+                    </div>
+                    <div class="panel channel">
+                        <span class="channel-id">CH3</span>
+                        <h3>Types on the page</h3>
+                        <p>Nothing is inferred. Every binding states its type, so a reader never has to reconstruct what the compiler decided.</p>
+                    </div>
+                    <div class="panel channel">
+                        <span class="channel-id">CH4</span>
+                        <h3>One toolchain</h3>
+                        <p>A single binary builds, links, tests, formats, vendors dependencies and cross-compiles. Nothing else to install.</p>
+                    </div>
+                </div>
+            </section>
 
-                <div class="tags-stage">
-                    <div class="tags-cards">
-                        <div class="tag-card">
-                            <h3>Explicit Discriminators</h3>
-                            <p>Every <code>tag</code> specifies its underlying integer type from <code>u8</code> through <code>u64</code>. Storage layout and discriminator width are never hidden.</p>
+            <section class="section wrap" aria-labelledby="closer-title">
+                <div class="section-head">
+                    <p class="label">a closer look · examples/alloc.mach</p>
+                    <h2 id="closer-title">Nothing happens off the page.</h2>
+                </div>
+                <div class="panel annotated" data-annotate="examples/alloc.mach">
+                    <div class="ann-code code"></div>
+                    <ol class="ann-notes">
+                        <li data-match="val count:">every binding states its type</li>
+                        <li data-match="var a:">the allocator is a value you hold</li>
+                        <li data-match="A.allocate">each allocation names its allocator and its type</li>
+                        <li data-match="if (sel r.err)">failure is a value you check, never thrown</li>
+                        <li data-match="= r.ok">reachable because the error branch returned</li>
+                        <li data-match="A.deallocate">freed by the same allocator, on the page</li>
+                    </ol>
+                </div>
+            </section>
+
+            <section class="section wrap" aria-labelledby="uses-label">
+                <p class="label" id="uses-label">what it's for</p>
+                <div class="uses">
+                    <div class="use">
+                        <div class="use-copy">
+                            <span class="use-n">01</span>
+                            <h3>Operating systems, firmware and bootloaders</h3>
+                            <p>Write the kernel, the bootloader and the build tools in one language. Freestanding targets and assembly live in the same source as everything else.</p>
+                            <a href="docs/asm.html" class="more">inline assembly <svg aria-hidden="true"><use href="#icon-arrow" /></svg></a>
                         </div>
-                        <div class="tag-card">
-                            <h3>Lexical Payload Guards</h3>
-                            <p>Payload access is enforced at compile time. <code>sel r.case</code> tests the variant, and reading <code>r.case</code> is permitted only inside the guarded branch or after an exiting error check.</p>
-                        </div>
-                        <div class="tag-card">
-                            <h3>No Pattern Matcher Runtime</h3>
-                            <p>Tag dispatch uses ordinary control flow with zero runtime overhead. There is no heavy pattern matching machinery or hidden allocations.</p>
+                        <div class="use-evidence">
+                            <div class="panel">
+                                <div class="panel-head">mach.toml</div>
+<pre class="code"><code data-toml>[target.boot]
+isa = "x86_64"
+os  = "freestanding"
+abi = "sysv64"
+of  = "elf"         # loadable by limine or grub</code></pre>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head">src/cpu.mach</div>
+<pre class="code"><code data-mach>pub fun halt() {
+    asm x86_64 {
+        cli
+        hlt
+    }
+}</code></pre>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="code-window">
-                        <div class="code-header">
-                            <span class="code-dot"></span>
-                            <span class="code-dot"></span>
-                            <span class="code-dot"></span>
-                            <span class="code-filename">reply.mach</span>
+                    <div class="use">
+                        <div class="use-copy">
+                            <span class="use-n">02</span>
+                            <h3>Constant-time cryptography</h3>
+                            <p>Mark a value secret and the compiler refuses to let it steer a branch, an index or a timing. Constant-time code, checked instead of hoped for.</p>
+                            <a href="docs/secrecy.html#assurance" class="chip chip-warn">experimental preview</a>
+                            <a href="docs/secrecy.html" class="more">secrecy <svg aria-hidden="true"><use href="#icon-arrow" /></svg></a>
                         </div>
-                        <pre><code><span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Reply</span>: <span class="type">u8</span> {
-    <span class="param">empty</span>;
-    <span class="param">value</span>: <span class="type">i64</span>;
+                        <div class="use-evidence">
+                            <div class="panel">
+                                <div class="panel-head">src/mac.mach</div>
+<pre class="code"><code data-mach>#[oblivious]
+fun check(mac: ^u64, want: ^u64) bool {
+    if (mac == want) {
+        ret true;
+    }
+    ret false;
+}</code></pre>
+                            </div>
+<pre class="diagnostic"><b>error: secret value used as a branch condition</b>
+  --&gt; ./src/mac.mach:3:5</pre>
+                        </div>
+                    </div>
+
+                    <div class="use">
+                        <div class="use-copy">
+                            <span class="use-n">03</span>
+                            <h3>GPU compute and shaders</h3>
+                            <p>Vertex, fragment and compute stages are Mach functions. A spirv target compiles them straight to a finished SPIR-V module a Vulkan driver loads, with no shading language on the side and no second toolchain.</p>
+                            <a href="docs/shaders.html" class="more">gpu shaders <svg aria-hidden="true"><use href="#icon-arrow" /></svg></a>
+                        </div>
+                        <div class="use-evidence">
+                            <div class="panel">
+                                <div class="panel-head">src/sim.mach</div>
+<pre class="code"><code data-mach>rec Particles {
+    position: [64]f32x4;
+    velocity: [64]f32x4;
 }
 
-<span class="kw">fun</span> <span class="fn">handle</span>(<span class="param">r</span>: <span class="type">Reply</span>) <span class="type">i64</span> {
-    <span class="cmt"># sel tests the active case and opens a lexical guard</span>
-    <span class="kw">if</span> (<span class="kw">sel</span> r.value) {
-        <span class="kw">ret</span> r.value;
-    }
+#[storage(0, 0)]
+var particles: Particles;
 
-    <span class="cmt"># unhandled branches cannot read r.value</span>
-    <span class="kw">ret</span> <span class="num">0</span>;
+#[builtin("global_invocation")]
+var global_id: u32x3;
+
+#[stage("compute")]
+#[workgroup(64, 1, 1)]
+fun step() {
+    val i: u32 = global_id[0];
+    particles.position[i] = particles.position[i] + particles.velocity[i];
 }</code></pre>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Cross-compilation: target reel -->
-        <section class="section xc" id="targets">
-            <div class="section-inner">
-                <h2>Cross-compilation is a manifest entry.</h2>
-                <p class="section-lead">
-                    The binary that builds for your machine builds for every
-                    platform you declare - hosted operating systems and bare
-                    metal alike. No cross-toolchain to install, no sysroot to
-                    assemble, no external linker: mach emits the objects and
-                    links them itself. Add a <code>[target]</code> and build.
-                </p>
-
-                <div class="xc-stage">
-                    <div
-                        class="xc-reel"
-                        role="listbox"
-                        aria-label="Build targets"
-                        tabindex="0"
-                    >
-                        <ul class="xc-reel-list">
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="linux"
-                                data-tuple="x86_64 / linux / sysv64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">linux</span
-                                ><span class="reel-tuple"
-                                    >x86_64 / linux / sysv64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="windows"
-                                data-tuple="x86_64 / windows / win64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">windows</span
-                                ><span class="reel-tuple"
-                                    >x86_64 / windows / win64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="freestanding"
-                                data-tuple="x86_64 / freestanding / sysv64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">freestanding</span
-                                ><span class="reel-tuple"
-                                    >x86_64 / freestanding / sysv64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="linux-arm64"
-                                data-tuple="aarch64 / linux / aapcs64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">linux-arm64</span
-                                ><span class="reel-tuple"
-                                    >aarch64 / linux / aapcs64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="macos"
-                                data-tuple="aarch64 / darwin / aapcs64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">macos</span
-                                ><span class="reel-tuple"
-                                    >aarch64 / darwin / aapcs64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="macos-x86_64"
-                                data-tuple="x86_64 / darwin / sysv64"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">macos-x86_64</span
-                                ><span class="reel-tuple"
-                                    >x86_64 / darwin / sysv64</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="linux-riscv64"
-                                data-tuple="riscv64 / linux / lp64d"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">linux-riscv64</span
-                                ><span class="reel-tuple"
-                                    >riscv64 / linux / lp64d</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="riscv32"
-                                data-tuple="riscv32 / freestanding / ilp32"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">riscv32</span
-                                ><span class="reel-tuple"
-                                    >riscv32 / freestanding / ilp32</span
-                                >
-                            </li>
-                            <li
-                                class="reel-item"
-                                role="option"
-                                data-target="gpu"
-                                data-tuple="spirv / freestanding / spirv"
-                                data-status="supported"
-                            >
-                                <span class="reel-name">gpu</span
-                                ><span class="reel-tuple"
-                                    >spirv / freestanding / spirv</span
-                                >
-                            </li>
-                        </ul>
-                        <div class="xc-selector" aria-hidden="true"></div>
-                    </div>
-
-                    <div class="xc-panel code-window">
-                        <div class="code-header">
-                            <span class="code-dot"></span
-                            ><span class="code-dot"></span
-                            ><span class="code-dot"></span>
-                            <span class="code-filename">mach.toml</span>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head">mach.toml</div>
+<pre class="code"><code data-toml>[target.gpu]
+isa = "spirv"
+os  = "freestanding"
+abi = "spirv"
+env = "vulkan1.3"</code></pre>
+                            </div>
                         </div>
-                        <pre
-                            class="xc-cmd"
-                        ><code><span class="term-prompt">$</span> <span class="term-cmd">mach build . --target <span class="xc-target">linux</span></span>
-<span class="xc-status" data-status="supported"># linked -&gt; out/<span class="xc-out">linux</span>/bin/app</span></code></pre>
-                        <pre
-                            class="xc-stanza"
-                        ><code data-stanza><span class="toml-head">[target.linux]</span>
-<span class="toml-key">isa</span> = <span class="str">"x86_64"</span>
-<span class="toml-key">os</span>  = <span class="str">"linux"</span>
-<span class="toml-key">abi</span> = <span class="str">"sysv64"</span></code></pre>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <!-- Get Started: terminal session -->
-        <section class="section get-started" id="get-started">
-            <div class="section-inner">
-                <h2>Get Started</h2>
-                <p class="section-lead">
-                    From nothing to a running binary: one toolchain, no external
-                    linker, no build system to configure.
-                </p>
-
-                <div class="terminal code-window">
-                    <div class="code-header">
-                        <span class="code-dot"></span
-                        ><span class="code-dot"></span
-                        ><span class="code-dot"></span>
-                        <span class="code-filename">~</span>
+            <section class="section wrap" id="targets" aria-labelledby="targets-title">
+                <div class="split split-head">
+                    <div class="section-head">
+                        <p class="label">targets</p>
+                        <h2 id="targets-title">One source, every target.</h2>
                     </div>
-                    <pre><code><span class="term-prompt">$</span> <span class="term-cmd">curl -fsSL https://machlang.org/install.sh | sh</span>
-<span class="term-note"># verifies the download, installs to ~/.local/bin</span>
-<span class="term-prompt">$</span> <span class="term-cmd">mach init my-app</span>
-<span class="term-prompt">$</span> <span class="term-cmd">cd my-app</span>
-<span class="term-prompt">$</span> <span class="term-cmd">mach dep pull .</span>
-<span class="term-note"># vendors dependencies into dep/</span>
-<span class="term-prompt">$</span> <span class="term-cmd">mach build .</span>
-<span class="term-note"># one binary builds and links, with no external linker</span>
-<span class="term-prompt">$</span> <span class="term-cmd">mach run .</span>
-<span class="term-out">Hello, World!</span></code></pre>
+                    <p class="prose">
+                        A target is a fully spelled tuple of isa, os and abi, plus
+                        the extensions every host it runs on is promised to have.
+                        Declare them once in <code>mach.toml</code> and one command
+                        builds every cell, from a desktop binary to a bare-metal
+                        image to a GPU module.
+                    </p>
                 </div>
+                <div class="split">
+                    <div class="panel">
+                        <div class="panel-head">mach.toml</div>
+<pre class="code"><code data-toml>[target.linux]
+isa = "x86_64"
+os  = "linux"
+abi = "sysv64"
+extensions = ["x86-64-v3", "sha"]
 
-                <p class="get-started-next">
-                    Next: read the <a href="docs/">documentation</a> (a
-                    pamphlet, not a bible), or start from
-                    <a
-                        href="https://github.com/briar-systems/mach-sieve"
-                        target="_blank"
-                        >mach-sieve</a
-                    >
-                    (a standalone starting point).
-                </p>
-                <a
-                    href="https://discord.com/invite/dfWG9NhGj7"
-                    target="_blank"
-                    class="btn btn-secondary btn-discord"
-                >
-                    <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        aria-hidden="true"
-                    >
-                        <use href="#icon-discord" />
-                    </svg>
-                    <span>Join the Discord</span>
-                </a>
-            </div>
-        </section>
+[target.mac]
+isa = "aarch64"
+os  = "darwin"
+abi = "aapcs64"
 
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="footer-inner">
-                <div class="footer-logo">
-                    <img
-                        src="assets/mach_32.png"
-                        alt="Mach"
-                        width="20"
-                        height="20"
-                    />
-                    <span>mach</span>
-                </div>
-                <div class="footer-links">
-                    <a href="https://github.com/briar-systems/mach" target="_blank"
-                        >GitHub</a
-                    >
-                    <a href="docs/">Documentation</a>
-                    <a
-                        href="https://discord.com/invite/dfWG9NhGj7"
-                        target="_blank"
-                        class="footer-discord"
-                    >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                        >
-                            <use href="#icon-discord" />
+[target.win]
+isa = "x86_64"
+os  = "windows"
+abi = "win64"
+
+[target.board]
+isa = "rv32imc"
+os  = "freestanding"
+abi = "ilp32"
+
+[target.gpu]
+isa = "spirv"
+os  = "freestanding"
+abi = "spirv"
+env = "vulkan1.3"</code></pre>
+                    </div>
+                    <div class="fanout">
+                        <div class="cmd cmd-static"><span class="prompt">$</span><code>mach build . --all-targets</code></div>
+                        <svg class="fanout-map" viewBox="0 0 640 560" role="img" aria-label="One source tree fanning out to five build targets: linux, mac, windows, a bare-metal board and a SPIR-V GPU module">
+                            <g class="fan-links">
+                                <path d="M 156 280 C 260 280, 270 48, 380 48"></path>
+                                <path d="M 156 280 C 260 280, 270 164, 380 164"></path>
+                                <path d="M 156 280 C 260 280, 270 280, 380 280"></path>
+                                <path d="M 156 280 C 260 280, 270 396, 380 396"></path>
+                                <path d="M 156 280 C 260 280, 270 512, 380 512"></path>
+                            </g>
+                            <g class="fan-pulses">
+                                <path pathLength="100" d="M 156 280 C 260 280, 270 48, 380 48"></path>
+                                <path pathLength="100" d="M 156 280 C 260 280, 270 164, 380 164"></path>
+                                <path pathLength="100" d="M 156 280 C 260 280, 270 280, 380 280"></path>
+                                <path pathLength="100" d="M 156 280 C 260 280, 270 396, 380 396"></path>
+                                <path pathLength="100" d="M 156 280 C 260 280, 270 512, 380 512"></path>
+                            </g>
+                            <g class="fan-source">
+                                <rect x="8" y="246" width="148" height="68"></rect>
+                                <text x="82" y="274" text-anchor="middle" class="fan-name">src/</text>
+                                <text x="82" y="296" text-anchor="middle" class="fan-sub">one source</text>
+                            </g>
+                            <g class="fan-cell">
+                                <rect x="380" y="18" width="252" height="60"></rect>
+                                <text x="394" y="42" class="fan-name">linux</text><text x="618" y="42" text-anchor="end" class="fan-sub">.elf</text>
+                                <text x="394" y="64" class="fan-sub">x86_64 · x86-64-v3 + sha</text>
+                            </g>
+                            <g class="fan-cell">
+                                <rect x="380" y="134" width="252" height="60"></rect>
+                                <text x="394" y="158" class="fan-name">mac</text><text x="618" y="158" text-anchor="end" class="fan-sub">.macho</text>
+                                <text x="394" y="180" class="fan-sub">aarch64 · darwin</text>
+                            </g>
+                            <g class="fan-cell">
+                                <rect x="380" y="250" width="252" height="60"></rect>
+                                <text x="394" y="274" class="fan-name">win</text><text x="618" y="274" text-anchor="end" class="fan-sub">.coff</text>
+                                <text x="394" y="296" class="fan-sub">x86_64 · windows</text>
+                            </g>
+                            <g class="fan-cell">
+                                <rect x="380" y="366" width="252" height="60"></rect>
+                                <text x="394" y="390" class="fan-name">board</text><text x="618" y="390" text-anchor="end" class="fan-sub">.raw</text>
+                                <text x="394" y="412" class="fan-sub">rv32imc · bare metal</text>
+                            </g>
+                            <g class="fan-cell is-hot">
+                                <rect x="380" y="482" width="252" height="60"></rect>
+                                <text x="394" y="506" class="fan-name">gpu</text><text x="618" y="506" text-anchor="end" class="fan-sub">.spv</text>
+                                <text x="394" y="528" class="fan-sub">spirv · vulkan1.3</text>
+                            </g>
                         </svg>
-                        <span>Discord</span>
-                    </a>
+                        <div class="panel">
+                            <div class="panel-head">src/sha.mach · the target's extensions are comptime facts</div>
+<pre class="code"><code data-mach>$if ($mach.build.extensions.sha) {
+    use impl: app.sha.hw;
+}
+$or {
+    use impl: app.sha.portable;
+}</code></pre>
+                        </div>
+                        <p class="note">
+                            <code>$if</code> gates compose code per target. The branch a
+                            target does not select is dropped before it is
+                            type-checked, so a portable fallback and a hardware path
+                            share one module.
+                        </p>
+                    </div>
                 </div>
-                <p class="footer-license">&copy; 2026 Briar Systems LLC &middot; MIT License</p>
+                <dl class="panel axes">
+                    <dt>isa</dt>
+                    <dd><span>x86_64</span><span>aarch64</span><span>riscv64</span><span>riscv32</span><span>rv32imc, rv64imafd, …</span><span class="is-hot">spirv</span><span class="is-soon">wasm32</span></dd>
+                    <dt>os</dt>
+                    <dd><span>linux</span><span>darwin</span><span>windows</span><span>freestanding</span><span class="is-soon">wasi</span></dd>
+                    <dt>abi</dt>
+                    <dd><span>sysv64</span><span>win64</span><span>aapcs64</span><span>lp64</span><span>lp64f</span><span>lp64d</span><span>ilp32</span><span>ilp32f</span><span>ilp32d</span><span class="is-hot">spirv</span></dd>
+                    <dt>format</dt>
+                    <dd><span>elf</span><span>coff</span><span>macho</span><span>raw</span><span class="is-hot">spv</span><span class="is-soon">wasm</span></dd>
+                    <dt>extensions</dt>
+                    <dd><span>x86-64-v2</span><span>x86-64-v3</span><span>x86-64-v4</span><span>sha</span><span>avx2</span><span>avx512f</span><span>…</span><span>sha2</span><span>m a f d c</span><span>zicsr</span><span>zifencei</span><span>zkt</span></dd>
+                    <dt>spir-v env</dt>
+                    <dd><span class="is-hot">vulkan1.0</span><span class="is-hot">vulkan1.1</span><span class="is-hot">vulkan1.2</span><span class="is-hot">vulkan1.3</span></dd>
+                </dl>
+                <p class="note">
+                    x86_64 linux is the primary host. aarch64 linux runs natively in
+                    CI, riscv64 linux self-hosts under qemu, darwin self-hosts on both
+                    architectures, and windows is a cross-compilation target.
+                    <code>mach info targets</code> lists every tuple your binary can
+                    build. Dashed values are in progress.
+                </p>
+            </section>
+
+            <section class="section section-rule wrap" aria-labelledby="self-title">
+                <div class="split">
+                    <div class="section-head">
+                        <p class="label">self-hosted</p>
+                        <h2 id="self-title">Written in Mach.</h2>
+                        <p class="prose">
+                            The compiler, code generators and linker are Mach all the
+                            way through, with no external dependencies. The language
+                            is proven on the hardest program it will ever build:
+                            itself.
+                        </p>
+                    </div>
+                    <div class="bootstrap">
+                        <ol class="stages">
+                            <li><b>mach</b><span>last release</span></li>
+                            <li><b>stage 1</b></li>
+                            <li class="is-hot"><b>stage 2</b></li>
+                            <li class="is-hot"><b>stage 3</b></li>
+                        </ol>
+                        <p class="fixpoint">stage 2 ≡ stage 3 · fixpoint</p>
+                        <p class="note">
+                            Each generation compiles the next from the same source.
+                            When two in a row come out the same, the compiler has
+                            reproduced itself.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section section-rule wrap" id="start" aria-labelledby="start-title">
+                <div class="split split-even">
+                    <div class="section-head">
+                        <p class="label">start</p>
+                        <h2 id="start-title">Four commands in.</h2>
+                        <ol class="steps">
+                            <li><span class="note">install</span><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></li>
+                            <li><span class="note">create a project</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach init hello</code></div></li>
+                            <li><span class="note">build it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach build hello</code></div></li>
+                            <li><span class="note">run it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach run hello</code></div></li>
+                        </ol>
+                        <p class="note">windows: <code>irm https://machlang.org/install.ps1 | iex</code></p>
+                    </div>
+                    <div class="start-code">
+                        <div class="panel">
+                            <div class="panel-head">hello/src/main.mach</div>
+                            <pre class="code"><code data-src="examples/hello.mach"></code></pre>
+                            <noscript><a class="note" href="examples/hello.mach">view hello.mach</a></noscript>
+                        </div>
+                        <p class="note">
+                            Next: the <a href="docs/">documentation</a> (a pamphlet, not a
+                            bible), or start from
+                            <a href="https://github.com/briar-systems/mach-sieve" target="_blank">mach-sieve</a>.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="bar">
+            <div class="wrap bar-inner">
+                <span class="bar-brand"><svg class="mark" aria-hidden="true"><use href="#mark" /></svg>mach<span class="badge-version"></span></span>
+                <span class="bar-links">
+                    <a href="docs/">docs</a>
+                    <a href="https://github.com/briar-systems/mach" target="_blank">github</a>
+                    <a href="https://discord.com/invite/dfWG9NhGj7" target="_blank">discord</a>
+                    <a href="https://github.com/briar-systems/mach/releases" target="_blank">releases</a>
+                </span>
+                <span>&copy; 2026 Briar Systems LLC · MIT License</span>
             </div>
         </footer>
 
+        <script src="assets/version.js" defer></script>
         <script src="assets/highlight.js" defer></script>
-        <script src="assets/targets.js" defer></script>
-        <script src="assets/demos.js" defer></script>
+        <script src="assets/annotate.js" defer></script>
+        <script src="assets/cone.js" defer></script>
     </body>
 </html>
