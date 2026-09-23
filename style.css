@@ -84,10 +84,9 @@ svg { display: block; }
 .install-os-btn:hover { color: var(--text); }
 .install-os-btn[aria-pressed="true"] { color: var(--text); border-color: var(--line-strong); }
 .install-panel { display: flex; flex-direction: column; gap: 8px; }
-.js .install-panel { display: none; }
-.js.os-linux .install-panel[data-os="linux"],
-.js.os-macos .install-panel[data-os="macos"],
-.js.os-windows .install-panel[data-os="windows"] { display: flex; }
+.js.os-linux .os-only:not([data-os~="linux"]),
+.js.os-macos .os-only:not([data-os~="macos"]),
+.js.os-windows .os-only:not([data-os~="windows"]) { display: none; }
 
 .cmd {
   position: relative; display: flex; align-items: center;
