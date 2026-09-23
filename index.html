@@ -130,7 +130,7 @@
             <div class="wrap hero-inner">
                 <div class="hero-copy">
                     <p class="label">systems programming language<span class="badge-version"></span></p>
-                    <h1>MACH</h1>
+                    <h1>mach</h1>
                     <p class="lede">
                         Mach is a small, explicit systems language for compilers,
                         kernels, runtimes and games: anywhere performance is a
@@ -144,13 +144,13 @@
                         </div>
                         <div class="install-panel" data-os="linux">
                             <div class="cmd">
-                                <span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
+                                <span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
                                 <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
                             </div>
                         </div>
                         <div class="install-panel" data-os="macos">
                             <div class="cmd">
-                                <span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
+                                <span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code>
                                 <button type="button" class="copy-btn"><svg aria-hidden="true"><use href="#icon-copy" /></svg><span class="copy-label">copy</span></button>
                             </div>
                         </div>
@@ -361,7 +361,7 @@ abi = "spirv"
 env = "vulkan1.3"</code></pre>
                     </div>
                     <div class="fanout">
-                        <div class="cmd cmd-static"><span class="prompt">$</span><code>mach build . --all-targets</code></div>
+                        <div class="cmd cmd-static"><span class="prompt">&gt;</span><code>mach build . --all-targets</code></div>
                         <svg class="fanout-map" viewBox="0 0 640 560" role="img" aria-label="One source tree fanning out to five build targets: linux, mac, windows, a bare-metal board and a SPIR-V GPU module">
                             <g class="fan-links">
                                 <path d="M 156 280 C 260 280, 270 48, 380 48"></path>
@@ -493,20 +493,20 @@ $or {
                                     </div>
                                 </div>
                                 <div class="step-body">
-                                    <div class="install-panel" data-os="linux"><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
-                                    <div class="install-panel" data-os="macos"><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel" data-os="linux"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel" data-os="macos"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
                                     <div class="install-panel" data-os="windows"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code></div></div>
                                 </div>
                             </li>
                             <li>
                                 <span class="note">create a project and step into it</span>
                                 <div class="step-body">
-                                    <div class="cmd cmd-static"><span class="prompt">$</span><code>mach init hello</code></div>
-                                    <div class="cmd cmd-static"><span class="prompt">$</span><code>cd hello</code></div>
+                                    <div class="cmd cmd-static"><span class="prompt">&gt;</span><code>mach init hello</code></div>
+                                    <div class="cmd cmd-static"><span class="prompt">&gt;</span><code>cd hello</code></div>
                                 </div>
                             </li>
-                            <li><span class="note">build it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach build .</code></div></li>
-                            <li><span class="note">run it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach run .</code></div></li>
+                            <li><span class="note">build it</span><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>mach build .</code></div></li>
+                            <li><span class="note">run it</span><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>mach run .</code></div></li>
                         </ol>
                     </div>
                     <div class="start-code">
