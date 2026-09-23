@@ -169,11 +169,11 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 .ann-row { display: grid; grid-template-columns: 64px max-content minmax(260px, 1fr); }
 .ann-n { padding: 0 16px; text-align: right; color: #555555; }
 .ann-src { white-space: pre; padding-right: 24px; }
-.ann-note { display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--text); padding-right: 24px; }
+.ann-note { display: flex; align-items: center; justify-content: flex-end; font-size: 15px; color: var(--text-dim); padding-right: 24px; text-align: right; }
+.ann-row.is-hot .ann-note::before { content: "#\00a0"; }
 .ann-note b { display: none; }
 .ann-row.is-hot { background: var(--bg-raised); }
 .ann-row.is-hot .ann-n { color: var(--accent); }
-.ann-row.is-hot .ann-note::before { content: ""; width: 28px; height: 1px; background: var(--accent); flex-shrink: 0; }
 .ann-notes { list-style: none; counter-reset: note; display: flex; flex-direction: column; gap: 10px; padding: 0 24px; }
 .ann-notes li { counter-increment: note; display: flex; gap: 14px; font-size: 15px; }
 .ann-notes li::before { content: counter(note); color: var(--accent); font-weight: 700; }
