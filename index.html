@@ -203,13 +203,24 @@
             </section>
 
             <section class="section wrap" aria-labelledby="closer-title">
-                <div class="section-head">
-                    <p class="label">a closer look · examples/alloc.mach</p>
-                    <h2 id="closer-title">Nothing happens off the page.</h2>
+                <div class="split split-head">
+                    <div class="section-head">
+                        <p class="label">a closer look · examples/alloc.mach</p>
+                        <h2 id="closer-title">Nothing happens off the page.</h2>
+                    </div>
+                    <p class="prose">
+                        Not even the runtime. It is an ordinary module in the standard
+                        library that a program opts into by importing <code>std.runtime</code>,
+                        and <code>main</code> is just the function that exports the symbol
+                        it calls. The compiler does not provide a runtime and does not
+                        know one exists.
+                    </p>
                 </div>
                 <div class="panel annotated" data-annotate="examples/alloc.mach">
                     <div class="ann-code code"></div>
                     <ol class="ann-notes">
+                        <li data-match="use std.runtime;">the runtime is a std module you import, not part of the compiler</li>
+                        <li data-match="#[symbol(&quot;main&quot;)]">main is exported by name, for the runtime's _start to call</li>
                         <li data-match="val count:">every binding states its type</li>
                         <li data-match="var a:">the allocator is a value you hold</li>
                         <li data-match="A.allocate">each allocation names its allocator and its type</li>
