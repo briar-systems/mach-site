@@ -204,16 +204,13 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 .fan-pulses path:nth-child(5) { animation-delay: -2.2s; }
 @keyframes pulse { from { stroke-dashoffset: 105; } to { stroke-dashoffset: 0; } }
 .fan-source rect, .fan-cell rect { fill: var(--bg); stroke: var(--text); }
-.fan-cell.is-hot rect { stroke: var(--accent); }
 .fan-name { font-family: var(--font); font-size: 15px; font-weight: 700; fill: var(--text); }
-.fan-cell.is-hot .fan-name { fill: var(--accent); }
 .fan-sub { font-family: var(--font); font-size: 12px; fill: var(--text-dim); }
 
 .axes { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 18px 24px; padding: 32px; }
 .axes dt { font-size: 14px; color: var(--text-dim); padding-top: 5px; }
 .axes dd { display: flex; flex-wrap: wrap; gap: 8px; }
 .axes dd span { padding: 4px 10px; font-size: 14px; color: #E0E0E0; border: 1px solid var(--line-strong); }
-.axes dd span.is-hot { color: var(--text); border-color: var(--accent); }
 .axes dd span.is-soon { color: var(--text-dim); border-style: dashed; border-color: var(--text-faint); }
 
 /* self-hosted */
@@ -235,6 +232,8 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 .steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 18px; }
 .steps li { counter-increment: step; display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 12px; row-gap: 8px; }
 .steps li::before { content: "0" counter(step); grid-row: span 2; font-size: 14px; color: var(--accent); padding-top: 2px; }
+.step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.step-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .start-code { display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; min-width: 0; }
 
 /* footer bar */

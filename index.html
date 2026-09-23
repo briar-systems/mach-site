@@ -402,7 +402,7 @@ env = "vulkan1.3"</code></pre>
                                 <text x="394" y="390" class="fan-name">board</text><text x="618" y="390" text-anchor="end" class="fan-sub">.raw</text>
                                 <text x="394" y="412" class="fan-sub">rv32imc · bare metal</text>
                             </g>
-                            <g class="fan-cell is-hot">
+                            <g class="fan-cell">
                                 <rect x="380" y="482" width="252" height="60"></rect>
                                 <text x="394" y="506" class="fan-name">gpu</text><text x="618" y="506" text-anchor="end" class="fan-sub">.spv</text>
                                 <text x="394" y="528" class="fan-sub">spirv · vulkan1.3</text>
@@ -427,17 +427,17 @@ $or {
                 </div>
                 <dl class="panel axes">
                     <dt>isa</dt>
-                    <dd><span>x86_64</span><span>aarch64</span><span>riscv64</span><span>riscv32</span><span>rv32imc, rv64imafd, …</span><span class="is-hot">spirv</span><span class="is-soon">wasm32</span></dd>
+                    <dd><span>x86_64</span><span>aarch64</span><span>riscv64</span><span>riscv32</span><span>rv32imc, rv64imafd, …</span><span>spirv</span><span class="is-soon">wasm32</span></dd>
                     <dt>os</dt>
                     <dd><span>linux</span><span>darwin</span><span>windows</span><span>freestanding</span><span class="is-soon">wasi</span></dd>
                     <dt>abi</dt>
-                    <dd><span>sysv64</span><span>win64</span><span>aapcs64</span><span>lp64</span><span>lp64f</span><span>lp64d</span><span>ilp32</span><span>ilp32f</span><span>ilp32d</span><span class="is-hot">spirv</span></dd>
+                    <dd><span>sysv64</span><span>win64</span><span>aapcs64</span><span>lp64</span><span>lp64f</span><span>lp64d</span><span>ilp32</span><span>ilp32f</span><span>ilp32d</span><span>spirv</span></dd>
                     <dt>format</dt>
-                    <dd><span>elf</span><span>coff</span><span>macho</span><span>raw</span><span class="is-hot">spv</span><span class="is-soon">wasm</span></dd>
+                    <dd><span>elf</span><span>coff</span><span>macho</span><span>raw</span><span>spv</span><span class="is-soon">wasm</span></dd>
                     <dt>extensions</dt>
                     <dd><span>x86-64-v2</span><span>x86-64-v3</span><span>x86-64-v4</span><span>sha</span><span>avx2</span><span>avx512f</span><span>…</span><span>sha2</span><span>m a f d c</span><span>zicsr</span><span>zifencei</span><span>zkt</span></dd>
                     <dt>spir-v env</dt>
-                    <dd><span class="is-hot">vulkan1.0</span><span class="is-hot">vulkan1.1</span><span class="is-hot">vulkan1.2</span><span class="is-hot">vulkan1.3</span></dd>
+                    <dd><span>vulkan1.0</span><span>vulkan1.1</span><span>vulkan1.2</span><span>vulkan1.3</span></dd>
                 </dl>
                 <p class="note">
                     x86_64 linux is the primary host. aarch64 linux runs natively in
@@ -481,14 +481,33 @@ $or {
                 <div class="split split-even">
                     <div class="section-head">
                         <p class="label">start</p>
-                        <h2 id="start-title">Four commands in.</h2>
+                        <h2 id="start-title">Four steps in.</h2>
                         <ol class="steps">
-                            <li><span class="note">install</span><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></li>
-                            <li><span class="note">create a project</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach init hello</code></div></li>
-                            <li><span class="note">build it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach build hello</code></div></li>
-                            <li><span class="note">run it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach run hello</code></div></li>
+                            <li>
+                                <div class="step-head">
+                                    <span class="note">install</span>
+                                    <div class="install-os" role="group" aria-label="Select your operating system">
+                                        <button type="button" class="install-os-btn" data-os="linux" aria-pressed="false">linux</button>
+                                        <button type="button" class="install-os-btn" data-os="macos" aria-pressed="false">macos</button>
+                                        <button type="button" class="install-os-btn" data-os="windows" aria-pressed="false">windows</button>
+                                    </div>
+                                </div>
+                                <div class="step-body">
+                                    <div class="install-panel" data-os="linux"><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel" data-os="macos"><div class="cmd cmd-static"><span class="prompt">$</span><code>curl -fsSL https://machlang.org/install.sh | sh</code></div></div>
+                                    <div class="install-panel" data-os="windows"><div class="cmd cmd-static"><span class="prompt">&gt;</span><code>irm https://machlang.org/install.ps1 | iex</code></div></div>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="note">create a project and step into it</span>
+                                <div class="step-body">
+                                    <div class="cmd cmd-static"><span class="prompt">$</span><code>mach init hello</code></div>
+                                    <div class="cmd cmd-static"><span class="prompt">$</span><code>cd hello</code></div>
+                                </div>
+                            </li>
+                            <li><span class="note">build it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach build .</code></div></li>
+                            <li><span class="note">run it</span><div class="cmd cmd-static"><span class="prompt">$</span><code>mach run .</code></div></li>
                         </ol>
-                        <p class="note">windows: <code>irm https://machlang.org/install.ps1 | iex</code></p>
                     </div>
                     <div class="start-code">
                         <div class="panel">
