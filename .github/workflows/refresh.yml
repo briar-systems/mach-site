@@ -1,0 +1,21 @@
+name: Refresh
+
+# redeploys main daily so the ecosystem page picks up new mach-ecosystem entries
+# and fresh github metadata. schedules run on the default branch (dev), which the
+# pages environment refuses, so this dispatches the deploy on main instead.
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the deploy on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main -R "$GITHUB_REPOSITORY"

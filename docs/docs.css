@@ -471,7 +471,7 @@ pre.code code { font-size: inherit; color: var(--text); }
 }
 
 @media (max-width: 480px) {
-  .brand .brand-docs, .topbar-actions a[href="../index.html"] { display: none; }
+  .brand .brand-docs, .topbar-actions a[href="../index.html"], .topbar-actions a[href="../ecosystem/"] { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
