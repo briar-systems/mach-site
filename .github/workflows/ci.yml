@@ -62,9 +62,30 @@ jobs:
       - name: Run the highlighter tests
         run: node --test test/highlight.test.js
 
+  llms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Bake the latest mach release into version.js
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/bake-version.sh
+
+      - name: Run the llms tests
+        run: node --test test/llms.test.js
+
+      - name: Build llms.txt and llms-full.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/build-llms.js
+
+      - name: Check every link in both files
+        run: node .github/scripts/check-links.js
+
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, highlight]
+    needs: [install-check, bake-version, ecosystem, highlight, llms]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
