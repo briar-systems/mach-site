@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# guides for language models (llmstxt.org), rebuilt from the current mach release on every deploy
+# llms.txt: https://machlang.org/llms.txt
+# llms-full.txt: https://machlang.org/llms-full.txt
