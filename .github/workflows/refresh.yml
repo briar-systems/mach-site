@@ -1,8 +1,9 @@
 name: Refresh
 
 # redeploys main daily so the ecosystem page picks up new mach-ecosystem entries
-# and fresh github metadata. schedules run on the default branch (dev), which the
-# pages environment refuses, so this dispatches the deploy on main instead.
+# and fresh github metadata, and llms.txt and llms-full.txt pick up a new mach release.
+# schedules run on the default branch (dev), which the pages environment refuses,
+# so this dispatches the deploy on main instead.
 on:
   schedule:
     - cron: "23 5 * * *"
