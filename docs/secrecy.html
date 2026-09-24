@@ -171,7 +171,7 @@
 
       <h2 id="downgrade">Downgrade with <code>:&gt;T</code></h2>
       <p><code>:&gt;T</code> is the only way to remove <code>^</code>. It produces a new public value of type <code>T</code> and never reinterprets storage in place. The destination type <code>T</code> must always be named explicitly.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
       <p><code>:&gt;T</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
 
       <h2 id="welded">Welded-storage pointers</h2>
@@ -181,20 +181,20 @@
         <li>a secret-welded pointer cannot be erased to the untyped <code>ptr</code></li>
         <li>a <code>uni</code>'s overlapping variants must agree on secrecy</li>
       </ul>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
-<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
+<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
       <p>The union rule is a property of the union <strong>type</strong>, not of the syntax that declared it, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
       <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>] { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
 <span class="kw">rec</span> <span class="type">Box</span>[<span class="type">T</span>] { <span class="param">u</span>: <span class="type">U</span>[<span class="type">T</span>]; }
 
-<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct>^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
+<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct">^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
 <span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span></code></pre>
       <p>Welding extends to <strong>nested aggregates</strong>: a <code>*Pair</code> whose <code>x</code> field is <code>^u64</code> has a welded field, so <code>?p.x</code> yields a <code>*^u64</code> and inherits the refusal.</p>
 
       <h2 id="oblivious"><code>#[oblivious]</code> - the codegen contract</h2>
       <p>The flow typing constrains the <em>source</em>; <code>#[oblivious]</code> carries the obligation through <em>codegen</em>. Inside a function carrying it, the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand.</p>
       <pre class="code"><code><span class="deco">#[oblivious]</span>
-<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="ct>^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
+<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
       <p>A function instance that <strong>computes</strong> on a secret must carry it; one that only moves, stores, or declassifies secrets is transparent and stays annotation-free. The check runs per monomorphized instance.</p>
       <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:&gt;T</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions, followed by a second validation pass on the final machine instructions.</p>
 
@@ -215,13 +215,13 @@
       <h2 id="zeroize">The zeroizing-write guarantee</h2>
       <p>Wiping a secret is only useful if the wipe survives to run. That guarantee exists, but it is <strong>not</strong> provided by <code>#[oblivious]</code>, and it is scoped more broadly than the decorator is. A store into secret storage is tainted at lowering, keyed on the storage rather than on any decorator:</p>
       <pre class="code"><code><span class="cmt"># no decorator: the wipe is protected anyway</span>
-<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
+<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
     <span class="kw">var</span> <span class="param">i</span>: <span class="type">usize</span> = <span class="num">0</span>;
     <span class="kw">for</span> (i &lt; n) { p[i] = <span class="num">0</span>; i = i + <span class="num">1</span>; }
 }</code></pre>
       <p><strong>What it covers.</strong> Memory reached through a pointer that escapes the function - the shape a <code>zeroize</code> helper has. Such a store cannot be promoted out of memory, and the taint is present for any future pass to read.</p>
       <p><strong>What it does not cover.</strong> A value the compiler keeps in a <strong>register</strong>. Writing to a promoted local is not a memory write, so wiping one is not preserved:</p>
-      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct>^</span><span class="type">u8</span> = k;
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct">^</span><span class="type">u8</span> = k;
 x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x` may never have been in memory</span></code></pre>
       <p>Adding <code>#[oblivious]</code> does not change this. To wipe reliably, write through a pointer whose target is memory the compiler cannot promote away.</p>
 
