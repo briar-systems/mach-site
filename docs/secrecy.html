@@ -7,6 +7,8 @@
   <link rel="icon" type="image/svg+xml" href="../assets/mach-tile.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png">
   <link rel="stylesheet" href="docs.css">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <link rel="alternate" type="text/plain" href="/llms-full.txt" title="llms-full.txt">
 </head>
 <body>
 
@@ -78,7 +80,7 @@
 
       <div class="callout warn">
         <span class="callout-label">Experimental preview</span>
-        <p>The constant-time support is incomplete and unaudited, and a proven secret-disclosure path is still open. Read <a href="#assurance">Assurance</a> before relying on any of this. <strong>Do not build production cryptography on it at this version.</strong></p>
+        <p>The constant-time support is incomplete and unaudited. Read <a href="#assurance">Assurance</a> before relying on any of this. <strong>Do not build production cryptography on it at this version.</strong></p>
       </div>
 
       <h2 id="why">What this is for</h2>
@@ -171,7 +173,7 @@
 
       <h2 id="downgrade">Downgrade with <code>:&gt;T</code></h2>
       <p><code>:&gt;T</code> is the only way to remove <code>^</code>. It produces a new public value of type <code>T</code> and never reinterprets storage in place. The destination type <code>T</code> must always be named explicitly.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
       <p><code>:&gt;T</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
 
       <h2 id="welded">Welded-storage pointers</h2>
@@ -181,22 +183,22 @@
         <li>a secret-welded pointer cannot be erased to the untyped <code>ptr</code></li>
         <li>a <code>uni</code>'s overlapping variants must agree on secrecy</li>
       </ul>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
-<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
+<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
       <p>The union rule is a property of the union <strong>type</strong>, not of the syntax that declared it, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
       <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>] { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
 <span class="kw">rec</span> <span class="type">Box</span>[<span class="type">T</span>] { <span class="param">u</span>: <span class="type">U</span>[<span class="type">T</span>]; }
 
-<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct>^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
+<span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct">^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
 <span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span></code></pre>
       <p>Welding extends to <strong>nested aggregates</strong>: a <code>*Pair</code> whose <code>x</code> field is <code>^u64</code> has a welded field, so <code>?p.x</code> yields a <code>*^u64</code> and inherits the refusal.</p>
 
       <h2 id="oblivious"><code>#[oblivious]</code> - the codegen contract</h2>
       <p>The flow typing constrains the <em>source</em>; <code>#[oblivious]</code> carries the obligation through <em>codegen</em>. Inside a function carrying it, the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand.</p>
       <pre class="code"><code><span class="deco">#[oblivious]</span>
-<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct>^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct>^</span><span class="type">u32</span>) <span class="ct>^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
+<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
       <p>A function instance that <strong>computes</strong> on a secret must carry it; one that only moves, stores, or declassifies secrets is transparent and stays annotation-free. The check runs per monomorphized instance.</p>
-      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:&gt;T</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions, followed by a second validation pass on the final machine instructions.</p>
+      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:&gt;T</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions. The stages after that MIR are trusted, not re-checked: see <a href="#assurance-scope">Where the check runs</a>.</p>
 
       <h3 id="oblivious-asm">Inline assembly inside an oblivious function</h3>
       <p>Inline <code>asm</code> inside such a function is <strong>validated</strong>, not rejected. The block is parsed into instructions and walked for the same three leaks the compiler checks everywhere else. Taint enters through the block's <code>{name}</code> bindings, whose secrecy is stamped from the local's declared type. What the walk cannot model, it refuses:</p>
@@ -215,13 +217,13 @@
       <h2 id="zeroize">The zeroizing-write guarantee</h2>
       <p>Wiping a secret is only useful if the wipe survives to run. That guarantee exists, but it is <strong>not</strong> provided by <code>#[oblivious]</code>, and it is scoped more broadly than the decorator is. A store into secret storage is tainted at lowering, keyed on the storage rather than on any decorator:</p>
       <pre class="code"><code><span class="cmt"># no decorator: the wipe is protected anyway</span>
-<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct>^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
+<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
     <span class="kw">var</span> <span class="param">i</span>: <span class="type">usize</span> = <span class="num">0</span>;
     <span class="kw">for</span> (i &lt; n) { p[i] = <span class="num">0</span>; i = i + <span class="num">1</span>; }
 }</code></pre>
       <p><strong>What it covers.</strong> Memory reached through a pointer that escapes the function - the shape a <code>zeroize</code> helper has. Such a store cannot be promoted out of memory, and the taint is present for any future pass to read.</p>
       <p><strong>What it does not cover.</strong> A value the compiler keeps in a <strong>register</strong>. Writing to a promoted local is not a memory write, so wiping one is not preserved:</p>
-      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct>^</span><span class="type">u8</span> = k;
+      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct">^</span><span class="type">u8</span> = k;
 x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x` may never have been in memory</span></code></pre>
       <p>Adding <code>#[oblivious]</code> does not change this. To wipe reliably, write through a pointer whose target is memory the compiler cannot promote away.</p>
 
@@ -234,28 +236,38 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
         <span class="callout-label">Read this first</span>
         <p>The constant-time guarantee is incomplete. This support is an experimental preview and has not been audited. <strong>Do not build production cryptography on it at this version.</strong></p>
       </div>
-      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, the translation validator independently re-checks the lowered MIR, and a second validation pass checks final machine instructions. A dudect-style timing harness measures a branchless constant-time reference against a deliberately-leaky control and flags the leak with Welch's t-test.</p>
-      <p>The leakage model has three channels, and the harness does not cover them uniformly:</p>
+      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, and the translation validator independently re-checks the lowered MIR. All three are static. Two host-executed measurements sit under them, and each only means anything on the machine it runs on, which is why both are unit tests rather than build checks.</p>
+
+      <h3 id="assurance-harness">The timing harness is a tool, not a gate</h3>
+      <p><code>mach.lang.ct.probe</code> is a dudect-style harness in the compiler's tree. <code>mach test</code> runs it at deliberately tiny sample counts and prints its table. It asserts <strong>nothing about the numbers</strong>, not a threshold and not positivity, because even "a mean is positive" proved to be a property of the host's clock resolution rather than of the harness (<a href="https://github.com/briar-systems/mach/issues/3092" target="_blank">mach#3092</a>). The run can only fail if the harness itself crashes. <strong>No property of a measured time gates anything</strong>, here or anywhere else in the suite.</p>
+      <p>That is deliberate and it is not a gap. A dudect score is a statistic over wall-clock time on hardware nobody controls, so any threshold over it has a false-failure rate that belongs to the machine rather than to the code. A required check that can fail nondeterministically is worse than no check: it teaches a reader to re-run a red constant-time result until it turns green. An earlier form of this harness did assert on such thresholds, and failed a release gate on <code>x86_64-darwin</code> and then passed a re-run of the identical commit (<a href="https://github.com/briar-systems/mach/issues/3070" target="_blank">mach#3070</a>).</p>
+      <p>So the claims below are <strong>measurements, taken deliberately</strong>, not properties the test suite enforces. They are re-taken by raising the counts in <code>mach.lang.ct.probe</code> and reading the printed table, on a quiet machine, by a person who then reads the numbers. Performance and timing work belongs in <a href="https://github.com/briar-systems/mach-bench" target="_blank">mach-bench</a>, which is built for it, rather than in a correctness suite that must be deterministic.</p>
+      <p>What such a measurement can establish is bounded. It works by refutation, because that is all a timing measurement can do: a clean score is consistent with a leak the instrument cannot see. So each mode carries a <em>planted</em> leak that must be detected, and a constant-time reference that must not separate the way the planted one does. Read the separation between the two class means, never <code>|t|</code>. Welch's statistic divides by the sample variance, and concurrent load inflates the variance without moving the means, so <code>|t|</code> collapses under load while the leak is plainly still there. Measured at load average 27, six consecutive runs of one binary gave <code>|t|</code> between 7.51 and 11.24 against a threshold of 10, while the mean ratio never fell below 3.4.</p>
+      <p>A third probe leaks nothing at all and says whether a run counts. Any separation <em>it</em> shows is the machine rather than the code, so a run in which it is not flat has no discriminating power, and its verdict means nothing in either direction. A flat null is necessary and not sufficient: it must also be sampled at a comparable cost to the probe it is bounding, or a quiet control at one magnitude certifies nothing about noise at another.</p>
+
+      <h3 id="assurance-flags">The x86-64 flags table is measured, not inferred</h3>
+      <p>The inline-asm model <code>#[oblivious]</code> rests on classifies eighteen x86-64 instructions by which ones <em>define</em> ZF and CF, which merely write them, and which read them. That table is re-derived on x86-64 hosts by <code>mach.lang.target.isa.x64.probe</code>, which runs each instruction twice with RFLAGS preset all-set and all-clear and compares what the CPU did against the transcription. Defining the flags is the only fact that clears a taint, so a row that drifts from the silicon is a permission rather than a refusal.</p>
+      <p>Three rows are exempt and classified by reasoning instead. <code>popfq</code>, <code>iretq</code> and <code>syscall</code> pass the writer probe cleanly and are still not definers, because their flags come from the stack, the interrupt frame, or an existing value masked through <code>IA32_FMASK</code>. Where a value came <em>from</em> is structural rather than measurable. A host that is not x86-64 declines the probe by name.</p>
+
+      <h3 id="assurance-channels">What a timing harness can and cannot assure</h3>
+      <p>The leakage model has three channels, and no single sampling regime covers them (<a href="https://github.com/briar-systems/mach/issues/2363" target="_blank">mach#2363</a>):</p>
       <table>
         <thead><tr><th>Channel</th><th>Assured by</th></tr></thead>
         <tbody>
-          <tr><td>secret-dependent control flow (branches)</td><td>compile-time refusal + validation over lowered MIR and machine instructions</td></tr>
-          <tr><td>secret-dependent memory access (cache traces)</td><td>compile-time refusal + validation over lowered MIR and machine instructions</td></tr>
-          <tr><td>variable-latency instructions</td><td>instruction-selection refusal + translation validation against target CPU model</td></tr>
+          <tr><td>control-flow trace</td><td>the source-level branch gate. A latency-mode measurement can corroborate.</td></tr>
+          <tr><td>variable-latency operands</td><td>the sema and lowering gates. A latency-mode measurement can corroborate.</td></tr>
+          <tr><td>memory-address trace</td><td>the source-level <strong>secret-index and secret-address gates</strong>. Only an address-mode measurement can corroborate.</td></tr>
         </tbody>
       </table>
-      <p>The two harness modes need opposite sampling and neither substitutes for the other. Latency mode times a large batch of calls per sample, which is what lifts a running-time difference above clock resolution - and that same batching <em>hides</em> an address-trace leak, since every call in a batch is handed the same input and the single cache miss carrying the signal is averaged away. Two consequences worth stating plainly:</p>
+      <p>The two harness modes need opposite sampling and neither substitutes for the other. Latency mode times a large batch of calls per sample, which is what lifts a running-time difference above clock resolution. That same batching <em>hides</em> an address-trace leak: every call in a batch is handed the same input, so after the first call both input classes are reading a warm cache line and the single cache miss carrying the signal is averaged away. Measured on one function, a secret-indexed read over a table larger than the last-level cache, latency mode scored <code>|t|</code> of about 1 to 15 across runs, straddling its own threshold so it neither confirmed nor denied, while address mode, at one call per sample, scored in the hundreds. Two consequences worth stating plainly:</p>
       <ul>
         <li>A clean latency-mode number for a table lookup is <strong>not</strong> evidence of address-trace safety. It is the wrong instrument for that channel.</li>
         <li>An address-trace leak is only <em>measurable</em> when the table exceeds the last-level cache. A cache-resident table leaks its index just as truly and no timing harness will see it. For small tables the property rests entirely on the secret-index gate and on reading the emitted code.</li>
       </ul>
-      <p><strong>The known open holes:</strong></p>
-      <ul>
-        <li><strong><code>$fields</code> reflection projection inside a generic erases a secret field's secrecy</strong>, which discloses the secret. Proven, security-blocking.</li>
-        <li>The validator over-taints a wide secret on a narrow-ALU target, rejecting a public-count shift as a secret memory address. A false positive; it fails safe.</li>
-        <li>A member or index access through a <code>^Rec</code> or <code>^[N]T</code> - which this page documents as legal - fails at lowering, which does not strip the <code>^</code> before resolving the field. A spurious error, not a disclosure.</li>
-      </ul>
-      <p>The validator's scope is the lowered MIR; it trusts instruction selection, width legalization, register allocation, and encoding to be timing-preserving. Validation of the emitted machine code is future work.</p>
+
+      <h3 id="assurance-scope">Where the check runs</h3>
+      <p>The constant-time contract is checked at the <strong>IR level</strong>. The validator runs over the lowered, target-independent MIR before width legalization, instruction selection, register allocation, spilling, frame insertion, and encoding, and trusts those stages to be timing-preserving. What it refuses, it refuses closed: an operation it does not know, an out-of-range register reference, and inline assembly without a complete effect declaration are rejected, never defaulted to public.</p>
+      <p>A proof over the final allocated machine program, after selection, allocation, spills and frame insertion, over physical registers and flags, is planned additive work (<a href="https://github.com/briar-systems/mach/issues/3591" target="_blank">mach#3591</a>) and not something this version claims. Where mach does not own the later stages at all, as with a whole-module emitter such as SPIR-V, the contract is refused rather than assumed.</p>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -285,6 +297,10 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
       <a href="#zeroize">The zeroizing-write guarantee</a>
       <a href="#trusted-base">Trusted base</a>
       <a href="#assurance">Assurance</a>
+      <a class="sub" href="#assurance-harness">The timing harness</a>
+      <a class="sub" href="#assurance-flags">The x86-64 flags table</a>
+      <a class="sub" href="#assurance-channels">What a harness can assure</a>
+      <a class="sub" href="#assurance-scope">Where the check runs</a>
     </nav>
   </div>
 
