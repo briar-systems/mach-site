@@ -91,7 +91,7 @@
       <pre class="code"><code>[project]
 id      = <span class="str">"myproj"</span>      <span class="cmt"># root of every module path</span>
 version = <span class="str">"0.1.0"</span>
-mach    = <span class="str">"^5.4"</span>        <span class="cmt"># the compiler versions this project builds with</span>
+mach    = <span class="str">"^6.0"</span>        <span class="cmt"># the compiler versions this project builds with</span>
 src     = <span class="str">"src"</span>         <span class="cmt"># source dir</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>
 
@@ -112,8 +112,8 @@ need    = []
 
 [dep.std]
 git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-version = <span class="str">"^5.3.0"</span>      <span class="cmt"># newest std release that admits this compiler</span></code></pre>
-      <p><code>[project]</code> requires <code>id</code>, <code>version</code>, <code>src</code>, and <code>out</code>. <code>mach</code> states the <a href="manifest.html#compiler-range">compiler range</a>. A root manifest without it still builds, with a warning, and a later release makes it required. <code>src</code> is where module paths resolve, and vendored dependencies live under <code>dep/</code>. The full schema - targets, profiles, artifacts, dependencies, output templates - lives on the <a href="manifest.html">Manifest</a> page, and version ranges on <a href="dependencies.html#version-ranges">Dependencies</a>.</p>
+version = <span class="str">"^9.0"</span>        <span class="cmt"># newest std release that admits this compiler</span></code></pre>
+      <p><code>[project]</code> requires <code>id</code>, <code>version</code>, <code>src</code>, and <code>out</code>, and a root manifest also requires <code>mach</code>, the <a href="manifest.html#compiler-range">compiler range</a>. A root manifest without it is refused. <code>src</code> is where module paths resolve, and vendored dependencies live under <code>dep/</code>. The full schema - targets, profiles, artifacts, dependencies, output templates - lives on the <a href="manifest.html">Manifest</a> page, and version ranges on <a href="dependencies.html#version-ranges">Dependencies</a>.</p>
 
       <h2 id="module-paths">Files map to module paths</h2>
       <p>The path separator is <code>.</code>. A file at <code>&lt;src&gt;/foo/bar.mach</code> in a project with <code>id = "myproj"</code> is reachable as <code>myproj.foo.bar</code>.</p>
