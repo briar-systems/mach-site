@@ -110,7 +110,7 @@
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>-v</code></td><td>-</td><td>verbose readout: build phase timing, or per-test lines under <code>mach test</code></td></tr>
+          <tr><td><code>-v</code></td><td>-</td><td>verbose readout: build phase timing, plus per-test lines under <code>mach test</code></td></tr>
           <tr><td><code>-vv</code></td><td>-</td><td><code>-v</code> plus per-module / per-file (or passing-test) detail</td></tr>
           <tr><td><code>--quiet</code>, <code>-q</code></td><td>-</td><td>suppress non-error output</td></tr>
           <tr><td><code>--target &lt;name&gt;</code></td><td>target name</td><td>select a <code>[target.&lt;name&gt;]</code> entry</td></tr>
@@ -147,13 +147,12 @@
           <tr><td><code>--emit &lt;kind&gt;</code></td><td>obj, exe</td><td><code>obj</code> stops at the objects; <code>exe</code> (default) links a binary</td></tr>
           <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>codegen worker threads (default: host CPUs; <code>1</code> serialises)</td></tr>
           <tr><td><code>--plan</code></td><td>-</td><td>print the effective build plan and exit without building</td></tr>
-          <tr><td><code>--cache</code></td><td>-</td><td>reuse and publish persistent object images under the output directory (default off)</td></tr>
-          <tr><td><code>--no-cache</code></td><td>-</td><td>force an uncached build: no persistent object images and no build-step reuse</td></tr>
+          <tr><td><code>--no-cache</code></td><td>-</td><td>force an uncached build: no <code>obj/</code> reuse and no build-step reuse (default: the object cache is on)</td></tr>
           <tr><td><code>-L &lt;dir&gt;</code></td><td>dir</td><td>add a search directory for <code>-l</code>-resolved inputs; repeatable</td></tr>
           <tr><td><code>-l &lt;name&gt;</code></td><td>name</td><td>link a named object, archive, or shared library; repeatable</td></tr>
         </tbody>
       </table>
-      <p>Plus the global flags. <code>-O0</code> or <code>-O2</code> overrides the selected profile's <code>opt</code> for this invocation; absent one, the profile decides. <code>-O1</code> was removed and is refused (<code>-O1 was removed; use -O0 or -O2</code>). <code>--cache</code> and <code>--no-cache</code> cannot be combined. A bare <code>.o</code> / <code>.a</code> / <code>.so</code> / <code>.dylib</code> / <code>.dll</code> argument, or any <code>/</code>-bearing path, is linked verbatim.</p>
+      <p>Plus the global flags. <code>-O0</code> or <code>-O2</code> overrides the selected profile's <code>opt</code> for this invocation; absent one, the profile decides. <code>-O1</code> was removed and is refused (<code>-O1 was removed; use -O0 or -O2</code>). The build reads <code>obj/</code> as its object cache by default: a module whose object there carries the build's key is reused instead of lowered and generated again, and an edit rebuilds only that module and the modules whose view of it changed. A bare <code>.o</code> / <code>.a</code> / <code>.so</code> / <code>.dylib</code> / <code>.dll</code> argument, or any <code>/</code>-bearing path, is linked verbatim.</p>
 
       <h3 id="link-inputs">Link inputs</h3>
       <p><code>ext fun</code> declarations are forward references resolved at link time by external precompiled code - a loose <code>.o</code> object, a static <code>.a</code> archive, or a shared <code>.so</code> library. Inputs come from the command line and from the manifest's merged <code>libs</code> overlay; both sets are linked. An input that resolves to no existing file is a hard error, so a typo never silently drops a dependency.</p>
@@ -183,25 +182,25 @@
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
           <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>execute the binary as <code>&lt;cmd&gt; &lt;binary&gt; &lt;args...&gt;</code> instead of directly</td></tr>
-          <tr><td><code>--timeout_seconds &lt;n&gt;</code></td><td>count</td><td>terminate the run and its process group after <code>n</code> seconds, exiting <code>3</code> (default unbounded)</td></tr>
+          <tr><td><code>--timeout &lt;duration&gt;</code></td><td>duration</td><td>terminate the run and its process group after the duration (<code>30ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>), exiting <code>3</code> (default unbounded)</td></tr>
         </tbody>
       </table>
       <p><code>--runner</code> names a host-side launcher for binaries the host cannot exec directly, for example <code>mach run . --target windows --runner wine</code>. <code>&lt;cmd&gt;</code> is a single command name or path (no shell-style word splitting); a bare name is resolved on <code>PATH</code>. Without the flag the binary is exec'd directly, and a launch failure reports exit <code>127</code> when <code>execve</code> rejects the binary, with no auto-detection.</p>
 
       <h2 id="test">test</h2>
       <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
-      <p>Builds <strong>one dispatcher executable</strong> covering every <code>test</code> declaration (under the <code>tests</code> template) and runs each test as its own process (<code>&lt;exe&gt; &lt;idx&gt;</code>), reporting a per-module roll-up that expands failures. A crashing test reports its signal and the run continues. Only the current project's own tests run by default. A test build always links executables, even for a library target.</p>
+      <p>Builds the artifact's objects as <code>build</code> does, adds a test object <code>obj/&lt;project&gt;/&lt;module&gt;.test.o</code> beside each module that declares tests, links <strong>one dispatcher executable</strong> of only the selected tests under <code>test/&lt;artifact&gt;/</code>, and runs each test as its own process (<code>&lt;exe&gt; &lt;idx&gt;</code>), reporting a per-module roll-up that expands failures. A test is named by its qualified name, <code>&lt;module&gt;#&lt;identifier&gt;</code>. A crashing test reports its signal and the run continues. Only the current project's own tests run by default. A test build always links executables, even for a library target.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td><code>--filter &lt;pattern&gt;</code></td><td>pattern</td><td>run only tests whose name contains <code>&lt;pattern&gt;</code></td></tr>
+          <tr><td><code>--filter &lt;substr&gt;</code></td><td>substring</td><td>run only tests whose qualified name contains <code>&lt;substr&gt;</code></td></tr>
           <tr><td><code>--include-deps</code></td><td>-</td><td>also run tests declared in dependency modules</td></tr>
-          <tr><td><code>--list</code></td><td>-</td><td>list the collected tests and exit</td></tr>
-          <tr><td><code>--format &lt;kind&gt;</code></td><td>human, json</td><td><code>human</code> (default), or a <code>json</code> NDJSON event stream for tooling</td></tr>
+          <tr><td><code>--list</code></td><td>-</td><td>print each collected test's qualified name and test object path, and exit</td></tr>
+          <tr><td><code>--format &lt;kind&gt;</code></td><td>human, json</td><td><code>human</code> (default), or a <code>json</code> NDJSON event stream for tooling, schema <code>2</code></td></tr>
           <tr><td><code>--jobs &lt;n&gt;</code></td><td>count</td><td>run up to <code>n</code> test processes at once, and size the build's codegen workers</td></tr>
           <tr><td><code>--runner &lt;cmd&gt;</code></td><td>command</td><td>launch every test as <code>&lt;cmd&gt; &lt;exe&gt; &lt;idx&gt;</code> instead of exec'ing it directly</td></tr>
-          <tr><td><code>--timeout_seconds &lt;n&gt;</code></td><td>count</td><td>terminate a test process and its process group after <code>n</code> seconds (default unbounded)</td></tr>
-          <tr><td><code>--cache</code>, <code>--no-cache</code></td><td>-</td><td>as on <code>build</code></td></tr>
+          <tr><td><code>--timeout &lt;duration&gt;</code></td><td>duration</td><td>terminate a test process and its process group after the duration (<code>30ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>); a test that exceeds it is reported as timed out (default unbounded)</td></tr>
+          <tr><td><code>--no-cache</code></td><td>-</td><td>as on <code>build</code></td></tr>
         </tbody>
       </table>
       <p>Plus the <code>build</code> and global flags. <code>--runner</code> has the same semantics as on <code>run</code>. Without it, a test the host cannot launch reports a per-test failure - <code>FAIL(exit 127)</code> when <code>execve</code> rejects the binary, <code>FAIL(spawn)</code> when the spawn itself fails.</p>
@@ -222,7 +221,7 @@ mach fmt . --check               <span class="cmt"># ci: fail if anything is unf
 
       <h2 id="clean">clean</h2>
       <pre class="code"><code>mach clean &lt;path&gt;</code></pre>
-      <p>Removes the project's build output: the output directory trees declared by the manifest's <code>out</code> / <code>obj</code> / <code>ir</code> / <code>asm</code> templates. <code>&lt;path&gt;</code> is a project directory or a manifest file. It is idempotent and takes no options. Exit codes are its own: <code>0</code> ok, <code>1</code> no project or a bad manifest, <code>2</code> an IO failure.</p>
+      <p>Removes the project's build output for every declared target and profile: <code>obj/</code>, <code>ir/</code>, <code>asm/</code>, <code>.cache/</code>, <code>.stage/</code>, <code>test/</code>, and <code>dep/</code> under the output directory, along with every artifact output (see <a href="manifest.html#output-directory">the output directory</a>), so the build after it is a cold one that reuses nothing. <code>&lt;path&gt;</code> is a project directory or a manifest file. It is idempotent and takes no options. Exit codes are its own: <code>0</code> ok, <code>1</code> no project or a bad manifest, <code>2</code> an IO failure.</p>
 
       <h2 id="dep">dep</h2>
       <pre class="code"><code>mach dep &lt;action&gt; &lt;path&gt; [args] [options]</code></pre>
@@ -247,7 +246,7 @@ mach fmt . --check               <span class="cmt"># ci: fail if anything is unf
 
       <h2 id="init">init</h2>
       <pre class="code"><code>mach init [dir] [options]</code></pre>
-      <p>Scaffolds a new project in <code>[dir]</code> (default: the current directory). An absent directory is created, and an existing one is filled in. It writes a complete <code>mach.toml</code> - a <code>[project]</code> block whose <code>mach</code> key is the running compiler's caret range (<code>mach = "^5.4"</code>), <code>[target.&lt;os&gt;-&lt;isa&gt;]</code> entries for linux, windows, and darwin on the host architecture, one artifact, and debug and release profiles - plus a starter source file. It then initializes a Git repository and adds std as <code>mach dep add &lt;dir&gt; std --git https://github.com/briar-systems/mach-std</code> would: at the caret range of the newest std release whose <code>[project].mach</code> admits the running compiler, checked out at that release. Every refusal happens before the first write, so a refused init changes nothing.</p>
+      <p>Scaffolds a new project in <code>[dir]</code> (default: the current directory). An absent directory is created, and an existing one is filled in. It writes a complete <code>mach.toml</code> - a <code>[project]</code> block whose <code>mach</code> key is the running compiler's caret range (<code>mach = "^6.0"</code>), <code>[target.&lt;os&gt;-&lt;isa&gt;]</code> entries for linux, windows, and darwin on the host architecture, one artifact, and debug and release profiles - plus a starter source file. It then initializes a Git repository and adds std as <code>mach dep add &lt;dir&gt; std --git https://github.com/briar-systems/mach-std</code> would: at the caret range of the newest std release whose <code>[project].mach</code> admits the running compiler, checked out at that release. Every refusal happens before the first write, so a refused init changes nothing.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
@@ -289,7 +288,7 @@ freestanding-spirv    isa=spirv     os=freestanding  abi=spirv    object=spv</co
           <tr><td><code>0</code></td><td>success (for <code>test</code>, all tests passed)</td></tr>
           <tr><td><code>1</code></td><td>user error: missing project path, no <code>mach.toml</code>, unknown target, compile errors, an unresolvable link input (for <code>test</code>, any test failed)</td></tr>
           <tr><td><code>2</code></td><td>internal error</td></tr>
-          <tr><td><code>3</code></td><td>environment failure, where a command documents it: a filesystem failure in <code>fmt</code>, an unaddable dependency in <code>init</code>, an expired <code>--timeout_seconds</code> in <code>run</code></td></tr>
+          <tr><td><code>3</code></td><td>environment failure, where a command documents it: a filesystem failure in <code>fmt</code>, an unaddable dependency in <code>init</code>, an expired <code>--timeout</code> in <code>run</code></td></tr>
         </tbody>
       </table>
       <p><code>mach run</code> returns the child process's exit code directly.</p>
