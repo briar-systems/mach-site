@@ -89,7 +89,7 @@ id      = <span class="str">"demo"</span>                       <span class="cmt
 version = <span class="str">"0.1.0"</span>                      <span class="cmt"># required</span>
 src     = <span class="str">"src"</span>                        <span class="cmt"># required: source dir, project-root-relative</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>  <span class="cmt"># required: output-path template root</span>
-mach    = <span class="str">"^5.4"</span>                       <span class="cmt"># the compiler versions this project builds with</span>
+mach    = <span class="str">"^6.0"</span>                       <span class="cmt"># required in a root manifest: the compiler range</span>
 
 [target.linux]                        <span class="cmt"># a platform: a fully-spelled tuple</span>
 default = true
@@ -116,7 +116,7 @@ need    = []                          <span class="cmt"># category-qualified nam
 
 [dep.std]                             <span class="cmt"># a dependency: directory, manifest key, and id match</span>
 git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-version = <span class="str">"^5.3.0"</span>                  <span class="cmt"># a release range, or ref = "tag/..." for one exact selection</span></code></pre>
+version = <span class="str">"^7.4.1"</span>                  <span class="cmt"># a release range, or ref = "tag/..." for one exact selection</span></code></pre>
 
       <h2 id="project"><code>[project]</code></h2>
       <table>
@@ -126,7 +126,7 @@ version = <span class="str">"^5.3.0"</span>                  <span class="cmt">#
           <tr><td><code>version</code></td><td>string</td><td>Project version. Read by <code>$project.version</code> and <code>$project.version.{major,minor,patch}</code>, and stamped into a Windows executable's version resource. A release tag <code>vX.Y.Z</code> is a <a href="dependencies.html#resolution">release</a> only when this matches it.</td></tr>
           <tr><td><code>src</code></td><td>string</td><td>Source root, project-root-relative. Module paths resolve under it.</td></tr>
           <tr><td><code>out</code></td><td>string</td><td>The output-path template root, referenced as <code>{project.out}</code> by artifact <code>out</code>, step paths, and <code>cmd</code>s.</td></tr>
-          <tr><td><code>mach</code></td><td>string</td><td>The compiler versions this project builds with, as a <a href="dependencies.html#version-ranges">version range</a> such as <code>"^5.4"</code>. See <a href="#compiler-range">Compiler range</a>.</td></tr>
+          <tr><td><code>mach</code></td><td>string</td><td>The compiler versions this project builds with, as a <a href="dependencies.html#version-ranges">version range</a> such as <code>"^6.0"</code>. Required in a root manifest. See <a href="#compiler-range">Compiler range</a>.</td></tr>
         </tbody>
       </table>
       <div class="callout warn">
@@ -134,12 +134,32 @@ version = <span class="str">"^5.3.0"</span>                  <span class="cmt">#
         <p><code>[project]</code> permits only <code>id</code>, <code>version</code>, <code>src</code>, <code>out</code>, and <code>mach</code>. Any other key, <code>name</code> and <code>description</code> included, is an unknown-key error.</p>
       </div>
 
+      <h3 id="output-directory">The output directory</h3>
+      <p>Everything a build and its cache write lands under the expanded <code>out</code>, in one layout:</p>
+      <table>
+        <thead><tr><th>Path</th><th>Holds</th></tr></thead>
+        <tbody>
+          <tr><td><code>obj/</code></td><td>one object per module, each carrying its cache key; it is the object cache, and is read by developers and tooling too</td></tr>
+          <tr><td><code>ir/</code>, <code>asm/</code></td><td>the human-readable views <code>--emit-ir</code> and <code>--emit-asm</code> write</td></tr>
+          <tr><td><code>.cache/</code></td><td>compiler-only state, read and written by nothing but the compiler</td></tr>
+          <tr><td><code>.cache/steps/</code></td><td>one fingerprint stamp per <a href="#steps">build step</a></td></tr>
+          <tr><td><code>.stage/</code></td><td>build step scratch space, one directory per step, reset before the step runs</td></tr>
+          <tr><td><code>test/&lt;artifact&gt;/dispatch.o</code></td><td>the test dispatcher object of a tested artifact</td></tr>
+          <tr><td><code>test/&lt;artifact&gt;/&lt;artifact&gt;</code></td><td>the test dispatcher executable</td></tr>
+          <tr><td><code>test/&lt;artifact&gt;/log/</code></td><td>a failing test's captured output</td></tr>
+          <tr><td><code>dep/&lt;id&gt;/</code></td><td>a dependency's artifact outputs</td></tr>
+        </tbody>
+      </table>
+      <p>Test objects sit in <code>obj/</code> beside the module objects, as <code>obj/&lt;project&gt;/&lt;module&gt;.test.o</code>. Artifact outputs go wherever their own <code>out</code> names under the directory.</p>
+      <p><code>mach build</code> and <code>mach test</code> read <code>obj/</code> as the object cache by default. Each module has its own key, so an edit rebuilds only that module and the modules whose view of it changed, and a warm build links the same binary a cold one does. An object that is missing or carries another key is rebuilt, never linked stale. <code>--no-cache</code> forces an uncached build.</p>
+      <p><code>mach clean</code> removes <code>obj/</code>, <code>ir/</code>, <code>asm/</code>, <code>.cache/</code>, <code>.stage/</code>, <code>test/</code>, and <code>dep/</code> along with every artifact output, for every declared target and profile, so the build after it is a cold one that reuses nothing. A step output may not name a path inside <code>obj/&lt;project.id&gt;/</code>, <code>.cache/</code>, or <code>.stage/</code>.</p>
+
       <h3 id="compiler-range">Compiler range</h3>
       <p><code>mach</code> states which compilers a project builds with. Every command that reads the dependency closure - <code>build</code>, <code>test</code>, <code>check</code>, <code>mach dep verify</code>, and the language server - checks it for the root and for every realized dependency. A compiler outside any of those ranges is refused once, with every unmet requirement and the chain that states it:</p>
       <pre class="code"><code>error: this is mach 5.2.1, and the dependency closure does not accept it:
     app (mach.toml) requires mach ^5.3
     app -> gfx -> glfw requires mach >=5.4, &lt;6</code></pre>
-      <p>A root manifest without <code>mach</code> still builds, with a warning that prints the line to add. A later release makes the key required. A dependency without it states no constraint. <code>mach init</code> writes the running compiler's caret range, such as <code>mach = "^5.4"</code>. Dependency resolution also reads it: a release whose <code>mach</code> range excludes the running compiler is never selected.</p>
+      <p>A root manifest must state <code>mach</code>. One without it is refused, with the line to add. A dependency without it states no constraint. <code>mach init</code> writes the oldest release of the running compiler's major that reads the key: <code>mach = "^6.0"</code> for every 6.x compiler. Dependency resolution also reads it: a release whose <code>mach</code> range excludes the running compiler is never selected.</p>
       <p>The compiler's version is the last release it was built from. A build from an unreleased tree reports that release, so a project cannot require an unreleased feature by version.</p>
 
       <h2 id="targets">Targets</h2>
@@ -297,11 +317,11 @@ export  = true</code></pre>
           <tr><td><code>in</code></td><td>yes</td><td>Declared input file list. Accepts globs (<code>*</code>, <code>**</code>), expanded sorted for a stable fingerprint. A glob that matches nothing is an error.</td></tr>
           <tr><td><code>out</code></td><td>yes</td><td>Declared output file list. Concrete paths only: a glob here is an error, since demand matching and caching expand <code>out</code> verbatim.</td></tr>
           <tr><td><code>need</code></td><td>yes</td><td>Array of <code>step.&lt;name&gt;</code> requirements or <code>step.&lt;pattern&gt;</code> globs this step must run after. Steps may require only steps. Cycles error. <code>[]</code> for none.</td></tr>
-          <tr><td><code>timeout_seconds</code></td><td>no</td><td>Positive integer seconds after which the step process group is terminated and the build fails. Omit for an unbounded step.</td></tr>
+          <tr><td><code>timeout</code></td><td>no</td><td>Duration string (<code>"30ms"</code>, <code>"30s"</code>, <code>"5m"</code>, <code>"1h"</code>) after which the step process group is terminated and the build fails. Omit for an unbounded step.</td></tr>
         </tbody>
       </table>
       <p>Steps carry <strong>no filters</strong> and <strong>never run automatically</strong>. A step runs only when demanded: by a selected <code>[link.X]</code> whose <code>local</code> <code>path</code> matches the step's <code>out</code>, by another step's <code>need</code>, or by an artifact's <code>need</code>. Because a step has no filter of its own, the condition for running it lives in the link entry that demands it.</p>
-      <p>A step is cached by content: its declared inputs, resolved executable, expanded arguments, and effective environment contribute to its fingerprint. An unchanged step whose outputs still exist is skipped. Every step process inherits the active build cell target tuple as <code>MACH_TARGET_ISA</code>, <code>MACH_TARGET_OS</code>, and <code>MACH_TARGET_ABI</code>.</p>
+      <p>A step is cached by content: its declared inputs, resolved executable, expanded arguments, and effective environment contribute to its fingerprint. An unchanged step whose outputs still exist is skipped. The fingerprint of the last successful run is kept as a stamp in <code>{project.out}/.cache/steps/</code>, and a step's outputs under <code>{project.out}</code> are written into scratch space in <code>{project.out}/.stage/&lt;name&gt;/</code> and published only once the step succeeds. A declared <code>out</code> inside <code>.cache/</code> or <code>.stage/</code> fails at manifest load. Every step process inherits the active build cell target tuple as <code>MACH_TARGET_ISA</code>, <code>MACH_TARGET_OS</code>, and <code>MACH_TARGET_ABI</code>.</p>
 
       <h2 id="dependencies">Dependencies</h2>
       <p>Each <code>[dep.&lt;id&gt;]</code> names a dependency realized under <code>dep/&lt;id&gt;/</code>. The key, the directory, and the dependency's own <code>[project].id</code> are one name. The build resolves a dependency purely by vendor layout: it reads that directory's own <code>mach.toml</code> for its <code>[project].id</code> and <code>src</code>. A module path whose head matches a dep <code>id</code> resolves into that dep tree. A stanza declares exactly one source, <code>git</code> or <code>path</code>, and a <code>git</code> stanza exactly one selector, <code>version</code> or <code>ref</code>.</p>
@@ -363,7 +383,7 @@ export  = true</code></pre>
       <pre class="code"><code>[project]
 id      = <span class="str">"demo"</span>
 version = <span class="str">"0.1.0"</span>
-mach    = <span class="str">"^5.4"</span>
+mach    = <span class="str">"^6.0"</span>
 src     = <span class="str">"src"</span>
 out     = <span class="str">"out/{target.name}/{profile.name}"</span>
 
@@ -425,7 +445,7 @@ need    = []
 
 [dep.std]
 git     = <span class="str">"https://github.com/briar-systems/mach-std"</span>
-version = <span class="str">"^5.3.0"</span></code></pre>
+version = <span class="str">"^7.4.1"</span></code></pre>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -444,6 +464,7 @@ version = <span class="str">"^5.3.0"</span></code></pre>
       <div class="toc-title">On this page</div>
       <a href="#schema">The schema</a>
       <a href="#project">[project]</a>
+      <a class="sub" href="#output-directory">The output directory</a>
       <a class="sub" href="#compiler-range">Compiler range</a>
       <a href="#targets">Targets</a>
       <a class="sub" href="#recognized-tuples">Accepted tuple values</a>
