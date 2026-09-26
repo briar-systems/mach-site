@@ -126,7 +126,7 @@
 <span class="deco">#[testing]</span>
 <span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">filled</span>(<span class="param">n</span>: <span class="type">u32</span>) <span class="type">Queue</span> { ... }
 
-<span class="kw">test</span> <span class="str">"queue: drains in order"</span> {
+<span class="kw">test</span> <span class="fn">queue__drains_in_order</span> {
     <span class="kw">var</span> <span class="param">q</span>: <span class="type">Queue</span> = <span class="fn">filled</span>(<span class="num">3</span>);          <span class="cmt"># a test body may use the fixture</span>
     ...
 }
@@ -147,7 +147,7 @@
 
       <h3 id="symbol"><code>symbol(str)</code> - linker name</h3>
       <p>Overrides the emitted or imported symbol name. Applies to functions and globals. Without it the compiler mangles the mach name; <code>symbol</code> gives the linker the exact name.</p>
-      <p>The mangled name is the source FQN <em>as the source spells it</em> - <code>std.types.string.str_len</code>, with generic arguments after a <code>$</code> - so a profile, a crash report, and a disassembly all read the name you wrote. There is no prefix: a mangled name always contains a <code>.</code> and a C identifier never can. <code>ext fun</code> foreign symbols and <code>#[symbol("...")]</code> names are literal and unaffected.</p>
+      <p>The mangled name is the source FQN <em>as the source spells it</em> - <code>std.types.string.str_len</code>, with generic arguments after a <code>$</code> - so a profile, a crash report, and a disassembly all read the name you wrote. A test's symbol is its <a href="testing.html#qualified-names">qualified name</a>, <code>&lt;module path&gt;#&lt;identifier&gt;</code>. There is no prefix: a mangled name always contains a <code>.</code> or a <code>#</code>, and a C identifier never can. <code>ext fun</code> foreign symbols and <code>#[symbol("...")]</code> names are literal and unaffected.</p>
       <pre class="code"><code><span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
 <span class="kw">fun</span> <span class="fn">entry</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> { ... }
 
