@@ -49,20 +49,6 @@ jobs:
       - name: Run the ecosystem page tests
         run: node --test test/ecosystem.test.js
 
-  # the catalog bake only the pages deploy uses, removed at the cutover
-  pages-bake:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Run the bake tests
-        run: node --test test/bake.test.js
-
-      - name: Bake the ecosystem catalog
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/bake-ecosystem.js
-
   highlight:
     runs-on: ubuntu-latest
     steps:
@@ -160,7 +146,7 @@ jobs:
 
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, pages-bake, highlight, llms, container]
+    needs: [install-check, bake-version, ecosystem, highlight, llms, container]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main

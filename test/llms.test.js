@@ -115,6 +115,8 @@ test("machlang.org links resolve against the checkout", () => {
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/install.sh")), null);
+  assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem.json")), null);
+  assert.match(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/nope")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/nope.html")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html#no-such-anchor")), /no id/);
 });

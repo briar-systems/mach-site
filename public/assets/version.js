@@ -1,5 +1,6 @@
-// advertised mach version. a pages deploy bakes the latest mach release into the
-// placeholder (.github/scripts/bake-version.sh), and the server serves it unbaked.
+// advertised mach version. the server serves it unbaked, and only the llms build
+// bakes the latest mach release into the placeholder (.github/scripts/bake-version.sh
+// in ci, the Dockerfile's llms stage in the image).
 // the page applies a baked value first, then asks the github api for the
 // latest release and re-applies if the answer is a well-formed tag. any failure
 // keeps the baked value, and an unbaked page leaves the badges empty. populates
