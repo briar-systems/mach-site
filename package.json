@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "the railway sdk that evaluates .railway/railway.ts",
+  "devDependencies": {
+    "railway": "3.11.0"
+  }
+}

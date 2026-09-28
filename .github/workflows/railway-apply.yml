@@ -1,0 +1,37 @@
+name: Railway apply
+
+# applies the plan pinned for the pull request a push to main merged. it never
+# plans again: a drifted environment or a .railway/ tree other than the planned
+# one fails the apply, and the release pull request needs a fresh plan.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".railway/**"
+      - "package.json"
+      - "package-lock.json"
+
+# pull-requests: read resolves the merged pull request, actions: read fetches its plan
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: railway-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: railwayapp/config@v1
+        with:
+          command: apply
+          cli-version: "5.63.1"
+          # a plan that deletes anything, such as a secret the file stopped
+          # preserving, fails here instead of applying
+          confirm-destructive: "false"
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}

@@ -56,7 +56,7 @@ function files(dir) {
 
 const served = files(PUBLIC)
   .map((f) => "/" + path.relative(PUBLIC, f).split(path.sep).join("/"))
-  .filter((p) => !/\.(gz|br)$/.test(p) && p !== "/ecosystem/data.json" && !p.startsWith("/llms"));
+  .filter((p) => !/\.(gz|br)$/.test(p) && !p.startsWith("/llms"));
 
 test("SITE_URL names the server under test", () => {
   assert.ok(BASE, "set SITE_URL to the running server");
