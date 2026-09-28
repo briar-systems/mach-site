@@ -44,32 +44,32 @@ ref = "tag/v9.4.1"
 
 [dep.http]
 git = "https://github.com/briar-systems/mach-http"
-ref = "tag/v0.25.0"
+ref = "tag/v0.25.1"
 
 [dep.hedge]
 git = "https://github.com/briar-systems/hedge"
-ref = "tag/v0.16.0"
+ref = "tag/v0.17.0"
 
 [dep.laurel]
 git = "https://github.com/briar-systems/laurel"
-ref = "tag/v0.22.0"
+ref = "tag/v0.23.0"
 
 [dep.graft]
 git = "https://github.com/briar-systems/graft"
-ref = "tag/v0.2.0"
+ref = "tag/v0.3.0"
 
 [dep.crypto]
 git = "https://github.com/briar-systems/mach-crypto"
-ref = "tag/v0.25.0"
+ref = "tag/v0.26.0"
 
 [dep.tls]
 git = "https://github.com/briar-systems/mach-tls"
-ref = "tag/v0.15.0"
+ref = "tag/v0.16.0"
 
 [dep.quic]
 git = "https://github.com/briar-systems/mach-quic"
-ref = "tag/v0.24.0"
+ref = "tag/v0.25.1"
 
 [dep.acme]
 git = "https://github.com/briar-systems/mach-acme"
-ref = "tag/v0.13.0"
+ref = "tag/v0.14.0"
