@@ -34,22 +34,42 @@ targets = ["*"]
 link = []
 need = []
 
+# every dependency of the closure is named here at an exact release tag, so a
+# checkout without git metadata, such as a container build context, realizes
+# the same tree the committed gitlinks pin. the ones this project does not
+# import itself are reached through hedge and laurel.
 [dep.std]
 git = "https://github.com/briar-systems/mach-std"
-version = "^9.4.1"
+ref = "tag/v9.4.1"
 
 [dep.http]
 git = "https://github.com/briar-systems/mach-http"
-version = "^0.25"
+ref = "tag/v0.25.0"
 
 [dep.hedge]
 git = "https://github.com/briar-systems/hedge"
-version = "^0.16"
+ref = "tag/v0.16.0"
 
 [dep.laurel]
 git = "https://github.com/briar-systems/laurel"
-version = "^0.22"
+ref = "tag/v0.22.0"
 
 [dep.graft]
 git = "https://github.com/briar-systems/graft"
-version = "^0.2"
+ref = "tag/v0.2.0"
+
+[dep.crypto]
+git = "https://github.com/briar-systems/mach-crypto"
+ref = "tag/v0.25.0"
+
+[dep.tls]
+git = "https://github.com/briar-systems/mach-tls"
+ref = "tag/v0.15.0"
+
+[dep.quic]
+git = "https://github.com/briar-systems/mach-quic"
+ref = "tag/v0.24.0"
+
+[dep.acme]
+git = "https://github.com/briar-systems/mach-acme"
+ref = "tag/v0.13.0"
