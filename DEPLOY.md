@@ -26,8 +26,7 @@ One container from `Dockerfile`:
 - The final image is `FROM scratch`: the server at `/srv/site/site`, its
   configuration at `/srv/site/hedge.toml` (the image's command, so a run can
   name another), the site at `/srv/site/public/`, and the CA bundle at
-  `/etc/ssl/certs/ca-certificates.crt`. It runs as uid and gid 65534 unless
-  Railway's `RAILWAY_RUN_UID` says otherwise (see Variables).
+  `/etc/ssl/certs/ca-certificates.crt`. It runs as uid and gid 65534.
 
 The server is hedge with the site's laurel application mounted through graft.
 It listens on plain HTTP/1.1 at `LISTEN`, since Railway terminates TLS at its
@@ -40,13 +39,16 @@ flight for up to 10 seconds, and exits 0.
 The ecosystem catalog is refreshed by a background task every 5 minutes, and
 at once when mach-ecosystem's webhook calls `/hooks/ecosystem`. Each refresh
 reads `entries.json` from mach-ecosystem's `main` and GitHub's GraphQL API
-with `GITHUB_TOKEN`, publishes the new catalog, and writes it to
-`/data/ecosystem.json` on the volume. At start the server publishes the
-volume's copy before it asks GitHub, so a restart while GitHub is down still
-serves the last catalog, marked stale once it is over 10 minutes old, and the
-page shows its age once it is over an hour old. With no
-copy and no GitHub, `/ecosystem/` shows a notice linking to mach-ecosystem.
-Page requests never call GitHub.
+with `GITHUB_TOKEN`, and publishes the new catalog. A catalog that misses its
+refreshes is marked stale once it is over 10 minutes old, and the page shows
+its age once it is over an hour old. With no catalog and no GitHub,
+`/ecosystem/` shows a notice linking to mach-ecosystem. Page requests never
+call GitHub.
+
+By default nothing is kept across restarts: a deployment starts with no
+catalog and has one as soon as its first refresh answers, within seconds of
+starting. Keeping the catalog on a volume is an option (see [Keeping the
+catalog on a volume](#keeping-the-catalog-on-a-volume)).
 
 A build needs outbound access to github.com (the mach release, the dependencies
 and the mach docs) and about 2 GB of memory at its peak.
@@ -76,16 +78,13 @@ In the Railway project, create the service:
 4. **Settings → Deploy:** leave the start command empty (the image runs the
    server with `/srv/site/hedge.toml`), one replica, and serverless (app
    sleeping) off.
-5. **Volume:** right-click the service (or **⌘K → Volume**) and attach a new
-   volume with mount path `/data`, the smallest size the plan offers. The
-   catalog file is tens of kilobytes. A service with a volume cannot run two
-   deployments at once, so Railway stops the old deployment before the new one
-   starts, and a redeploy is unavailable for the few seconds that takes: the
-   overlap setting has no effect then.
+5. No volume. The default mode keeps nothing on disk, so deployments overlap
+   and a redeploy drops no request.
 
 ## 2. Variables
 
-Set these under **Variables**. Nothing else is read.
+Set these under **Variables**. Nothing else is read, except the two variables of
+the optional volume ([Keeping the catalog on a volume](#keeping-the-catalog-on-a-volume)).
 
 | name | purpose | example | secret |
 |---|---|---|---|
@@ -93,7 +92,6 @@ Set these under **Variables**. Nothing else is read.
 | `LISTEN` | the address the server listens on, `host:port`, read by `hedge.toml` through `${ENV:LISTEN}`. The image defaults it to `0.0.0.0:8080`, so setting it is optional as long as `PORT` is `8080` | `0.0.0.0:8080` | no |
 | `GITHUB_TOKEN` | the token the catalog refresh sends GitHub's GraphQL API. A fine-grained personal access token of a machine account, not a person's, with **Repository access: Public repositories (read-only)** and no permissions, so the rate limit (5,000 points an hour, of which the refresh uses about 12) is the machine account's. Set a reminder for its expiry. The server refuses to start without it | `github_pat_11AAAA...` | yes |
 | `ECOSYSTEM_WEBHOOK_SECRET` | the secret mach-ecosystem's webhook signs each delivery with (`X-Hub-Signature-256`). Generate it with `openssl rand -hex 32` and enter the same value in the webhook (step 5). The server refuses to start without it | `3f9c...` (64 hex characters) | yes |
-| `RAILWAY_RUN_UID` | Railway mounts volumes owned by root, so the process must run as root to write `/data`. Without it the catalog is served and refreshed but never kept, and a restart while GitHub is down has nothing to serve | `0` | no |
 
 A change to any variable redeploys the service. Rotating a secret is setting
 its new value here, and for the webhook secret also in the webhook, in either
@@ -111,16 +109,13 @@ Deploy the service (a push to `main` deploys it from then on). The deployment
 goes live once `/healthz` answers `200`. The first deploy's log shows:
 
 ```
-site: no catalog on the volume at /data/ecosystem.json
 site: serving site on 2 workers
 site: catalog refreshed: <n> entries, <m> with github metadata
 ```
 
-A later deploy shows `site: published the catalog kept at /data/ecosystem.json`
-in place of the first line. A line `site: catalog refresh failed: ...` names
-what went wrong: `answered with an error status (cause 401)` from the GraphQL
-API is a wrong `GITHUB_TOKEN`. `site: the catalog could not be kept at
-/data/ecosystem.json` is a missing volume or `RAILWAY_RUN_UID`.
+A line `site: catalog refresh failed: ...` names what went wrong:
+`answered with an error status (cause 401)` from the GraphQL API is a wrong
+`GITHUB_TOKEN`.
 
 ## 5. Webhook on mach-ecosystem
 
@@ -206,13 +201,10 @@ Then check the service itself:
 
 - **Logs:** the deploy log shows one `request completed` line per request
   above, on stdout.
-- **Drain:** redeploy the service (**Deployments → ⋯ → Redeploy**). The old
-  deployment's log ends with `graft: stopped`, which it prints only after a
-  drain that finished every request in flight. Because of the volume, the
-  site is unavailable for the seconds between that and the new deployment's
-  health check passing.
-- **Persistence:** after the redeploy, the new deployment's log starts with
-  `site: published the catalog kept at /data/ecosystem.json`.
+- **Drain:** redeploy the service (**Deployments → ⋯ → Redeploy**) while
+  running `while :; do curl -s -o /dev/null -w '%{http_code}\n' "$SITE/"; done`.
+  Every line is `200`, and the old deployment's log ends with `site: stopped`,
+  which it prints only after a drain that finished every request in flight.
 - **Webhook:** in mach-ecosystem's webhook, **Recent Deliveries → ⋯ →
   Redeliver** the ping. It answers `202`, and `catalog_generated` in
   `/healthz` moves to that moment.
@@ -279,3 +271,35 @@ GitHub Pages (`185.199.108.153`, `185.199.109.153`, `185.199.110.153`,
 
       Merge it into `dev`, then release `dev` to `main` as usual. Railway
       deploys `main`.
+
+## Keeping the catalog on a volume
+
+Optional. With a volume, a restart while GitHub is down serves the last
+catalog, marked with its age, instead of the unavailable notice until GitHub
+answers. It costs two things:
+
+- **A few seconds of downtime per redeploy.** Railway cannot run two
+  deployments on one volume, so it stops the old deployment before the new one
+  starts, and the overlap setting has no effect.
+- **The process runs as root.** Railway mounts volumes owned by root, so
+  `RAILWAY_RUN_UID=0` is needed for the server to write to it.
+
+To turn it on:
+
+1. Attach a volume to the service (right-click the service, or **⌘K →
+   Volume**) with mount path `/data`, the smallest size the plan offers. The
+   catalog file is tens of kilobytes.
+2. Set these variables:
+
+   | name | purpose | example | secret |
+   |---|---|---|---|
+   | `ECOSYSTEM_SNAPSHOT_PATH` | the file the catalog is kept in, on the volume. Each refresh replaces it whole, and a start publishes it before it asks GitHub. Unset keeps nothing | `/data/ecosystem.json` | no |
+   | `RAILWAY_RUN_UID` | runs the process as root, which writing to the root-owned volume needs | `0` | no |
+
+3. After the redeploy, the log starts with
+   `site: no catalog on the volume at /data/ecosystem.json` once, and with
+   `site: published the catalog kept at /data/ecosystem.json` on every
+   deploy after. `site: the catalog could not be kept at ...` is a missing
+   volume or `RAILWAY_RUN_UID`.
+
+To turn it off, delete both variables, then the volume.
