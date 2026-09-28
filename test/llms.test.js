@@ -11,7 +11,7 @@ const http = require("node:http");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const llms = require("../.github/scripts/build-llms.js");
-const { links, checkLocal, served: servedPaths } = require("../.github/scripts/check-links.js");
+const { links, checkLocal } = require("../.github/scripts/check-links.js");
 
 const ROOT = path.resolve(__dirname, "..", "public");
 const BASE = "https://machlang.org/docs/page.html";
@@ -110,9 +110,10 @@ test("links finds link targets and bare urls, never code", () => {
 test("machlang.org links resolve against the checkout and the server's routes", () => {
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/llms-full.txt")), null);
-  assert.ok(servedPaths().includes("/llms.txt"));
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/install.sh")), null);
+  assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem.json")), null);
+  assert.match(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/nope")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/nope.html")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html#no-such-anchor")), /no id/);
 });

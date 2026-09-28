@@ -1,0 +1,35 @@
+name: Railway plan
+
+# plans .railway/railway.ts against production on every pull request that
+# changes it, pins the plan as an artifact and comments it on the pull request.
+# the apply on main applies the plan pinned for the merged pull request.
+on:
+  pull_request:
+    paths:
+      - ".railway/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+  pull-requests: write
+  # posts the plan comment as the railway app, which is installed on the org
+  id-token: write
+
+concurrency:
+  group: railway-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    # forks get no secrets
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: railwayapp/config@v1
+        with:
+          command: plan
+          cli-version: "5.63.1"
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
