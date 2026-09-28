@@ -21,6 +21,7 @@ use std.chrono.time;
 use std.print;
 use std.types.bool.bool;
 use std.types.bool.false;
+use std.types.bool.true;
 use std.types.option.opt;
 use std.types.result.res;
 use std.types.size.usize;
@@ -152,8 +153,11 @@ pub fun assemble(site: *Site, setup: *host.Setup) bool {
     ret app.assemble(?site.app, assembly);
 }
 
-# release what the application holds, once hedge has drained and stopped it
+# release what the application holds, once hedge has drained and stopped it.
+# an application a refused start never started holds nothing to release
 pub fun release(site: *Site) bool {
-    if (site == nil || !app.release(?site.app)) { ret false; }
+    if (site == nil)                                  { ret false; }
+    if (site.controller.state == lifecycle.ASSEMBLED) { ret true; }
+    if (!app.release(?site.app))                      { ret false; }
     ret lifecycle.destroy(?site.controller);
 }
