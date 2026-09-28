@@ -20,6 +20,8 @@ One container from `Dockerfile`:
   names, builds the server with `--profile release`, and writes a `.gz` and a
   `.br` beside every text file under `public/`.
 - The llms stage builds `llms.txt` and `llms-full.txt` for the newest mach
+  release at the time of the build. They change only with a build, so
+  redeploy the service (**Deployments → ⋯ → Redeploy**) after each mach
   release.
 - The final image is `FROM scratch`: the server at `/srv/site/site`, its
   configuration at `/srv/site/hedge.toml` (the image's command, so a run can

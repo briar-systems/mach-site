@@ -7,8 +7,8 @@
 # public/ and the CA bundle, and nothing else.
 
 # the compiler, and the sha256 its release lists in SHA256SUMS
-ARG MACH_VERSION=6.3.0
-ARG MACH_SHA256=e42717ae4f54e3e23c1b3d12f741ccf15616f6465018f0f6eaed7f0550bea3a9
+ARG MACH_VERSION=6.5.0
+ARG MACH_SHA256=d08913e34e379d4a0e34f96d7e62d797b87a0e64de3759a34ea6d1812585f2e9
 
 FROM debian:bookworm-slim AS build
 ARG MACH_VERSION
