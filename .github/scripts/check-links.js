@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// check every link in the given markdown files (default llms.txt and llms-full.txt).
-// a link is a markdown link target or a bare url in prose, outside code. machlang.org
-// urls resolve against this checkout, fragments included, since the files ship with
-// it. every other url must answer 2xx over http after redirects. exits 1 on any failure.
+// check every link in the given markdown files (default the llms templates
+// build-llms.js writes to out/llms). a link is a markdown link target or a bare url
+// in prose, outside code. @MACH_VERSION@ is read as MACH_VERSION from the
+// environment, which a file carrying it needs. machlang.org urls resolve against
+// this checkout, fragments included, or name a route the server answers itself.
+// every other url must answer 2xx over http after redirects. exits 1 on any failure.
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { mapText, parse } = require("./build-llms.js");
+const { VERSION, mapText, parse } = require("./build-llms.js");
 
 const SITE_HOST = "machlang.org";
 const CONCURRENCY = 8;
@@ -27,6 +29,16 @@ function links(md) {
     return seg;
   });
   return found;
+}
+
+// the paths hedge.toml routes to the application rather than to a file
+function served() {
+  const config = fs.readFileSync(path.resolve(__dirname, "..", "..", "hedge.toml"), "utf8");
+  return config
+    .split(/^\[\[route\]\]$/m)
+    .slice(1)
+    .filter((route) => /^service = "site"$/m.test(route))
+    .map((route) => /^path = "([^"]+)"$/m.exec(route)[1]);
 }
 
 // the file a machlang.org path serves from the checkout
@@ -55,6 +67,7 @@ function ids(file) {
 }
 
 function checkLocal(root, url) {
+  if (served().includes(url.pathname)) { return null; }
   const file = localFile(root, url.pathname);
   if (!file || !fs.existsSync(file)) { return `no file in the checkout for ${url.pathname}`; }
   const frag = decodeURIComponent(url.hash.slice(1));
@@ -125,10 +138,16 @@ async function check(root, urls) {
 async function main() {
   const root = path.resolve(__dirname, "..", "..", "public");
   const files = process.argv.slice(2);
-  const targets = files.length ? files : ["llms.txt", "llms-full.txt"].map((f) => path.join(root, f));
+  const built = path.resolve(__dirname, "..", "..", "out", "llms");
+  const targets = files.length ? files : ["llms.txt.in", "llms-full.txt.in"].map((f) => path.join(built, f));
   const urls = [];
   for (const f of targets) {
-    for (const u of links(fs.readFileSync(f, "utf8"))) { if (!urls.includes(u)) { urls.push(u); } }
+    let md = fs.readFileSync(f, "utf8");
+    if (md.includes(VERSION)) {
+      if (!/^\d+\.\d+\.\d+$/.test(process.env.MACH_VERSION || "")) { throw new Error(`${f} carries ${VERSION}: set MACH_VERSION to a release, such as 6.7.0`); }
+      md = md.replaceAll(VERSION, process.env.MACH_VERSION);
+    }
+    for (const u of links(md)) { if (!urls.includes(u)) { urls.push(u); } }
   }
   const failures = await check(root, urls);
   for (const f of failures) { console.error(`broken: ${f.url} (${f.why})`); }
@@ -143,4 +162,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { links, localFile, checkLocal };
+module.exports = { links, localFile, checkLocal, served };
