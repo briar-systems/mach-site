@@ -1,0 +1,776 @@
+# the catalog refresh: a hedge background task that owns the snapshot
+#
+# each run fetches mach-ecosystem's entries.json, asks github's graphql api for
+# the metadata of every github repository it lists, 100 to a query, writes the
+# catalog document, publishes its snapshot and keeps the document on the
+# volume. the first run publishes the volume's copy before it asks github, so
+# a restart serves the last good catalog whether github answers or not. a run
+# that fails publishes nothing and leaves the current snapshot in place.
+#
+# runs are single-flight: the facility runs one at a time and coalesces
+# triggers. every step is non-blocking, and the run's state lives here, reset
+# whenever a new run begins.
+
+use crypto.contracts;
+use hedge.clock;
+use hedge.outbound;
+use hedge.service;
+use hedge_task: hedge.task;
+use http.core.field;
+use http.core.method;
+use laurel_secret: laurel.secret;
+use site.catalog.snapshot;
+use site.text;
+use A: std.allocator;
+use std.allocator.fixed;
+use std.data.json;
+use std.filesystem;
+use io_error: std.io.error;
+use std.print;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.error.err;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+pub val PERIOD_NS:  u64 = 300000000000;
+val     TIMEOUT_NS: u64 = 120000000000;
+# github's graphql api answers at most 100 repositories per query cheaply
+val     BATCH:       usize = 100;
+pub val MAX_ENTRIES: usize = 1024;
+
+val SOURCE:         str = "https://github.com/briar-systems/mach-ecosystem";
+val OFFICIAL_OWNER: str = "briar-systems";
+
+val     RESPONSE_BYTES: usize = 1048576;
+val     REQUEST_BYTES:  usize = 65536;
+val     LISTING_BYTES:  usize = 1048576;
+val     META_BYTES:     usize = 1048576;
+pub val DOC_BYTES:      usize = 2097152;
+val     ARENA_BYTES:    usize = 4194304;
+val     PATH_ARENA:     usize = 16384;
+val     AUTH_BYTES:     usize = 512;
+val     FIELD_ITEMS:    usize = 64;
+
+pub val SLOT_COUNT: usize = 4;
+pub val SLOT_BYTES: usize = 4194304;
+val     SLOT_WORDS: usize = 2097152;
+
+val URL_BYTES: usize = 512;
+
+val PHASE_START:   u8 = 0;
+val PHASE_ENTRIES: u8 = 1;
+val PHASE_BATCH:   u8 = 2;
+val PHASE_QUERY:   u8 = 3;
+val PHASE_PUBLISH: u8 = 4;
+
+# one github repository an entry points at
+rec Target {
+    entry: usize;
+    owner: view.View;
+    name:  view.View;
+}
+
+# the metadata of one entry, as a json fragment in `meta`
+rec Found {
+    present:  bool;
+    official: bool;
+    off:      usize;
+    len:      usize;
+}
+
+pub rec Refresher {
+    # set once when the task is registered
+    entries_url:     [URL_BYTES]u8;
+    entries_url_len: usize;
+    graphql_url:     [URL_BYTES]u8;
+    graphql_url_len: usize;
+    path:            [URL_BYTES]u8;
+    persist:         bool;
+    secrets:         laurel_secret.Source;
+    facility:        *hedge_task.Tasks;
+    handle:          hedge_task.Handle;
+    registered:      bool;
+    slots:           [SLOT_COUNT * SLOT_WORDS]u64;
+    # the run in flight
+    sequence:   u64;
+    phase:      u8;
+    loaded:     bool;
+    exchange:   outbound.Exchange;
+    request:    [REQUEST_BYTES]u8;
+    response:   [RESPONSE_BYTES]u8;
+    items:      [FIELD_ITEMS]field.Field;
+    headers:    [3]field.Field;
+    auth:       [AUTH_BYTES]u8;
+    authorized: bool;
+    body:       [REQUEST_BYTES]u8;
+    body_len:   usize;
+    listing:    [LISTING_BYTES]u8;
+    listed:     json.Value;
+    entries:    *json.Value;
+    categories: *json.Value;
+    targets:    [MAX_ENTRIES]Target;
+    target_len: usize;
+    batch_at:   usize;
+    batch_len:  usize;
+    found:      [MAX_ENTRIES]Found;
+    meta:       [META_BYTES]u8;
+    meta_len:   usize;
+    doc:        [DOC_BYTES]u8;
+    doc_len:    usize;
+    detail:     [256]u8;
+    # storage for parsing the listing, and for parsing each query's answer
+    listing_heap:  A.Allocator;
+    listing_state: fixed.FixedState;
+    listing_arena: [ARENA_BYTES]u8;
+    query_heap:    A.Allocator;
+    query_state:   fixed.FixedState;
+    query_arena:   [ARENA_BYTES]u8;
+    path_heap:     A.Allocator;
+    path_state:    fixed.FixedState;
+    path_arena:    [PATH_ARENA]u8;
+}
+
+fun done() service.Step {
+    ret service.Step{status: service.STEP_DONE, detail: view.view(nil, 0)};
+}
+
+fun pending() service.Step {
+    ret service.Step{status: service.STEP_PENDING, detail: view.view(nil, 0)};
+}
+
+# ends the run as failed, logging why. the detail is copied into the
+# refresher, which outlives the step
+fun failed(refresher: *Refresher, reason: str, cause: u64) service.Step {
+    clear_auth(refresher);
+    var b: text.Buf = text.buf(?refresher.detail[0], 255);
+    text.put_str(?b, reason);
+    if (cause != 0) {
+        text.put_str(?b, " (cause ");
+        text.put_u64(?b, cause);
+        text.put_byte(?b, ')');
+    }
+    var length: usize = b.len;
+    if (length > 255) { length = 255; }
+    refresher.detail[length] = 0;
+    print.eprint("site: catalog refresh failed: ");
+    print.eprintln((?refresher.detail[0])::str);
+    refresher.phase = PHASE_START;
+    ret service.Step{status: service.STEP_FAILED,
+        detail: view.view((?refresher.detail[0])::*char, length)};
+}
+
+fun clear_auth(refresher: *Refresher) {
+    var i: usize = 0;
+    for (i < AUTH_BYTES) {
+        refresher.auth[i] = 0;
+        i                 = i + 1;
+    }
+    refresher.authorized = false;
+}
+
+fun slot_storage(refresher: *Refresher) *u8 {
+    ret (?refresher.slots[0])::*u8;
+}
+
+fun url(storage: *u8, length: usize) view.View {
+    ret view.view(storage::*char, length);
+}
+
+fun copy_setting(output: *u8, capacity: usize, value: view.View) usize {
+    if (value.len >= capacity) { ret 0; }
+    var i: usize = 0;
+    for (i < value.len) {
+        output[i] = value.data[i]::u8;
+        i         = i + 1;
+    }
+    output[value.len] = 0;
+    ret value.len;
+}
+
+# what the refresher reads from the application's settings
+pub rec Settings {
+    entries_url: view.View;
+    graphql_url: view.View;
+    # the file the document is kept in, empty to keep none
+    snapshot: view.View;
+}
+
+# the snapshot the task publishes, read by any thread without waiting
+pub fun read(refresher: *Refresher, lease: *hedge_task.Lease) bool {
+    if (refresher == nil || !refresher.registered) { ret false; }
+    ret hedge_task.read(refresher.facility, refresher.handle, lease) == hedge_task.STATUS_OK;
+}
+
+pub fun release(refresher: *Refresher, lease: *hedge_task.Lease) {
+    hedge_task.release(refresher.facility, lease);
+}
+
+# asks for a refresh now. it joins a run already queued, and one asked for
+# while a run is in flight follows it
+pub fun trigger(refresher: *Refresher) hedge_task.Status {
+    if (refresher == nil || !refresher.registered) { ret hedge_task.STATUS_INVALID; }
+    ret hedge_task.trigger(refresher.facility, refresher.handle);
+}
+
+# the task's report, for the health check
+pub fun report(refresher: *Refresher, output: *hedge_task.Report) bool {
+    if (refresher == nil || !refresher.registered) { ret false; }
+    ret hedge_task.report(refresher.facility, refresher.handle, output) == hedge_task.STATUS_OK;
+}
+
+# registers the refresh task with the facility and asks for its first run
+# ---
+# refresher: storage, live and in place until the process has stopped
+# facility:  the task facility the process hands hedge
+# settings:  where the catalog comes from and where it is kept
+# secrets:   the application's secrets, which grant `github`
+# ret:       whether the task was registered
+pub fun start(refresher: *Refresher, facility: *hedge_task.Tasks, settings: Settings,
+    secrets: laurel_secret.Source) bool {
+    if (refresher == nil || facility == nil || refresher.registered) { ret false; }
+    refresher.entries_url_len = copy_setting(?refresher.entries_url[0], URL_BYTES,
+        settings.entries_url);
+    refresher.graphql_url_len = copy_setting(?refresher.graphql_url[0], URL_BYTES,
+        settings.graphql_url);
+    if (refresher.entries_url_len == 0 || refresher.graphql_url_len == 0) { ret false; }
+    refresher.persist = settings.snapshot.len != 0;
+    if (refresher.persist
+        && copy_setting(?refresher.path[0], URL_BYTES, settings.snapshot) == 0) { ret false; }
+    refresher.secrets  = secrets;
+    refresher.facility = facility;
+    refresher.phase    = PHASE_START;
+    refresher.loaded   = false;
+    refresher.sequence = 0;
+    val listing: err[A.Error] = fixed.make(?refresher.listing_heap, ?refresher.listing_state,
+        ?refresher.listing_arena[0], ARENA_BYTES);
+    val querying: err[A.Error] = fixed.make(?refresher.query_heap, ?refresher.query_state,
+        ?refresher.query_arena[0], ARENA_BYTES);
+    val pathing: err[A.Error] = fixed.make(?refresher.path_heap, ?refresher.path_state,
+        ?refresher.path_arena[0], PATH_ARENA);
+    if ((sel listing.err) || (sel querying.err) || (sel pathing.err)) { ret false; }
+    if (!outbound.make_exchange(?refresher.exchange, ?refresher.request[0], REQUEST_BYTES,
+        ?refresher.response[0], RESPONSE_BYTES, ?refresher.items[0], FIELD_ITEMS,
+        field.limits(FIELD_ITEMS, 65536, 128, 16384))) { ret false; }
+    var spec: hedge_task.Spec = hedge_task.Spec{name: text.text("catalog"),
+        state: refresher::ptr, step: step, period_ns: PERIOD_NS, timeout_ns: TIMEOUT_NS,
+        slots: slot_storage(refresher), slot_bytes: SLOT_BYTES, slot_count: SLOT_COUNT};
+    if (hedge_task.register(facility, ?spec, ?refresher.handle) != hedge_task.STATUS_OK) {
+        ret false;
+    }
+    refresher.registered = true;
+    hedge_task.trigger(facility, refresher.handle);
+    ret true;
+}
+
+# publishes the snapshot of the document in `doc`
+fun publish(refresher: *Refresher, run: *hedge_task.Run) bool {
+    var draft: hedge_task.Draft;
+    if (hedge_task.draft(run, ?draft) != hedge_task.STATUS_OK) { ret false; }
+    fixed.reset(?refresher.query_state);
+    val built: usize = snapshot.build(view.view((?refresher.doc[0])::*char,
+        refresher.doc_len), draft.data, draft.capacity, ?refresher.query_heap);
+    fixed.reset(?refresher.query_state);
+    if (built == 0) {
+        hedge_task.discard(run, ?draft);
+        ret false;
+    }
+    ret hedge_task.commit(run, ?draft, built) == hedge_task.STATUS_OK;
+}
+
+# the volume's copy of the document, published before the first run asks github
+fun load(refresher: *Refresher, run: *hedge_task.Run) {
+    if (!refresher.persist) { ret; }
+    val path:   str                                  = (?refresher.path[0])::str;
+    val opened: res[filesystem.File, io_error.Error] = filesystem.open(path);
+    if (sel opened.err) {
+        print.print("site: no catalog on the volume at ");
+        print.println(path);
+        ret;
+    }
+    var file:   filesystem.File = opened.ok;
+    var length: usize           = 0;
+    var whole:  bool            = false;
+    for (length < DOC_BYTES) {
+        val got: res[usize, io_error.Error] = filesystem.read(file, ?refresher.doc[length],
+            DOC_BYTES - length);
+        if (sel got.err) { brk; }
+        if (got.ok == 0) {
+            whole = true;
+            brk;
+        }
+        length = length + got.ok;
+    }
+    filesystem.close(?file);
+    refresher.doc_len = length;
+    if (!whole || !publish(refresher, run)) {
+        print.print("site: the catalog on the volume is unreadable: ");
+        print.println(path);
+        ret;
+    }
+    print.print("site: published the catalog kept at ");
+    print.println(path);
+}
+
+# keeps the document on the volume, replacing the previous copy whole
+fun persist(refresher: *Refresher) {
+    if (!refresher.persist) { ret; }
+    fixed.reset(?refresher.path_state);
+    val written: err[filesystem.FsError] = filesystem.replace_bytes_atomic(
+        ?refresher.path_heap, (?refresher.path[0])::str, ?refresher.doc[0],
+        refresher.doc_len, 420, 493);
+    if (sel written.err) {
+        print.eprint("site: the catalog could not be kept at ");
+        print.eprintln((?refresher.path[0])::str);
+    }
+}
+
+fun begin_get(refresher: *Refresher, run: *hedge_task.Run, target: view.View) bool {
+    var request: outbound.Request = outbound.request(method.GET, target);
+    refresher.headers[0] = field.Field{name: text.text("accept"),
+        value: text.text("application/json"), sensitive: false};
+    request.headers      = ?refresher.headers[0];
+    request.header_count = 1;
+    ret hedge_task.begin(run, ?refresher.exchange, request) != outbound.INVALID;
+}
+
+fun use_token(ctx: ptr, secret: contracts.SecretBytes) bool {
+    val refresher: *Refresher = ctx::*Refresher;
+    refresher.authorized = outbound.secret_header(?refresher.headers[1],
+        text.text("authorization"), text.text("bearer "), secret, ?refresher.auth[0],
+        AUTH_BYTES);
+    ret refresher.authorized;
+}
+
+fun begin_query(refresher: *Refresher, run: *hedge_task.Run) bool {
+    clear_auth(refresher);
+    if (laurel_secret.borrow(refresher.secrets, text.text("github"), use_token,
+        refresher::ptr) != laurel_secret.BORROW_OK) { ret false; }
+    refresher.headers[0] = field.Field{name: text.text("content-type"),
+        value: text.text("application/json"), sensitive: false};
+    var request: outbound.Request = outbound.request(method.POST,
+        url(?refresher.graphql_url[0], refresher.graphql_url_len));
+    request.headers      = ?refresher.headers[0];
+    request.header_count = 2;
+    request.body         = view.view((?refresher.body[0])::*char, refresher.body_len);
+    # a query only reads, so sending it twice is harmless
+    request.replay_safe = true;
+    ret hedge_task.begin(run, ?refresher.exchange, request) != outbound.INVALID;
+}
+
+# the exchange's progress: 1 answered 200, 0 still pending, -1 failed
+fun settle(refresher: *Refresher) i64 {
+    val polled: outbound.Status = outbound.poll(?refresher.exchange, clock.instant());
+    if (polled == outbound.PENDING) { ret 0; }
+    if (polled != outbound.OK)      { ret -1; }
+    ret 1;
+}
+
+fun body_of(refresher: *Refresher) view.View {
+    ret outbound.response(?refresher.exchange).body;
+}
+
+fun answered_ok(refresher: *Refresher) bool {
+    ret outbound.response(?refresher.exchange).status == 200;
+}
+
+fun find(value: *json.Value, name: str) *json.Value {
+    if (value == nil || value.kind != json.OBJECT) { ret nil; }
+    val found: opt[*json.Value] = json.value_find(value, name);
+    if (sel found.none) { ret nil; }
+    ret found.some;
+}
+
+fun is_string(value: *json.Value) bool {
+    ret value != nil && value.kind == json.STRING;
+}
+
+fun raw(value: *json.Value) view.View {
+    ret view.view(value.str_val::*char, value.str_len);
+}
+
+fun name_byte(c: u8) bool {
+    ret (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+        || c == '-' || c == '_' || c == '.';
+}
+
+fun name_valid(value: view.View) bool {
+    if (value.len == 0 || value.len > 100) { ret false; }
+    var i: usize = 0;
+    for (i < value.len) {
+        if (!name_byte(value.data[i]::u8)) { ret false; }
+        i = i + 1;
+    }
+    ret true;
+}
+
+# the owner and name of a https://github.com/<owner>/<name> url, with an
+# optional .git and trailing slash, or false for any other url
+fun github_repo(address: view.View, owner: *view.View, name: *view.View) bool {
+    val prefix: view.View = text.text("https://github.com/");
+    if (address.len <= prefix.len
+        || !text.same(view.view(address.data, prefix.len), prefix)) { ret false; }
+    var at:    usize = prefix.len;
+    val first: usize = at;
+    for (at < address.len && address.data[at]::u8 != '/') { at = at + 1; }
+    if (at == address.len) { ret false; }
+    @owner = view.view(?address.data[first], at - first);
+    at     = at + 1;
+    var end: usize = address.len;
+    if (end > at && address.data[end - 1]::u8 == '/') { end = end - 1; }
+    if (end >= at + 4 && text.same(view.view(?address.data[end - 4], 4), text.text(".git"))) {
+        end = end - 4;
+    }
+    @name = view.view(?address.data[at], end - at);
+    ret name_valid(@owner) && name_valid(@name);
+}
+
+# checks the listing and gathers the github repositories it points at
+fun gather(refresher: *Refresher) bool {
+    val root: *json.Value = ?refresher.listed;
+    refresher.entries    = find(root, "entries");
+    refresher.categories = find(root, "categories");
+    if (refresher.entries == nil || refresher.entries.kind != json.ARRAY
+        || refresher.categories == nil || refresher.categories.kind != json.ARRAY
+        || refresher.entries.count > MAX_ENTRIES) { ret false; }
+    var i: usize = 0;
+    for (i < refresher.categories.count) {
+        val item: *json.Value = ?refresher.categories.children[i];
+        if (!is_string(find(item, "id")) || !is_string(find(item, "title"))
+            || !is_string(find(item, "description"))) { ret false; }
+        i = i + 1;
+    }
+    refresher.target_len = 0;
+    i                    = 0;
+    for (i < refresher.entries.count) {
+        val item: *json.Value = ?refresher.entries.children[i];
+        if (!is_string(find(item, "id")) || !is_string(find(item, "name"))
+            || !is_string(find(item, "url")) || !is_string(find(item, "description"))
+            || !is_string(find(item, "category"))) { ret false; }
+        refresher.found[i] = Found{present: false, official: false, off: 0, len: 0};
+        var owner: view.View;
+        var name:  view.View;
+        if (github_repo(raw(find(item, "url")), ?owner, ?name)) {
+            refresher.targets[refresher.target_len] = Target{entry: i, owner: owner,
+                name: name};
+            refresher.target_len = refresher.target_len + 1;
+        }
+        i = i + 1;
+    }
+    ret true;
+}
+
+# the graphql request for the next batch of targets, as a json body
+fun write_query(refresher: *Refresher) bool {
+    var count: usize = refresher.target_len - refresher.batch_at;
+    if (count > BATCH) { count = BATCH; }
+    refresher.batch_len = count;
+    var b: text.Buf = text.buf(?refresher.body[0], REQUEST_BYTES);
+    text.put_str(?b, "{\"query\":\"query {");
+    var i: usize = 0;
+    for (i < count) {
+        val target: *Target = ?refresher.targets[refresher.batch_at + i];
+        text.put_str(?b, " r");
+        text.put_u64(?b, i::u64);
+        text.put_str(?b, ": repository(owner: \\\"");
+        text.put(?b, target.owner);
+        text.put_str(?b, "\\\", name: \\\"");
+        text.put(?b, target.name);
+        text.put_str(?b, "\\\") { nameWithOwner stargazerCount forkCount pushedAt owner { login } licenseInfo { spdxId name } latestRelease { tagName publishedAt } }");
+        i = i + 1;
+    }
+    text.put_str(?b, " }\"}");
+    refresher.body_len = b.len;
+    ret text.fits(?b);
+}
+
+fun put_quoted(b: *text.Buf, value: *json.Value) {
+    text.put_byte(b, '"');
+    text.put(b, raw(value));
+    text.put_byte(b, '"');
+}
+
+fun owner_official(login: view.View) bool {
+    val official: view.View = text.text(OFFICIAL_OWNER);
+    if (login.len != official.len) { ret false; }
+    ret text.contains_folded(login, official);
+}
+
+# the github object of one entry from one repository of the answer
+fun write_meta(refresher: *Refresher, index: usize, repo: *json.Value) bool {
+    val name:   *json.Value = find(repo, "nameWithOwner");
+    val owner:  *json.Value = find(find(repo, "owner"), "login");
+    val stars:  *json.Value = find(repo, "stargazerCount");
+    val forks:  *json.Value = find(repo, "forkCount");
+    val pushed: *json.Value = find(repo, "pushedAt");
+    if (!is_string(name) || !is_string(owner) || !is_string(pushed) || stars == nil
+        || stars.kind != json.NUMBER || forks == nil || forks.kind != json.NUMBER) {
+        ret false;
+    }
+    val start: usize    = refresher.meta_len;
+    var b:     text.Buf = text.buf(?refresher.meta[start], META_BYTES - start);
+    text.put_str(?b, "{\"repo\":");
+    put_quoted(?b, name);
+    text.put_str(?b, ",\"owner\":");
+    put_quoted(?b, owner);
+    text.put_str(?b, ",\"stars\":");
+    text.put_i64(?b, stars.num_val);
+    text.put_str(?b, ",\"forks\":");
+    text.put_i64(?b, forks.num_val);
+    text.put_str(?b, ",\"pushed\":");
+    put_quoted(?b, pushed);
+    text.put_str(?b, ",\"license\":");
+    # github reports NOASSERTION for a license file it cannot classify
+    val license: *json.Value = find(repo, "licenseInfo");
+    val spdx:    *json.Value = find(license, "spdxId");
+    val called:  *json.Value = find(license, "name");
+    if (is_string(spdx) && !text.same(raw(spdx), text.text("NOASSERTION"))) {
+        put_quoted(?b, spdx);
+    }
+    or (is_string(called)) { put_quoted(?b, called); }
+    or                     { text.put_str(?b, "null"); }
+    text.put_str(?b, ",\"release\":");
+    val release:   *json.Value = find(repo, "latestRelease");
+    val tag:       *json.Value = find(release, "tagName");
+    val published: *json.Value = find(release, "publishedAt");
+    if (is_string(tag) && is_string(published)) {
+        text.put_str(?b, "{\"tag\":");
+        put_quoted(?b, tag);
+        text.put_str(?b, ",\"published\":");
+        put_quoted(?b, published);
+        text.put_byte(?b, '}');
+    }
+    or { text.put_str(?b, "null"); }
+    text.put_byte(?b, '}');
+    if (!text.fits(?b)) { ret false; }
+    refresher.meta_len     = start + b.len;
+    refresher.found[index] = Found{present: true, official: owner_official(raw(owner)),
+        off: start, len: b.len};
+    ret true;
+}
+
+# takes one query's answer into the entries' metadata. a repository github no
+# longer resolves comes back null and its entry is kept without metadata
+fun take_answer(refresher: *Refresher) bool {
+    fixed.reset(?refresher.query_state);
+    val body:   view.View                       = body_of(refresher);
+    val parsed: res[json.Value, json.JsonError] = json.parse(body.data::*u8, body.len,
+        ?refresher.query_heap);
+    if (sel parsed.err) { ret false; }
+    var root: json.Value  = parsed.ok;
+    val data: *json.Value = find(?root, "data");
+    if (data == nil || data.kind != json.OBJECT) { ret false; }
+    var i: usize = 0;
+    for (i < refresher.batch_len) {
+        var alias: [24]u8;
+        var b:     text.Buf = text.buf(?alias[0], 23);
+        text.put_byte(?b, 'r');
+        text.put_u64(?b, i::u64);
+        alias[b.len] = 0;
+        val target: *Target     = ?refresher.targets[refresher.batch_at + i];
+        val repo:   *json.Value = find(data, (?alias[0])::str);
+        if (repo != nil && repo.kind == json.OBJECT) {
+            if (!write_meta(refresher, target.entry, repo)) { ret false; }
+        }
+        or {
+            var line: [256]u8;
+            var l:    text.Buf = text.buf(?line[0], 255);
+            text.put(?l, target.owner);
+            text.put_byte(?l, '/');
+            text.put(?l, target.name);
+            var end: usize = l.len;
+            if (end > 255) { end = 255; }
+            line[end] = 0;
+            print.eprint("site: github did not resolve ");
+            print.eprintln((?line[0])::str);
+        }
+        i = i + 1;
+    }
+    fixed.reset(?refresher.query_state);
+    ret true;
+}
+
+fun category_used(refresher: *Refresher, id: view.View) bool {
+    var i: usize = 0;
+    for (i < refresher.entries.count) {
+        if (text.same(raw(find(?refresher.entries.children[i], "category")), id)) {
+            ret true;
+        }
+        i = i + 1;
+    }
+    ret false;
+}
+
+# the catalog document from the listing and the metadata gathered
+fun write_document(refresher: *Refresher) bool {
+    var b: text.Buf = text.buf(?refresher.doc[0], DOC_BYTES);
+    text.put_str(?b, "{\"generated\":\"");
+    text.put_timestamp(?b, text.now());
+    text.put_str(?b, "\",\"source\":\"");
+    text.put_str(?b, SOURCE);
+    text.put_str(?b, "\",\"categories\":[");
+    var first: bool  = true;
+    var i:     usize = 0;
+    for (i < refresher.categories.count) {
+        val item: *json.Value = ?refresher.categories.children[i];
+        if (category_used(refresher, raw(find(item, "id")))) {
+            if (!first) { text.put_byte(?b, ','); }
+            first = false;
+            text.put_str(?b, "{\"id\":");
+            put_quoted(?b, find(item, "id"));
+            text.put_str(?b, ",\"title\":");
+            put_quoted(?b, find(item, "title"));
+            text.put_str(?b, ",\"description\":");
+            put_quoted(?b, find(item, "description"));
+            text.put_byte(?b, '}');
+        }
+        i = i + 1;
+    }
+    text.put_str(?b, "],\"entries\":[");
+    i = 0;
+    for (i < refresher.entries.count) {
+        val item:  *json.Value = ?refresher.entries.children[i];
+        val found: *Found      = ?refresher.found[i];
+        if (i != 0) { text.put_byte(?b, ','); }
+        text.put_str(?b, "{\"id\":");
+        put_quoted(?b, find(item, "id"));
+        text.put_str(?b, ",\"name\":");
+        put_quoted(?b, find(item, "name"));
+        text.put_str(?b, ",\"url\":");
+        put_quoted(?b, find(item, "url"));
+        text.put_str(?b, ",\"description\":");
+        put_quoted(?b, find(item, "description"));
+        text.put_str(?b, ",\"category\":");
+        put_quoted(?b, find(item, "category"));
+        if (found.present && found.official) { text.put_str(?b, ",\"official\":true"); }
+        or                                   { text.put_str(?b, ",\"official\":false"); }
+        text.put_str(?b, ",\"github\":");
+        if (found.present) {
+            text.put(?b, view.view((?refresher.meta[found.off])::*char, found.len));
+        }
+        or { text.put_str(?b, "null"); }
+        text.put_byte(?b, '}');
+        i = i + 1;
+    }
+    text.put_str(?b, "]}\n");
+    refresher.doc_len = b.len;
+    ret text.fits(?b);
+}
+
+fun start_run(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    if (!refresher.loaded) {
+        refresher.loaded = true;
+        load(refresher, run);
+    }
+    outbound.set_user_agent(outbound.client(run.loop), text.text("machlang.org"));
+    if (!begin_get(refresher, run, url(?refresher.entries_url[0], refresher.entries_url_len))) {
+        ret failed(refresher, "entries.json could not be requested", 0);
+    }
+    refresher.phase = PHASE_ENTRIES;
+    ret pending();
+}
+
+fun take_entries(refresher: *Refresher) service.Step {
+    val progress: i64 = settle(refresher);
+    if (progress == 0) { ret pending(); }
+    if (progress < 0) {
+        ret failed(refresher, "entries.json could not be fetched",
+            outbound.cause(?refresher.exchange)::u64);
+    }
+    if (!answered_ok(refresher)) {
+        ret failed(refresher, "entries.json answered with an error status",
+            outbound.response(?refresher.exchange).status::u64);
+    }
+    val body: view.View = body_of(refresher);
+    if (body.len > LISTING_BYTES) { ret failed(refresher, "entries.json is too large", 0); }
+    var i: usize = 0;
+    for (i < body.len) {
+        refresher.listing[i] = body.data[i]::u8;
+        i                    = i + 1;
+    }
+    outbound.finish(?refresher.exchange);
+    fixed.reset(?refresher.listing_state);
+    val parsed: res[json.Value, json.JsonError] = json.parse(?refresher.listing[0], body.len,
+        ?refresher.listing_heap);
+    if (sel parsed.err) { ret failed(refresher, "entries.json is not json", 0); }
+    refresher.listed = parsed.ok;
+    if (!gather(refresher)) {
+        ret failed(refresher, "entries.json is not a mach-ecosystem listing", 0);
+    }
+    refresher.batch_at = 0;
+    refresher.meta_len = 0;
+    refresher.phase    = PHASE_BATCH;
+    ret pending();
+}
+
+fun next_batch(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    if (refresher.batch_at >= refresher.target_len) {
+        refresher.phase = PHASE_PUBLISH;
+        ret pending();
+    }
+    if (!write_query(refresher)) { ret failed(refresher, "the metadata query is too large", 0); }
+    if (!begin_query(refresher, run)) {
+        ret failed(refresher, "the metadata query could not be sent", 0);
+    }
+    refresher.phase = PHASE_QUERY;
+    ret pending();
+}
+
+fun take_query(refresher: *Refresher) service.Step {
+    val progress: i64 = settle(refresher);
+    if (progress == 0) { ret pending(); }
+    if (progress < 0) {
+        ret failed(refresher, "github's graphql api could not be reached",
+            outbound.cause(?refresher.exchange)::u64);
+    }
+    if (!answered_ok(refresher)) {
+        ret failed(refresher, "github's graphql api answered with an error status",
+            outbound.response(?refresher.exchange).status::u64);
+    }
+    val taken: bool = take_answer(refresher);
+    outbound.finish(?refresher.exchange);
+    clear_auth(refresher);
+    if (!taken) { ret failed(refresher, "github's graphql answer has no data", 0); }
+    refresher.batch_at = refresher.batch_at + refresher.batch_len;
+    refresher.phase    = PHASE_BATCH;
+    ret pending();
+}
+
+fun finish_run(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    if (!write_document(refresher)) { ret failed(refresher, "the catalog is too large", 0); }
+    if (!publish(refresher, run)) {
+        ret failed(refresher, "the catalog could not be published", 0);
+    }
+    persist(refresher);
+    fixed.reset(?refresher.listing_state);
+    var described: usize = 0;
+    var i:         usize = 0;
+    for (i < refresher.entries.count) {
+        if (refresher.found[i].present) { described = described + 1; }
+        i = i + 1;
+    }
+    print.printlnf("site: catalog refreshed: {} entries, {} with github metadata",
+        refresher.entries.count, described);
+    refresher.phase = PHASE_START;
+    ret done();
+}
+
+# one step of a run, on hedge's task thread
+fun step(state: ptr, run: *hedge_task.Run) service.Step {
+    val refresher: *Refresher = state::*Refresher;
+    if (run.sequence != refresher.sequence) {
+        refresher.sequence = run.sequence;
+        refresher.phase    = PHASE_START;
+        clear_auth(refresher);
+    }
+    if (refresher.phase == PHASE_START)   { ret start_run(refresher, run); }
+    if (refresher.phase == PHASE_ENTRIES) { ret take_entries(refresher); }
+    if (refresher.phase == PHASE_BATCH)   { ret next_batch(refresher, run); }
+    if (refresher.phase == PHASE_QUERY)   { ret take_query(refresher); }
+    ret finish_run(refresher, run);
+}
