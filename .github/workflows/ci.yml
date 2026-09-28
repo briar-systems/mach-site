@@ -22,7 +22,7 @@ jobs:
       - name: HEAD the forwarder targets
         run: |
           set -eu
-          for f in install.sh install.ps1; do
+          for f in public/install.sh public/install.ps1; do
             url=$(grep -oE 'https://[^"| ]+' "$f" | head -n1)
             echo "$f -> $url"
             curl -fsSIL -o /dev/null "$url"

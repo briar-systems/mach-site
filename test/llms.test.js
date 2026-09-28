@@ -5,7 +5,7 @@ const path = require("node:path");
 const llms = require("../.github/scripts/build-llms.js");
 const { links, checkLocal } = require("../.github/scripts/check-links.js");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "public");
 const BASE = "https://machlang.org/docs/page.html";
 
 function md(html) {
@@ -98,7 +98,7 @@ test("llms-full.txt opens with the rules, then the guide and the reference in in
 });
 
 test("the version must be baked", () => {
-  const v = require("../assets/version.js").MACH_VERSION;
+  const v = require("../public/assets/version.js").MACH_VERSION;
   if (v === "@MACH_VERSION@") {
     assert.throws(() => llms.bakedVersion(ROOT), /bake-version/);
   } else {

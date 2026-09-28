@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { githubRepo, metadataQuery, merge } = require("../.github/scripts/bake-ecosystem.js");
-const page = require("../assets/ecosystem.js");
+const page = require("../public/assets/ecosystem.js");
 
 const LISTING = {
   categories: [

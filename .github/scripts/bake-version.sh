@@ -1,9 +1,9 @@
 #!/bin/sh
-# replace the version placeholder in assets/version.js with the latest mach release.
+# replace the version placeholder in public/assets/version.js with the latest mach release.
 # needs gh with a token that can read briar-systems/mach releases.
 set -eu
 
-file="${1:-assets/version.js}"
+file="${1:-public/assets/version.js}"
 placeholder="@MACH_VERSION@"
 
 tag=$(gh release view -R briar-systems/mach --json tagName --jq .tagName)

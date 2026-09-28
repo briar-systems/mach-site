@@ -469,7 +469,7 @@ function llmsFullTxt(version, pages, lang) {
 }
 
 async function main() {
-  const root = path.resolve(__dirname, "..", "..");
+  const root = path.resolve(__dirname, "..", "..", "public");
   const version = bakedVersion(root);
   const pages = sitePages(root, 2);
   const lang = await languageDocs(`v${version}`);

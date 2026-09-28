@@ -1,7 +1,7 @@
 // run with: node --test test/
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { MACH_VERSION, versionOf, latest } = require("../assets/version.js");
+const { MACH_VERSION, versionOf, latest } = require("../public/assets/version.js");
 
 const BAKED = MACH_VERSION;
 
