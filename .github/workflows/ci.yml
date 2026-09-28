@@ -83,9 +83,37 @@ jobs:
       - name: Check every link in both files
         run: node .github/scripts/check-links.js
 
+  # the image railway builds: its formatting, its build, and every file it
+  # serves, then a SIGTERM that must drain and exit 0
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check the server's formatting
+        run: |
+          docker build --target build -t site-build .
+          docker run --rm site-build mach fmt --check .
+
+      - name: Build the server image
+        run: docker build -t site .
+
+      - name: Serve the site from the image and check what it serves
+        run: |
+          set -eu
+          cid=$(docker run -d -p 127.0.0.1:8080:8080 site)
+          for i in $(seq 1 50); do
+            if curl -sf -o /dev/null http://127.0.0.1:8080/healthz; then break; fi
+            sleep 0.2
+          done
+          SITE_URL=http://127.0.0.1:8080 node --test test/serve.test.js
+          docker stop -t 30 "$cid"
+          docker logs "$cid" | tail -n 3
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$cid")" = 0
+
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, highlight, llms]
+    needs: [install-check, bake-version, ecosystem, highlight, llms, container]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
