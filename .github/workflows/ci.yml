@@ -76,24 +76,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Bake the latest mach release into version.js
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: .github/scripts/bake-version.sh
-
       - name: Run the llms tests
         run: node --test test/llms.test.js
 
-      - name: Build llms.txt and llms-full.txt
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Build the llms templates
         run: node .github/scripts/build-llms.js
 
-      - name: Check every link in both files
-        run: node .github/scripts/check-links.js
+      # the server fills in the release, so the links are checked at the latest
+      - name: Check every link in both templates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag=$(gh release view -R briar-systems/mach --json tagName --jq .tagName)
+          MACH_VERSION=${tag#v} node .github/scripts/check-links.js
 
-  # the image railway builds: its formatting, its build, every file it serves
-  # and the catalog, then a SIGTERM that must drain and exit 0
+  # the image railway builds: its formatting, its tests, its build, every file
+  # it serves, the catalog and the llms files, then a SIGTERM that must drain
+  # and exit 0
   container:
     runs-on: ubuntu-latest
     steps:
@@ -104,18 +104,24 @@ jobs:
           docker build --target build -t site-build .
           docker run --rm site-build mach fmt --check .
 
+      - name: Run the server's tests
+        run: docker run --rm site-build mach test . --timeout 5m
+
       - name: Build the server image
         run: docker build -t site .
 
-      # the catalog reads a local stub of github, which the catalog test
-      # starts after checking the cold start without it
-      - name: Serve the site and the catalog from the image and check them
+      # the catalog and the llms files read a local stub of github. the catalog
+      # test starts it after checking the cold start without it, and the llms
+      # test needs it up before the server starts
+      - name: Serve the site, the catalog and the llms files from the image and check them
         run: |
           set -eu
           mkdir -p out/volume
           chmod 777 out/volume
           sed -e 's|^entries_url = .*|entries_url = "http://127.0.0.1:18212/entries.json"|' \
               -e 's|^graphql_url = .*|graphql_url = "http://127.0.0.1:18212/graphql"|' \
+              -e 's|^api_url = .*|api_url = "http://127.0.0.1:18212/mach/api"|' \
+              -e 's|^raw_url = .*|raw_url = "http://127.0.0.1:18212/mach/raw"|' \
               hedge.toml > out/stub.toml
           # the first argument, when given, is the snapshot path the volume keeps
           serve() {
@@ -151,12 +157,29 @@ jobs:
           curl -fsS http://127.0.0.1:8080/healthz | grep -q '^catalog_age_seconds [0-9]'
           stop "$cid"
           # without a snapshot path nothing is kept or loaded, whatever the
-          # volume holds: a cold boot with github unreachable has no catalog
+          # volume holds: a cold boot with github unreachable has no catalog,
+          # and no llms files until github answers
           cid=$(serve)
           up
-          test "$(curl -sS http://127.0.0.1:8080/healthz)" = "$(printf 'ok\ncatalog_generated none')"
+          test "$(curl -sS http://127.0.0.1:8080/healthz)" = "$(printf 'ok\ncatalog_generated none\nllms_version none')"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ecosystem.json)" = 503
+          for f in llms.txt llms-full.txt; do
+            test "$(curl -s -o /dev/null -w '%{http_code} %header{retry-after}' http://127.0.0.1:8080/$f)" = "503 60"
+          done
           stop "$cid"
+          # with github's stub up from the start, the first refresh serves
+          # mach's newest release
+          node test/stub/github.js 18212 test-token test/stub/entries.json > out/stub.log &
+          stub=$!
+          for i in $(seq 1 50); do
+            if curl -s -o /dev/null http://127.0.0.1:18212/; then break; fi
+            sleep 0.2
+          done
+          cid=$(serve)
+          up
+          SITE_URL=http://127.0.0.1:8080 node --test test/llms.test.js
+          stop "$cid"
+          kill "$stub"
 
   gate:
     if: always()
