@@ -6,8 +6,6 @@
 # itself, so only the routes below ever enter laurel.
 
 use graft.host;
-use http.core.message;
-use http.core.method;
 use laurel.app;
 use laurel.context;
 use laurel.error;
@@ -98,7 +96,7 @@ fun not_found(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.R
 # setup: what graft hands the application once the configuration is sealed
 # ret:   whether the application was assembled
 pub fun assemble(site: *Site, setup: *host.Setup) bool {
-    if (site == nil || setup == nil) { ret false; }
+    if (site == nil || setup == nil)             { ret false; }
     if (!security.secure_headers(?site.headers)) { ret false; }
     val compiled: router.Compile = router.compile(?site.matcher, nil, 0,
         router.Storage{specifications: nil, specification_cap: 0, compiled_routes: nil,
@@ -110,7 +108,7 @@ pub fun assemble(site: *Site, setup: *host.Setup) bool {
         32)) { ret false; }
     site.services[0] = lifecycle.Lifecycle{ctx: nil, start: service_start,
         ready: service_ready, drain: service_drain, stop: service_stop};
-    if (!lifecycle.init(?site.controller, ?site.services[0], 1, 1))  { ret false; }
+    if (!lifecycle.init(?site.controller, ?site.services[0], 1, 1)) { ret false; }
     if (!error.initialize_default(?site.errors, setup.limits, 512)) { ret false; }
     if (!observability.init_vocabulary(?site.vocabulary, nil, 0))   { ret false; }
     site.observer = observability.Observer{ctx: nil, start: ignore_start,
