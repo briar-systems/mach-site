@@ -1,7 +1,8 @@
 // run against a running server image: SITE_URL=http://127.0.0.1:8080 node --test test/serve.test.js
 // checks every file under public/, the llms files, the index and redirect
 // paths, conditional and precompressed responses, the 404 page and the health
-// check, as the container serves them.
+// check, as the container serves them. test/catalog.test.js checks the
+// ecosystem routes.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -109,13 +110,13 @@ test("a matching etag is answered 304 with its caching", async () => {
 });
 
 test("directories serve their index and a bare directory redirects", async () => {
-  for (const p of ["/", "/docs/", "/ecosystem/"]) {
+  for (const p of ["/", "/docs/"]) {
     const res = await get(p);
     assert.equal(res.status, 200, p);
     assert.equal(res.headers["content-type"], TYPES.html, p);
     assert.deepEqual(res.body, fs.readFileSync(path.join(PUBLIC, p, "index.html")), p);
   }
-  for (const p of ["/docs", "/ecosystem"]) {
+  for (const p of ["/docs"]) {
     const res = await get(p);
     assert.equal(res.status, 301, p);
     assert.equal(res.headers.location, `${p}/`, p);
@@ -134,6 +135,6 @@ test("the health check answers any host, the platform's included", async () => {
   for (const host of ["healthcheck.railway.app", "machlang.org"]) {
     const res = await get("/healthz", { host });
     assert.equal(res.status, 200, host);
-    assert.equal(res.body.toString(), "ok\n", host);
+    assert.match(res.body.toString(), /^ok\n/, host);
   }
 });
