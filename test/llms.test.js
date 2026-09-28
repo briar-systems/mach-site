@@ -1,12 +1,24 @@
-// run with: node --test test/
+// run with: node --test test/llms.test.js
+// it checks the build of the site's half of the llms files. against a running
+// server image whose llms settings point at test/stub/github.js, started before
+// the server, it also checks the files the server completes from mach's
+// doc/language, as the stub serves it from test/stub/language/:
+//   SITE_URL=http://127.0.0.1:8080 node --test test/llms.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const http = require("node:http");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const llms = require("../.github/scripts/build-llms.js");
 const { links, checkLocal } = require("../.github/scripts/check-links.js");
 
 const ROOT = path.resolve(__dirname, "..", "public");
 const BASE = "https://machlang.org/docs/page.html";
+const SITE_URL = process.env.SITE_URL;
+const SERVER = { skip: SITE_URL ? false : "set SITE_URL to check a running server" };
+// the newest release test/stub/github.js answers
+const RELEASE = "6.10.0";
 
 function md(html) {
   return llms.blocks(llms.parse(html).children, BASE, 2);
@@ -44,25 +56,6 @@ test("callouts, tables, and page chrome", () => {
   assert.equal(md('<div class="breadcrumb">Docs</div><div class="page-nav"><a href="x.html">x</a></div><p>kept</p>'), "kept");
 });
 
-test("indexOrder follows the index, first mention wins", () => {
-  assert.deepEqual(llms.indexOrder("- [a](a.md)\n- [b](b.md#x)\n- [a again](a.md)\n- [ext](https://x.org/c.md)"), ["a.md", "b.md"]);
-});
-
-test("absolutize rewrites prose links only", () => {
-  const src = "[f](files.md#x) and [here](#y) and [t](../../test/README.md)\n`identity[i64](42)`\n```mach\n[a](b)\n```";
-  const out = llms.absolutize(src, "fun.md", "v1.2.3");
-  const blob = "https://github.com/briar-systems/mach/blob/v1.2.3/";
-  assert.ok(out.includes(`[f](${blob}doc/language/files.md#x)`));
-  assert.ok(out.includes(`[here](${blob}doc/language/fun.md#y)`));
-  assert.ok(out.includes(`[t](${blob}test/README.md)`));
-  assert.ok(out.includes("`identity[i64](42)`"));
-  assert.ok(out.includes("```mach\n[a](b)\n```"));
-});
-
-test("demote shifts headings outside fences", () => {
-  assert.equal(llms.demote("# A\n```mach\n# comment\n```\n## B", 2), "### A\n```mach\n# comment\n```\n#### B");
-});
-
 test("every docs page is in the sidebar and converts", () => {
   const pages = llms.sitePages(ROOT, 2);
   assert.ok(pages.length > 0);
@@ -84,26 +77,29 @@ test("llms.txt carries the facts and the llmstxt.org shape", () => {
   for (const h of ["## Docs", "## Standard library", "## Ecosystem", "## Editor support", "## Community"]) { assert.ok(lines.includes(h), h); }
 });
 
-test("llms-full.txt opens with the rules, then the guide and the reference in index order", () => {
-  const lang = { "README.md": "# Index\n- [b](b.md)\n- [a](a.md)", "a.md": "# A\n", "b.md": "# B\n", "z.md": "# Z\n" };
-  const full = llms.llmsFullTxt("9.8.7", [{ url: "https://machlang.org/docs/x.html", markdown: "### X" }], lang);
+test("llms-full.txt opens with the rules, then the guide, and ends at the reference", () => {
+  const full = llms.llmsFullTxt("9.8.7", [{ url: "https://machlang.org/docs/x.html", markdown: "### X" }]);
   const at = (s) => full.indexOf(s);
   assert.ok(at("## Rules models most often get wrong") > 0);
   assert.ok(at("## Rules") < at("## Guide") && at("## Guide") < at("### X") && at("### X") < at("## Language reference"));
-  assert.ok(at("### Index") < at("### B") && at("### B") < at("### A") && at("### A") < at("### Z"));
   for (const rule of ["No type inference", "`or`, not `else`", "`for` is the only loop", "`cnt`", "`?x` and `@p`", "No methods", "`sel` and guards", "Explicit generic instantiation", "`use std.runtime;`"]) {
     assert.ok(at(rule) > 0 && at(rule) < at("## Guide"), rule);
   }
-  assert.throws(() => llms.llmsFullTxt("9.8.7", [], { "README.md": "- [gone](gone.md)" }), /gone\.md/);
+  assert.ok(full.endsWith("### X\n\n## Language reference\n"));
 });
 
-test("the version must be baked", () => {
-  const v = require("../public/assets/version.js").MACH_VERSION;
-  if (v === "@MACH_VERSION@") {
-    assert.throws(() => llms.bakedVersion(ROOT), /bake-version/);
-  } else {
-    assert.equal(llms.bakedVersion(ROOT), v);
-  }
+test("the build writes both templates, with the release left to the server", () => {
+  fs.mkdirSync(path.join(__dirname, "..", "out"), { recursive: true });
+  const out = fs.mkdtempSync(path.join(__dirname, "..", "out", "llms-"));
+  execFileSync(process.execPath, [path.join(__dirname, "..", ".github", "scripts", "build-llms.js"), out]);
+  const short = fs.readFileSync(path.join(out, "llms.txt.in"), "utf8");
+  const full = fs.readFileSync(path.join(out, "llms-full.txt.in"), "utf8");
+  fs.rmSync(out, { recursive: true });
+  const pages = llms.sitePages(ROOT, 2);
+  assert.equal(short, llms.llmsTxt(llms.VERSION, pages));
+  assert.equal(full, llms.llmsFullTxt(llms.VERSION, pages));
+  assert.ok(short.includes(`Mach ${llms.VERSION} (https://github.com/briar-systems/mach/releases/tag/v${llms.VERSION})`));
+  assert.ok(full.startsWith(`# Mach ${llms.VERSION}: complete reference`));
 });
 
 test("links finds link targets and bare urls, never code", () => {
@@ -111,12 +107,125 @@ test("links finds link targets and bare urls, never code", () => {
   assert.deepEqual(links(src), ["https://a.org/x", "https://b.org/y"]);
 });
 
-test("machlang.org links resolve against the checkout", () => {
+test("machlang.org links resolve against the checkout and the server's routes", () => {
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html")), null);
+  assert.equal(checkLocal(ROOT, new URL("https://machlang.org/llms-full.txt")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/install.sh")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem.json")), null);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/nope")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/nope.html")), /no file/);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html#no-such-anchor")), /no id/);
+});
+
+// the server's answer, polling for up to 10 seconds while it has none yet
+function get(urlPath, method = "GET") {
+  return new Promise((resolve, reject) => {
+    const req = http.request(new URL(urlPath, SITE_URL), { method }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function ready(urlPath) {
+  const until = Date.now() + 10000;
+  for (;;) {
+    const res = await get(urlPath);
+    if (res.status !== 503) { return res; }
+    if (Date.now() > until) { throw new Error(`${urlPath} was not served within 10 seconds`); }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const BLOB = `https://github.com/briar-systems/mach/blob/v${RELEASE}/doc/language`;
+
+// what the server appends for test/stub/language/: README.md, then the files
+// it links in its order, then the rest by name, with links made absolute and
+// headings demoted outside fences and code spans
+const REFERENCE = `
+Source: ${BLOB}/README.md
+
+### Language reference
+
+The files below, in the order they are read.
+
+- [Types](${BLOB}/types.md)
+- [Functions](${BLOB}/fun.md#calls)
+- [Types again](${BLOB}/types.md)
+- [Elsewhere](https://example.org/notes.md)
+
+Source: ${BLOB}/types.md
+
+### Types
+
+See [functions](${BLOB}/fun.md#calls), [integers](${BLOB}/types.md#integers), [the tests](https://github.com/briar-systems/mach/blob/v${RELEASE}/test/README.md) and [the site](https://machlang.org/docs/).
+
+\`[not a link](a.md)\` stays as written.
+
+\`\`\`mach
+# a comment, not a heading
+[x](y.md)
+\`\`\`
+
+#### Integers
+
+####### seven hashes stay
+
+Source: ${BLOB}/fun.md
+
+### Functions
+
+#### Calls
+
+~~~~
+# fenced with tildes
+~~~
+still fenced
+~~~~
+##### Returns
+
+Source: ${BLOB}/alpha.md
+
+### Alpha
+
+Source: ${BLOB}/zeta.md
+
+### Zeta
+`;
+
+test("llms.txt is the site's template for the newest release", SERVER, async () => {
+  const res = await ready("/llms.txt");
+  assert.equal(res.status, 200);
+  assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
+  assert.equal(res.headers["cache-control"], "public, max-age=300");
+  assert.equal(res.body, llms.llmsTxt(RELEASE, llms.sitePages(ROOT, 2)));
+});
+
+test("llms-full.txt is the site's half, then mach's doc/language at that release", SERVER, async () => {
+  const res = await ready("/llms-full.txt");
+  assert.equal(res.status, 200);
+  assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
+  assert.equal(res.headers["cache-control"], "public, max-age=300");
+  assert.equal(res.body, llms.llmsFullTxt(RELEASE, llms.sitePages(ROOT, 2)) + REFERENCE);
+});
+
+test("a HEAD answers as its GET, without the body", SERVER, async () => {
+  for (const p of ["/llms.txt", "/llms-full.txt"]) {
+    const full = await ready(p);
+    const head = await get(p, "HEAD");
+    assert.equal(head.status, 200, p);
+    assert.equal(head.body, "", p);
+    assert.equal(head.headers["content-type"], "text/plain; charset=utf-8", p);
+    assert.equal(head.headers["content-length"], String(Buffer.byteLength(full.body)), p);
+  }
+});
+
+test("the health check reports the release the llms files are for", SERVER, async () => {
+  await ready("/llms.txt");
+  const res = await get("/healthz");
+  assert.match(res.body, new RegExp(`\\nllms_version ${RELEASE.replace(/\./g, "\\.")}\\nllms_age_seconds \\d+\\n$`));
 });

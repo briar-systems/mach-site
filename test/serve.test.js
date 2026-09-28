@@ -1,8 +1,8 @@
 // run against a running server image: SITE_URL=http://127.0.0.1:8080 node --test test/serve.test.js
-// checks every file under public/, the llms files, the index and redirect
-// paths, conditional and precompressed responses, the 404 page and the health
-// check, as the container serves them. test/catalog.test.js checks the
-// ecosystem routes.
+// checks every file under public/, the index and redirect paths, conditional
+// and precompressed responses, the 404 page and the health check, as the
+// container serves them. test/catalog.test.js checks the ecosystem routes, and
+// test/llms.test.js the llms files.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -56,7 +56,7 @@ function files(dir) {
 
 const served = files(PUBLIC)
   .map((f) => "/" + path.relative(PUBLIC, f).split(path.sep).join("/"))
-  .filter((p) => !/\.(gz|br)$/.test(p) && !p.startsWith("/llms"));
+  .filter((p) => !/\.(gz|br)$/.test(p));
 
 test("SITE_URL names the server under test", () => {
   assert.ok(BASE, "set SITE_URL to the running server");
@@ -71,16 +71,6 @@ test("every file is served with its type, its caching and its bytes", async () =
     assert.equal(res.headers["cache-control"], cacheControl(p), `${p} cache-control`);
     assert.ok(res.headers.etag, `${p} etag`);
     assert.deepEqual(res.body, fs.readFileSync(path.join(PUBLIC, p)), `${p} bytes`);
-  }
-});
-
-test("the llms files are served as text", async () => {
-  for (const p of ["/llms.txt", "/llms-full.txt"]) {
-    const res = await get(p);
-    assert.equal(res.status, 200, p);
-    assert.equal(res.headers["content-type"], TYPES.txt, p);
-    assert.equal(res.headers["cache-control"], "public, max-age=600", p);
-    assert.match(res.body.toString(), /^# Mach/, p);
   }
 });
 
