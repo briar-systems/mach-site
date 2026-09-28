@@ -2,7 +2,8 @@
 // check every link in the given markdown files (default llms.txt and llms-full.txt).
 // a link is a markdown link target or a bare url in prose, outside code. machlang.org
 // urls resolve against this checkout, fragments included, since the files ship with
-// it. every other url must answer 2xx over http after redirects. exits 1 on any failure.
+// it, and a path hedge.toml routes to the application counts as served. every other
+// url must answer 2xx over http after redirects. exits 1 on any failure.
 "use strict";
 
 const fs = require("node:fs");
@@ -54,7 +55,25 @@ function ids(file) {
   return idCache.get(file);
 }
 
+// the literal paths hedge.toml routes to the application rather than to public/
+const routeCache = new Map();
+function appRoutes(root) {
+  if (!routeCache.has(root)) {
+    const toml = fs.readFileSync(path.join(root, "..", "hedge.toml"), "utf8");
+    const paths = new Set();
+    for (const block of toml.split(/^\[\[route\]\]$/m).slice(1)) {
+      const route = block.split(/^\[/m)[0];
+      const p = /^path = "([^"*]+)"$/m.exec(route);
+      const service = /^service = "([^"]+)"$/m.exec(route);
+      if (p && service && service[1] !== "files") { paths.add(p[1]); }
+    }
+    routeCache.set(root, paths);
+  }
+  return routeCache.get(root);
+}
+
 function checkLocal(root, url) {
+  if (appRoutes(root).has(url.pathname)) { return null; }
   const file = localFile(root, url.pathname);
   if (!file || !fs.existsSync(file)) { return `no file in the checkout for ${url.pathname}`; }
   const frag = decodeURIComponent(url.hash.slice(1));
