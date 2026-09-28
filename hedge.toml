@@ -12,6 +12,12 @@ name = "machlang.org"
 workers = 2
 pin_workers = false
 
+# every connection arrives through the platform's edge, so a handful of edge
+# addresses carry every client, and the per-peer cap sits far above hedge's
+# default of 100
+[server.limits]
+max_connections_per_peer = 4096
+
 # a redeploy sends SIGTERM and waits before it kills the process, so the drain
 # and the stop together fit well inside that wait
 [server.timeouts]
