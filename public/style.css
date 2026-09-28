@@ -51,9 +51,11 @@ svg { display: block; }
 .brand { display: flex; align-items: center; gap: 12px; font-size: 24px; font-weight: 700; }
 .brand .mark { color: var(--accent); }
 .nav-links { display: flex; align-items: center; gap: 32px; font-size: 16px; }
-.nav-github { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--text); }
-.nav-github svg { width: 18px; height: 18px; fill: currentColor; }
-.nav-github:hover { border-color: var(--accent); }
+.nav-links > a:hover { color: var(--accent); }
+.nav-icons { display: flex; align-items: center; gap: 8px; }
+.nav-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--text); }
+.nav-icon svg { width: 18px; height: 18px; fill: currentColor; }
+.nav-icon:hover { border-color: var(--accent); color: var(--accent); }
 
 /* hero */
 .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
@@ -317,7 +319,7 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 
 @media (max-width: 900px) {
   :root { --gutter: 24px; --nav-h: 60px; }
-  .nav-extra { display: none; }
+  .nav-links { gap: 24px; }
   .hero-cone { position: relative; height: auto; aspect-ratio: 1440 / 800; order: 2; }
   .hero { display: flex; flex-direction: column; }
   .hero-inner { min-height: 0; padding-top: 48px; padding-bottom: 32px; }
@@ -340,6 +342,11 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 }
 
 @media (max-width: 640px) {
+  .nav-extra { display: none; }
+  .brand { gap: 10px; font-size: 22px; }
+  .nav-links { gap: 16px; font-size: 15px; }
+  .nav-icons { gap: 4px; }
+  .nav-icon { width: 34px; height: 34px; }
   :root { --gutter: 16px; }
   body { font-size: 16px; }
   .principles { grid-template-columns: minmax(0, 1fr); }
