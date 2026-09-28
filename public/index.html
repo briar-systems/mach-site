@@ -217,11 +217,12 @@
                         <h2 id="closer-title">Nothing happens off the page.</h2>
                     </div>
                     <p class="prose">
-                        Not even the runtime. It is an ordinary module in the standard
-                        library that a program opts into by importing <code>std.runtime</code>,
-                        and <code>main</code> is just the function that exports the symbol
-                        it calls. The compiler does not provide a runtime and does not
-                        know one exists.
+                        Read a Mach program top to bottom and you have read everything
+                        it does. The allocator is a value it holds, each allocation names
+                        its type, each failure comes back as a value it checks, and each
+                        free is written where it happens. Not even the runtime is out of
+                        sight: it is a standard library module the program imports, not
+                        something the compiler slips in.
                     </p>
                 </div>
                 <div class="panel annotated" data-annotate="examples/alloc.mach">
