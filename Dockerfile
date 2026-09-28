@@ -71,4 +71,6 @@ USER 65534:65534
 ENV LISTEN=0.0.0.0:8080
 EXPOSE 8080
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/srv/site/site", "/srv/site/hedge.toml"]
+# the configuration is the one argument, so a run can name another
+ENTRYPOINT ["/srv/site/site"]
+CMD ["/srv/site/hedge.toml"]
