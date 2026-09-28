@@ -1,9 +1,10 @@
-// advertised mach version. the deploy bakes the latest mach release into the
-// placeholder (.github/scripts/bake-version.sh), so a local preview shows it raw.
-// the page applies that baked value first, then asks the github api for the
+// advertised mach version. a pages deploy bakes the latest mach release into the
+// placeholder (.github/scripts/bake-version.sh), and the server serves it unbaked.
+// the page applies a baked value first, then asks the github api for the
 // latest release and re-applies if the answer is a well-formed tag. any failure
-// keeps the baked value. populates every .badge-version span (prefixed with "v")
-// and any [data-mach-version] element (raw token, e.g. the cli "mach info" line).
+// keeps the baked value, and an unbaked page leaves the badges empty. populates
+// every .badge-version span (prefixed with "v") and any [data-mach-version]
+// element (raw token, e.g. the cli "mach info" line).
 (function () {
   "use strict";
 
@@ -44,9 +45,10 @@
   }
 
   function start() {
-    apply(MACH_VERSION);
-    latest(typeof fetch === "function" ? fetch : null, MACH_VERSION).then(function (v) {
-      if (v !== MACH_VERSION) { apply(v); }
+    var baked = MACH_VERSION === "@MACH_VERSION@" ? null : MACH_VERSION;
+    if (baked) { apply(baked); }
+    latest(typeof fetch === "function" ? fetch : null, baked).then(function (v) {
+      if (v && v !== baked) { apply(v); }
     });
   }
 

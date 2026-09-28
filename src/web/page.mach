@@ -1,0 +1,528 @@
+# the ecosystem page, rendered on the server from the snapshot
+#
+# search, category, source and sort come from the query string, with the same
+# names and rules as assets/ecosystem.js, so every view works without
+# javascript and the html holds every card it shows. the script then takes the
+# snapshot embedded in the page and filters as you type.
+
+use site.catalog.snapshot;
+use site.text;
+use std.collections.sort;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+#[embed("ecosystem.html")]
+val TEMPLATE: [_]u8;
+
+pub val SORT_STARS:   u8 = 0;
+pub val SORT_UPDATED: u8 = 1;
+pub val SORT_RELEASE: u8 = 2;
+pub val SORT_NAME:    u8 = 3;
+
+pub val SOURCE_ALL:       u8 = 0;
+pub val SOURCE_OFFICIAL:  u8 = 1;
+pub val SOURCE_COMMUNITY: u8 = 2;
+
+# the page shows how old the catalog is once it is older than this
+pub val AGE_NOTICE_S: i64 = 3600;
+
+val MAX_TERMS:      usize = 16;
+val MAX_TERM_BYTES: usize = 128;
+
+# what the query string asks for. `category` is empty for all
+pub rec View {
+    q:        view.View;
+    category: view.View;
+    source:   u8;
+    sort:     u8;
+}
+
+pub fun default_view() View {
+    ret View{q: view.view(nil, 0), category: view.view(nil, 0), source: SOURCE_ALL,
+        sort: SORT_STARS};
+}
+
+fun sort_name(sort: u8) str {
+    if (sort == SORT_UPDATED) { ret "updated"; }
+    if (sort == SORT_RELEASE) { ret "release"; }
+    if (sort == SORT_NAME)    { ret "name"; }
+    ret "stars";
+}
+
+fun sort_label(sort: u8) str {
+    if (sort == SORT_UPDATED) { ret "recently updated"; }
+    if (sort == SORT_RELEASE) { ret "latest release"; }
+    if (sort == SORT_NAME)    { ret "name"; }
+    ret "most stars";
+}
+
+fun source_name(source: u8) str {
+    if (source == SOURCE_OFFICIAL)  { ret "official"; }
+    if (source == SOURCE_COMMUNITY) { ret "community"; }
+    ret "all";
+}
+
+# the sort a query value names, the default for anything else
+pub fun parse_sort(value: view.View) u8 {
+    var i: u8 = SORT_STARS;
+    for (i <= SORT_NAME) {
+        if (text.same(value, text.text(sort_name(i)))) { ret i; }
+        i = i + 1;
+    }
+    ret SORT_STARS;
+}
+
+pub fun parse_source(value: view.View) u8 {
+    if (text.same(value, text.text("official")))  { ret SOURCE_OFFICIAL; }
+    if (text.same(value, text.text("community"))) { ret SOURCE_COMMUNITY; }
+    ret SOURCE_ALL;
+}
+
+# the lowercase search terms of a query, split on whitespace
+rec Terms {
+    bytes: [MAX_TERM_BYTES]u8;
+    items: [MAX_TERMS]view.View;
+    count: usize;
+}
+
+fun space(c: u8) bool {
+    ret c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 12;
+}
+
+fun split_terms(q: view.View, terms: *Terms) {
+    terms.count = 0;
+    var i:    usize = 0;
+    var used: usize = 0;
+    for (i < q.len && used < MAX_TERM_BYTES && terms.count < MAX_TERMS) {
+        for (i < q.len && space(q.data[i]::u8)) { i = i + 1; }
+        if (i == q.len) { brk; }
+        val start: usize = used;
+        for (i < q.len && !space(q.data[i]::u8) && used < MAX_TERM_BYTES) {
+            terms.bytes[used] = text.lower(q.data[i]::u8);
+            used              = used + 1;
+            i                 = i + 1;
+        }
+        terms.items[terms.count] = view.view((?terms.bytes[start])::*char, used - start);
+        terms.count              = terms.count + 1;
+    }
+}
+
+fun category_title(data: *u8, item: *snapshot.Entry) view.View {
+    if (item.index == snapshot.NO_CATEGORY) { ret snapshot.string(data, item.category); }
+    ret snapshot.string(data, snapshot.category(data, item.index::usize).title);
+}
+
+# the host of a url, for an entry with no repository to show
+fun host(address: view.View) view.View {
+    var at: usize = 0;
+    for (at + 2 < address.len) {
+        if (address.data[at]::u8 == ':' && address.data[at + 1]::u8 == '/'
+            && address.data[at + 2]::u8 == '/') {
+            val start: usize = at + 3;
+            var end:   usize = start;
+            for (end < address.len && address.data[end]::u8 != '/') { end = end + 1; }
+            ret view.view(?address.data[start], end - start);
+        }
+        at = at + 1;
+    }
+    ret address;
+}
+
+# every term appears in the name, the description, the repository or url, or
+# the category title
+fun matches(data: *u8, item: *snapshot.Entry, terms: *Terms) bool {
+    var where: view.View = snapshot.string(data, item.url);
+    if (item.github) { where = snapshot.string(data, item.repo); }
+    var i: usize = 0;
+    for (i < terms.count) {
+        val term: view.View = terms.items[i];
+        if (!text.contains_folded(snapshot.string(data, item.name), term)
+            && !text.contains_folded(snapshot.string(data, item.description), term)
+            && !text.contains_folded(where, term)
+            && !text.contains_folded(category_title(data, item), term)) { ret false; }
+        i = i + 1;
+    }
+    ret true;
+}
+
+fun in_source(item: *snapshot.Entry, source: u8) bool {
+    if (source == SOURCE_OFFICIAL)  { ret item.official; }
+    if (source == SOURCE_COMMUNITY) { ret !item.official; }
+    ret true;
+}
+
+fun in_category(data: *u8, item: *snapshot.Entry, category: view.View) bool {
+    ret category.len == 0 || text.same(snapshot.string(data, item.category), category);
+}
+
+# one card to sort, with the metric its sort is by
+pub rec Item {
+    data:  *u8;
+    entry: *snapshot.Entry;
+    key:   i64;
+}
+
+val NO_METRIC: i64 = -9223372036854775807;
+
+fun metric(item: *snapshot.Entry, sort: u8) i64 {
+    if (sort == SORT_NAME)    { ret 0; }
+    if (!item.github)         { ret NO_METRIC; }
+    if (sort == SORT_STARS)   { ret item.stars; }
+    if (sort == SORT_UPDATED) { ret item.pushed; }
+    if (sort == SORT_RELEASE) {
+        if (item.has_release) { ret item.released; }
+        ret NO_METRIC;
+    }
+    ret 0;
+}
+
+# descending by metric, then by name ignoring case, then by id
+fun order(a: *Item, b: *Item) i64 {
+    if (a.key > b.key) { ret -1; }
+    if (a.key < b.key) { ret 1; }
+    val named: i64 = text.compare_folded(snapshot.string(a.data, a.entry.name),
+        snapshot.string(b.data, b.entry.name));
+    if (named != 0) { ret named; }
+    ret text.compare(snapshot.string(a.data, a.entry.id), snapshot.string(b.data, b.entry.id));
+}
+
+# whether the listing mixes official and community projects
+fun mixed(data: *u8, head: *snapshot.Header) bool {
+    var official: usize = 0;
+    var i:        usize = 0;
+    for (i < head.entries::usize) {
+        if (snapshot.entry(data, i).official) { official = official + 1; }
+        i = i + 1;
+    }
+    ret official > 0 && official < head.entries::usize;
+}
+
+# everything one rendering needs
+pub rec Page {
+    # the snapshot, or nil when there is none to show
+    data: *u8;
+    len:  usize;
+    ask:  View;
+    now:  i64;
+    # the matching entries, sorted, and how many there are
+    items:  *Item;
+    shown:  usize;
+    terms:  Terms;
+    pooled: usize;
+}
+
+# the entries the page shows, in order, into `items`, which holds one per entry
+pub fun select(page: *Page) {
+    page.shown  = 0;
+    page.pooled = 0;
+    split_terms(page.ask.q, ?page.terms);
+    val head: *snapshot.Header = snapshot.header(page.data, page.len);
+    if (head == nil) { ret; }
+    var i: usize = 0;
+    for (i < head.entries::usize) {
+        val item: *snapshot.Entry = snapshot.entry(page.data, i);
+        if (in_source(item, page.ask.source) && matches(page.data, item, ?page.terms)) {
+            page.pooled = page.pooled + 1;
+            if (in_category(page.data, item, page.ask.category)) {
+                page.items[page.shown] = Item{data: page.data, entry: item,
+                    key: metric(item, page.ask.sort)};
+                page.shown = page.shown + 1;
+            }
+        }
+        i = i + 1;
+    }
+    sort.sort_by[Item](page.items, page.shown, order);
+}
+
+# the query string for a view, leaving out what is at its default
+fun put_link(b: *text.Buf, ask: View) {
+    text.put_byte(b, '?');
+    var first: bool = true;
+    if (ask.q.len != 0) {
+        text.put_str(b, "q=");
+        text.put_query(b, ask.q);
+        first = false;
+    }
+    if (ask.category.len != 0) {
+        if (!first) { text.put_str(b, "&amp;"); }
+        text.put_str(b, "category=");
+        text.put_query(b, ask.category);
+        first = false;
+    }
+    if (ask.source != SOURCE_ALL) {
+        if (!first) { text.put_str(b, "&amp;"); }
+        text.put_str(b, "source=");
+        text.put_str(b, source_name(ask.source));
+        first = false;
+    }
+    if (ask.sort != SORT_STARS) {
+        if (!first) { text.put_str(b, "&amp;"); }
+        text.put_str(b, "sort=");
+        text.put_str(b, sort_name(ask.sort));
+    }
+}
+
+fun put_chip_open(b: *text.Buf, ask: View, current: bool, empty: bool) {
+    text.put_str(b, "<a class=\"eco-chip");
+    if (empty) { text.put_str(b, " is-empty"); }
+    text.put_str(b, "\" href=\"");
+    put_link(b, ask);
+    if (current) { text.put_str(b, "\" aria-current=\"true\">"); }
+    or           { text.put_str(b, "\">"); }
+}
+
+fun put_count(b: *text.Buf, count: usize) {
+    text.put_str(b, "<span class=\"eco-count\">");
+    text.put_u64(b, count::u64);
+    text.put_str(b, "</span></a>");
+}
+
+fun pool_in(page: *Page, index: usize) usize {
+    var count: usize            = 0;
+    val head:  *snapshot.Header = snapshot.header(page.data, page.len);
+    var i:     usize            = 0;
+    for (i < head.entries::usize) {
+        val item: *snapshot.Entry = snapshot.entry(page.data, i);
+        if (item.index::usize == index && in_source(item, page.ask.source)
+            && matches(page.data, item, ?page.terms)) { count = count + 1; }
+        i = i + 1;
+    }
+    ret count;
+}
+
+fun put_categories(b: *text.Buf, page: *Page) {
+    var ask: View = page.ask;
+    ask.category = view.view(nil, 0);
+    put_chip_open(b, ask, page.ask.category.len == 0, false);
+    text.put_str(b, "all");
+    put_count(b, page.pooled);
+    val head: *snapshot.Header = snapshot.header(page.data, page.len);
+    var i:    usize            = 0;
+    for (i < head.categories::usize) {
+        val item:  *snapshot.Category = snapshot.category(page.data, i);
+        val id:    view.View          = snapshot.string(page.data, item.id);
+        val count: usize              = pool_in(page, i);
+        ask.category = id;
+        put_chip_open(b, ask, text.same(id, page.ask.category), count == 0);
+        text.put_html(b, snapshot.string(page.data, item.title));
+        put_count(b, count);
+        i = i + 1;
+    }
+}
+
+fun put_sources(b: *text.Buf, page: *Page) {
+    var ask:    View = page.ask;
+    var source: u8   = SOURCE_ALL;
+    for (source <= SOURCE_COMMUNITY) {
+        ask.source = source;
+        put_chip_open(b, ask, source == page.ask.source, false);
+        text.put_str(b, source_name(source));
+        text.put_str(b, "</a>");
+        source = source + 1;
+    }
+}
+
+fun put_card(b: *text.Buf, page: *Page, item: *snapshot.Entry, show_source: bool) {
+    val data:  *u8       = page.data;
+    val title: view.View = category_title(data, item);
+    text.put_str(b, "<article class=\"panel eco-card\"><div class=\"eco-card-head\"><a class=\"eco-name\" href=\"");
+    text.put_html(b, snapshot.string(data, item.url));
+    text.put_str(b, "\" target=\"_blank\" rel=\"noopener\">");
+    text.put_html(b, snapshot.string(data, item.name));
+    text.put_str(b, "</a><div class=\"eco-tags\">");
+    if (show_source && item.official) {
+        text.put_str(b, "<span class=\"chip chip-official\">official</span>");
+    }
+    var ask: View = page.ask;
+    ask.category = snapshot.string(data, item.category);
+    text.put_str(b, "<a class=\"chip eco-cat\" href=\"");
+    put_link(b, ask);
+    text.put_str(b, "\" data-category=\"");
+    text.put_html(b, ask.category);
+    text.put_str(b, "\" title=\"show only ");
+    text.put_html(b, title);
+    text.put_str(b, "\">");
+    text.put_html(b, title);
+    text.put_str(b, "</a></div></div><p class=\"eco-repo\">");
+    if (item.github) { text.put_html(b, snapshot.string(data, item.repo)); }
+    or               { text.put_html(b, host(snapshot.string(data, item.url))); }
+    text.put_str(b, "</p><p class=\"eco-desc\">");
+    text.put_html(b, snapshot.string(data, item.description));
+    text.put_str(b, "</p>");
+    if (item.github) {
+        text.put_str(b, "<ul class=\"eco-meta\"><li class=\"eco-stars\" aria-label=\"");
+        text.put_i64(b, item.stars);
+        text.put_str(b, " stars\">");
+        text.put_compact(b, item.stars);
+        text.put_str(b, "</li>");
+        if (item.has_release) {
+            text.put_str(b, "<li>");
+            text.put_html(b, snapshot.string(data, item.release));
+            text.put_str(b, "</li>");
+        }
+        if (item.license.len != 0) {
+            text.put_str(b, "<li>");
+            text.put_html(b, snapshot.string(data, item.license));
+            text.put_str(b, "</li>");
+        }
+        val pushed: view.View = snapshot.string(data, item.pushed_text);
+        text.put_str(b, "<li title=\"");
+        text.put_html(b, view.view(pushed.data, 10));
+        text.put_str(b, "\">updated ");
+        text.put_relative(b, item.pushed, page.now);
+        text.put_str(b, "</li></ul>");
+    }
+    text.put_str(b, "</article>");
+}
+
+fun put_sorts(b: *text.Buf, current: u8) {
+    var sort: u8 = SORT_STARS;
+    for (sort <= SORT_NAME) {
+        text.put_str(b, "<option value=\"");
+        text.put_str(b, sort_name(sort));
+        if (sort == current) { text.put_str(b, "\" selected>"); }
+        or                   { text.put_str(b, "\">"); }
+        text.put_str(b, sort_label(sort));
+        text.put_str(b, "</option>");
+        sort = sort + 1;
+    }
+}
+
+fun put_hidden(b: *text.Buf, ask: View) {
+    if (ask.category.len != 0) {
+        text.put_str(b, "<input type=\"hidden\" name=\"category\" value=\"");
+        text.put_html(b, ask.category);
+        text.put_str(b, "\" />");
+    }
+    if (ask.source != SOURCE_ALL) {
+        text.put_str(b, "<input type=\"hidden\" name=\"source\" value=\"");
+        text.put_str(b, source_name(ask.source));
+        text.put_str(b, "\" />");
+    }
+}
+
+# the document for the script, safe inside a script element: every < in it,
+# which json only has inside strings, is escaped
+fun put_data(b: *text.Buf, doc: view.View) {
+    var i: usize = 0;
+    for (i < doc.len) {
+        val c: u8 = doc.data[i]::u8;
+        if (c == '<')                     { text.put_str(b, "\\u003c"); }
+        or (c != '\n' || i + 1 < doc.len) { text.put_byte(b, c); }
+        i = i + 1;
+    }
+}
+
+fun put_notice(b: *text.Buf, page: *Page, head: *snapshot.Header) {
+    if (head == nil) {
+        text.put_str(b, "<p class=\"note eco-notice\">The catalog is unavailable right now. Browse it on <a href=\"https://github.com/briar-systems/mach-ecosystem#readme\" target=\"_blank\">github</a> instead.</p>");
+        ret;
+    }
+    val age: i64 = page.now - head.generated;
+    if (age <= AGE_NOTICE_S) { ret; }
+    text.put_str(b, "<p class=\"note eco-notice\">This catalog is ");
+    text.put_age(b, age);
+    text.put_str(b, " old: GitHub has not answered since, so the newest entries and numbers may be missing.</p>");
+}
+
+fun put_part(b: *text.Buf, page: *Page, name: view.View) {
+    val head: *snapshot.Header = snapshot.header(page.data, page.len);
+    if (text.same(name, text.text("notice"))) {
+        put_notice(b, page, head);
+        ret;
+    }
+    if (text.same(name, text.text("state"))) {
+        if (head != nil) { text.put_str(b, " is-ready"); }
+        ret;
+    }
+    if (text.same(name, text.text("q"))) {
+        text.put_html(b, page.ask.q);
+        ret;
+    }
+    if (text.same(name, text.text("sorts"))) {
+        put_sorts(b, page.ask.sort);
+        ret;
+    }
+    if (text.same(name, text.text("hidden"))) {
+        put_hidden(b, page.ask);
+        ret;
+    }
+    if (head == nil) {
+        if (text.same(name, text.text("sources-hidden"))
+            || text.same(name, text.text("empty-hidden"))) { text.put_str(b, " hidden"); }
+        or (text.same(name, text.text("data"))) { text.put_str(b, "null"); }
+        ret;
+    }
+    val mixing: bool = mixed(page.data, head);
+    if (text.same(name, text.text("sources-hidden"))) {
+        if (!mixing) { text.put_str(b, " hidden"); }
+        ret;
+    }
+    if (text.same(name, text.text("sources"))) {
+        if (mixing) { put_sources(b, page); }
+        ret;
+    }
+    if (text.same(name, text.text("categories"))) {
+        put_categories(b, page);
+        ret;
+    }
+    if (text.same(name, text.text("status"))) {
+        if (page.shown == head.entries::usize) {
+            text.put_str(b, "showing all ");
+            text.put_u64(b, page.shown::u64);
+        }
+        or {
+            text.put_str(b, "showing ");
+            text.put_u64(b, page.shown::u64);
+            text.put_str(b, " of ");
+            text.put_u64(b, head.entries::u64);
+        }
+        text.put_str(b, " projects");
+        ret;
+    }
+    if (text.same(name, text.text("stats"))) {
+        text.put_u64(b, head.entries::u64);
+        text.put_str(b, " projects · ");
+        text.put_u64(b, head.categories::u64);
+        text.put_str(b, " categories · refreshed ");
+        text.put_relative(b, head.generated, page.now);
+        ret;
+    }
+    if (text.same(name, text.text("grid"))) {
+        var i: usize = 0;
+        for (i < page.shown) {
+            put_card(b, page, page.items[i].entry, mixing);
+            i = i + 1;
+        }
+        ret;
+    }
+    if (text.same(name, text.text("empty-hidden"))) {
+        if (page.shown != 0) { text.put_str(b, " hidden"); }
+        ret;
+    }
+    if (text.same(name, text.text("data"))) { put_data(b, snapshot.document(page.data)); }
+}
+
+# the page for a selected view, into `b`
+pub fun render(b: *text.Buf, page: *Page) {
+    val length: usize = $length_of(TEMPLATE);
+    var i:      usize = 0;
+    for (i < length) {
+        if (TEMPLATE[i] == '{' && i + 1 < length && TEMPLATE[i + 1] == '{') {
+            var end: usize = i + 2;
+            for (end + 1 < length && !(TEMPLATE[end] == '}' && TEMPLATE[end + 1] == '}')) {
+                end = end + 1;
+            }
+            put_part(b, page, view.view((?TEMPLATE[i + 2])::*char, end - i - 2));
+            i = end + 2;
+            cnt;
+        }
+        text.put_byte(b, TEMPLATE[i]);
+        i = i + 1;
+    }
+}

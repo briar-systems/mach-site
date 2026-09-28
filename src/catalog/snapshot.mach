@@ -1,0 +1,278 @@
+# the published catalog snapshot, laid out for readers that never parse
+#
+# a snapshot is built from the catalog document, the json the site serves at
+# /ecosystem.json and keeps on the volume:
+#
+#   {"generated": "<utc timestamp>", "source": "<url>",
+#    "categories": [{"id", "title", "description"}],
+#    "entries": [{"id", "name", "url", "description", "category", "official",
+#                 "github": null | {"repo", "owner", "stars", "forks", "pushed",
+#                   "license": null | "<spdx or name>",
+#                   "release": null | {"tag", "published"}}}]}
+#
+# the layout is a header, the categories, the entries, their decoded strings,
+# and the document itself, all in one position-independent block. every
+# record sits at an 8-byte boundary, so the block must start at one.
+
+use site.text;
+use A: std.allocator;
+use std.data.json;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+val MAGIC: u32 = 1296253268;
+# a category index for an entry whose category the document does not list
+pub val NO_CATEGORY: u32 = 4294967295;
+
+pub rec Ref {
+    off: u32;
+    len: u32;
+}
+
+pub rec Header {
+    magic:      u32;
+    categories: u32;
+    entries:    u32;
+    documented: u32;
+    generated:  i64;
+    document:   Ref;
+}
+
+pub rec Category {
+    id:    Ref;
+    title: Ref;
+}
+
+pub rec Entry {
+    id:          Ref;
+    name:        Ref;
+    url:         Ref;
+    description: Ref;
+    category:    Ref;
+    repo:        Ref;
+    license:     Ref;
+    release:     Ref;
+    pushed_text: Ref;
+    stars:       i64;
+    forks:       i64;
+    pushed:      i64;
+    released:    i64;
+    index:       u32;
+    official:    bool;
+    github:      bool;
+    has_release: bool;
+}
+
+fun align8(value: usize) usize {
+    ret (value + 7) / 8 * 8;
+}
+
+# the block's header, or nil when it is not a snapshot
+pub fun header(data: *u8, len: usize) *Header {
+    if (data == nil || len < $size_of(Header)) { ret nil; }
+    val found: *Header = data::*Header;
+    if (found.magic != MAGIC) { ret nil; }
+    ret found;
+}
+
+pub fun category(data: *u8, index: usize) *Category {
+    val first: *Category = (?data[align8($size_of(Header))])::*Category;
+    ret ?first[index];
+}
+
+pub fun entry(data: *u8, index: usize) *Entry {
+    val categories: usize  = (data::*Header).categories::usize;
+    val at:         usize  = align8(align8($size_of(Header)) + categories * $size_of(Category));
+    val first:      *Entry = (?data[at])::*Entry;
+    ret ?first[index];
+}
+
+pub fun string(data: *u8, value: Ref) view.View {
+    ret view.view((?data[value.off::usize])::*char, value.len::usize);
+}
+
+pub fun document(data: *u8) view.View {
+    ret string(data, (data::*Header).document);
+}
+
+rec Builder {
+    base:     *u8;
+    capacity: usize;
+    at:       usize;
+    ok:       bool;
+}
+
+fun empty_ref() Ref {
+    ret Ref{off: 0, len: 0};
+}
+
+fun reserve(builder: *Builder, length: usize) usize {
+    val start: usize = builder.at;
+    if (length > builder.capacity || start > builder.capacity - length) {
+        builder.ok = false;
+        ret 0;
+    }
+    builder.at = start + length;
+    ret start;
+}
+
+# the decoded text of a json string, stored in the block
+fun put_string(builder: *Builder, value: *json.Value) Ref {
+    if (value == nil || value.kind != json.STRING) {
+        builder.ok = false;
+        ret empty_ref();
+    }
+    val measured: res[usize, json.JsonError] = json.value_string_decode(value, nil, 0);
+    if (sel measured.err) {
+        builder.ok = false;
+        ret empty_ref();
+    }
+    val start: usize = reserve(builder, measured.ok);
+    if (!builder.ok) { ret empty_ref(); }
+    val decoded: res[usize, json.JsonError] = json.value_string_decode(value,
+        ?builder.base[start], measured.ok);
+    if (sel decoded.err) {
+        builder.ok = false;
+        ret empty_ref();
+    }
+    ret Ref{off: start::u32, len: measured.ok::u32};
+}
+
+fun field(value: *json.Value, name: str) *json.Value {
+    if (value == nil || value.kind != json.OBJECT) { ret nil; }
+    val found: opt[*json.Value] = json.value_find(value, name);
+    if (sel found.none) { ret nil; }
+    ret found.some;
+}
+
+fun number(value: *json.Value, output: *i64) bool {
+    if (value == nil || value.kind != json.NUMBER || value.is_float != 0) { ret false; }
+    @output = value.num_val;
+    ret true;
+}
+
+fun timestamp(data: *u8, value: Ref, output: *i64) bool {
+    val parsed: opt[i64] = text.parse_timestamp(string(data, value));
+    if (sel parsed.none) { ret false; }
+    @output = parsed.some;
+    ret true;
+}
+
+fun fill_github(builder: *Builder, item: *Entry, value: *json.Value) {
+    item.github      = false;
+    item.has_release = false;
+    if (value == nil || value.kind == json.NULL) { ret; }
+    item.github      = true;
+    item.repo        = put_string(builder, field(value, "repo"));
+    item.pushed_text = put_string(builder, field(value, "pushed"));
+    if (!number(field(value, "stars"), ?item.stars) || !number(field(value, "forks"), ?item.forks)
+        || !builder.ok || !timestamp(builder.base, item.pushed_text, ?item.pushed)) {
+        builder.ok = false;
+        ret;
+    }
+    val license: *json.Value = field(value, "license");
+    if (license != nil && license.kind != json.NULL) { item.license = put_string(builder, license); }
+    val release: *json.Value = field(value, "release");
+    if (release != nil && release.kind != json.NULL) {
+        item.has_release = true;
+        item.release     = put_string(builder, field(release, "tag"));
+        val published: Ref = put_string(builder, field(release, "published"));
+        if (!builder.ok || !timestamp(builder.base, published, ?item.released)) {
+            builder.ok = false;
+        }
+    }
+}
+
+fun category_index(data: *u8, count: usize, id: Ref) u32 {
+    var i: usize = 0;
+    for (i < count) {
+        if (text.same(string(data, category(data, i).id), string(data, id))) { ret i::u32; }
+        i = i + 1;
+    }
+    ret NO_CATEGORY;
+}
+
+# build a snapshot of the catalog document into `output`
+# ---
+# doc:      the catalog document
+# output:   8-byte aligned storage for the block
+# capacity: its size
+# arena:    storage for parsing the document, released by the caller
+# ret:      the block's length, or 0 when the document is not a catalog or
+#           the block does not fit
+pub fun build(doc: view.View, output: *u8, capacity: usize, arena: *A.Allocator) usize {
+    val parsed: res[json.Value, json.JsonError] = json.parse(doc.data::*u8, doc.len, arena);
+    if (sel parsed.err) { ret 0; }
+    var root:       json.Value  = parsed.ok;
+    val categories: *json.Value = field(?root, "categories");
+    val entries:    *json.Value = field(?root, "entries");
+    val generated:  *json.Value = field(?root, "generated");
+    if (categories == nil || categories.kind != json.ARRAY || entries == nil
+        || entries.kind != json.ARRAY || generated == nil || generated.kind != json.STRING) {
+        ret 0;
+    }
+    val category_bytes: usize   = categories.count * $size_of(Category);
+    val entry_at:       usize   = align8(align8($size_of(Header)) + category_bytes);
+    var builder:        Builder = Builder{base: output, capacity: capacity,
+        at: align8(entry_at + entries.count * $size_of(Entry)), ok: true};
+    if (output == nil || builder.at > capacity) { ret 0; }
+    val head: *Header = output::*Header;
+    head.magic      = MAGIC;
+    head.categories = categories.count::u32;
+    head.entries    = entries.count::u32;
+    head.documented = 0;
+    val stamp: Ref = put_string(?builder, generated);
+    if (!builder.ok || !timestamp(output, stamp, ?head.generated)) { ret 0; }
+
+    var i: usize = 0;
+    for (i < categories.count) {
+        val item:  *Category   = category(output, i);
+        val value: *json.Value = ?categories.children[i];
+        item.id    = put_string(?builder, field(value, "id"));
+        item.title = put_string(?builder, field(value, "title"));
+        i          = i + 1;
+    }
+    i = 0;
+    for (i < entries.count && builder.ok) {
+        val item:  *Entry      = entry(output, i);
+        val value: *json.Value = ?entries.children[i];
+        item.id          = put_string(?builder, field(value, "id"));
+        item.name        = put_string(?builder, field(value, "name"));
+        item.url         = put_string(?builder, field(value, "url"));
+        item.description = put_string(?builder, field(value, "description"));
+        item.category    = put_string(?builder, field(value, "category"));
+        item.repo        = empty_ref();
+        item.license     = empty_ref();
+        item.release     = empty_ref();
+        item.pushed_text = empty_ref();
+        item.stars       = 0;
+        item.forks       = 0;
+        item.pushed      = 0;
+        item.released    = 0;
+        val official: *json.Value = field(value, "official");
+        item.official = official != nil && official.kind == json.BOOL && official.bool_val != 0;
+        fill_github(?builder, item, field(value, "github"));
+        if (builder.ok) {
+            item.index = category_index(output, categories.count, item.category);
+            if (item.github) { head.documented = head.documented + 1; }
+        }
+        i = i + 1;
+    }
+    if (!builder.ok) { ret 0; }
+    val copied: usize = reserve(?builder, doc.len);
+    if (!builder.ok) { ret 0; }
+    var j: usize = 0;
+    for (j < doc.len) {
+        output[copied + j] = doc.data[j]::u8;
+        j                  = j + 1;
+    }
+    head.document = Ref{off: copied::u32, len: doc.len::u32};
+    ret builder.at;
+}

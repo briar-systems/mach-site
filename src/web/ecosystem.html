@@ -11,16 +11,17 @@
         <meta name="theme-color" content="#000000" />
         <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
         <link rel="alternate" type="text/plain" href="/llms-full.txt" title="llms-full.txt" />
-        <link rel="icon" type="image/svg+xml" href="../assets/mach-tile.svg" />
-        <link rel="icon" type="image/png" sizes="32x32" href="../assets/mach_32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="../assets/mach_16.png" />
+        <link rel="icon" type="image/svg+xml" href="/assets/mach-tile.svg" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/assets/mach_32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/assets/mach_16.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
             rel="stylesheet"
             href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap"
         />
-        <link rel="stylesheet" href="../style.css" />
+        <link rel="stylesheet" href="/style.css" />
+        <link rel="canonical" href="https://machlang.org/ecosystem/" />
     </head>
     <body>
         <svg style="display: none" aria-hidden="true">
@@ -42,13 +43,13 @@
 
         <nav class="nav">
             <div class="wrap nav-inner">
-                <a href="../" class="brand">
+                <a href="/" class="brand">
                     <svg class="mark" aria-hidden="true"><use href="#mark" /></svg>
                     <span>mach</span>
                 </a>
                 <div class="nav-links">
-                    <a href="../docs/">docs</a>
-                    <a href="./" class="nav-extra" aria-current="page">ecosystem</a>
+                    <a href="/docs/">docs</a>
+                    <a href="/ecosystem/" class="nav-extra" aria-current="page">ecosystem</a>
                     <a href="https://github.com/briar-systems/mach/blob/main/CHANGELOG.md" target="_blank" class="nav-extra">changelog</a>
                     <a href="https://discord.com/invite/dfWG9NhGj7" target="_blank" class="nav-extra">discord</a>
                     <a href="https://github.com/briar-systems/mach" target="_blank" class="nav-github">
@@ -58,7 +59,7 @@
             </div>
         </nav>
 
-        <main class="eco" data-ecosystem>
+        <main class="eco{{state}}" data-ecosystem>
             <section class="section wrap" aria-labelledby="eco-title">
                 <div class="split split-head">
                     <div class="section-head">
@@ -79,46 +80,38 @@
                     </div>
                 </div>
 
-                <div class="eco-tools">
+                {{notice}}
+                <form class="eco-tools" method="get" action="/ecosystem/">
                     <div class="eco-bar">
                         <label class="cmd eco-search">
                             <span class="prompt">/</span>
                             <span class="visually-hidden">search projects</span>
-                            <input id="eco-search" type="search" placeholder="search projects" autocomplete="off" spellcheck="false" />
+                            <input id="eco-search" name="q" type="search" placeholder="search projects" autocomplete="off" spellcheck="false" value="{{q}}" />
                         </label>
                         <label class="eco-sort">
                             <span class="label">sort</span>
-                            <select id="eco-sort"></select>
+                            <select id="eco-sort" name="sort">{{sorts}}</select>
                         </label>
+                        <button type="submit" class="btn eco-apply">search</button>
                     </div>
+                    {{hidden}}
                     <div class="eco-facets">
-                        <div class="eco-sources" role="group" aria-label="Filter by source" hidden></div>
-                        <div class="eco-categories" role="group" aria-label="Filter by category"></div>
+                        <div class="eco-sources" role="group" aria-label="Filter by source"{{sources-hidden}}>{{sources}}</div>
+                        <div class="eco-categories" role="group" aria-label="Filter by category">{{categories}}</div>
                     </div>
                     <div class="eco-status-row">
-                        <p class="note eco-status" aria-live="polite"></p>
-                        <p class="note eco-stats"></p>
+                        <p class="note eco-status" aria-live="polite">{{status}}</p>
+                        <p class="note eco-stats">{{stats}}</p>
                     </div>
-                </div>
+                </form>
 
-                <div class="eco-grid"></div>
+                <div class="eco-grid">{{grid}}</div>
 
-                <div class="eco-empty" hidden>
+                <div class="eco-empty"{{empty-hidden}}>
                     <p class="prose">Nothing matches.</p>
-                    <button type="button" class="btn eco-reset">clear filters</button>
+                    <a href="/ecosystem/" class="btn eco-reset">clear filters</a>
                 </div>
 
-                <p class="note eco-fallback">
-                    The catalog did not load. Browse it on
-                    <a href="https://github.com/briar-systems/mach-ecosystem#readme" target="_blank">github</a>
-                    instead.
-                </p>
-                <noscript>
-                    <p class="note">
-                        Searching and sorting need javascript. The full list is on
-                        <a href="https://github.com/briar-systems/mach-ecosystem#readme" target="_blank">github</a>.
-                    </p>
-                </noscript>
             </section>
         </main>
 
@@ -126,8 +119,8 @@
             <div class="wrap bar-inner">
                 <span class="bar-brand"><svg class="mark" aria-hidden="true"><use href="#mark" /></svg>mach<span class="badge-version"></span></span>
                 <span class="bar-links">
-                    <a href="../docs/">docs</a>
-                    <a href="./">ecosystem</a>
+                    <a href="/docs/">docs</a>
+                    <a href="/ecosystem/">ecosystem</a>
                     <a href="https://github.com/briar-systems/mach" target="_blank">github</a>
                     <a href="https://discord.com/invite/dfWG9NhGj7" target="_blank">discord</a>
                     <a href="https://github.com/briar-systems/mach/releases" target="_blank">releases</a>
@@ -136,7 +129,8 @@
             </div>
         </footer>
 
-        <script src="../assets/version.js" defer></script>
-        <script src="../assets/ecosystem.js" defer></script>
+        <script type="application/json" id="eco-data">{{data}}</script>
+        <script src="/assets/version.js" defer></script>
+        <script src="/assets/ecosystem.js" defer></script>
     </body>
 </html>

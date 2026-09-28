@@ -1,10 +1,10 @@
-// the ecosystem page. reads the data.json the deploy bakes from mach-ecosystem
-// (.github/scripts/bake-ecosystem.js) and renders it as a filterable catalog.
-// the view state lives in the query string so a filtered view can be linked.
+// the ecosystem page's enhancement. the server renders the catalog for the
+// query string, so the page works without javascript. this script reads the
+// snapshot the server embeds in the page, filters and sorts as you type, and
+// keeps the query string in sync so a filtered view can still be linked.
 (function () {
   "use strict";
 
-  var DATA_URL = "data.json";
   var DEFAULTS = { q: "", category: "all", source: "all", sort: "stars" };
   var SORTS = {
     stars: "most stars",
@@ -196,17 +196,12 @@
       sort: root.querySelector("#eco-sort"),
       categories: root.querySelector(".eco-categories"),
       sources: root.querySelector(".eco-sources"),
+      form: root.querySelector(".eco-tools"),
       stats: root.querySelector(".eco-stats"),
       status: root.querySelector(".eco-status"),
       grid: root.querySelector(".eco-grid"),
       empty: root.querySelector(".eco-empty"),
     };
-
-    Object.keys(SORTS).forEach(function (k) {
-      var o = el("option", null, SORTS[k]);
-      o.value = k;
-      ui.sort.appendChild(o);
-    });
 
     function set(patch) {
       Object.keys(patch).forEach(function (k) { state[k] = patch[k]; });
@@ -251,11 +246,15 @@
 
     root.addEventListener("click", function (e) {
       var c = e.target.closest("[data-category]");
-      if (c) { set({ category: c.getAttribute("data-category") }); return; }
+      if (c) { e.preventDefault(); set({ category: c.getAttribute("data-category") }); return; }
       var s = e.target.closest("[data-source]");
-      if (s) { set({ source: s.getAttribute("data-source") }); return; }
-      if (e.target.closest(".eco-reset")) { set({ q: "", category: "all", source: "all" }); }
+      if (s) { e.preventDefault(); set({ source: s.getAttribute("data-source") }); return; }
+      if (e.target.closest(".eco-reset")) {
+        e.preventDefault();
+        set({ q: "", category: "all", source: "all" });
+      }
     });
+    ui.form.addEventListener("submit", function (e) { e.preventDefault(); });
     ui.search.addEventListener("input", function () { set({ q: ui.search.value }); });
     ui.sort.addEventListener("change", function () { set({ sort: ui.sort.value }); });
     document.addEventListener("keydown", function (e) {
@@ -265,21 +264,16 @@
       }
     });
 
-    fetch(DATA_URL)
-      .then(function (res) {
-        if (!res.ok) { throw new Error(res.status); }
-        return res.json();
-      })
-      .then(function (body) {
-        data = body;
-        var cats = data.categories.length;
-        ui.stats.textContent = data.entries.length + " projects · " + cats + " categories · refreshed " + relative(data.generated, Date.now());
-        root.classList.add("is-ready");
-        render();
-      })
-      .catch(function () {
-        root.classList.add("is-failed");
-      });
+    var embedded = document.getElementById("eco-data");
+    try {
+      data = embedded ? JSON.parse(embedded.textContent) : null;
+    } catch (e) {
+      data = null;
+    }
+    // without a snapshot the server's notice stands and there is nothing to filter
+    if (!data) { return; }
+    root.classList.add("is-live");
+    render();
   }
 
   if (typeof module !== "undefined" && module.exports) {

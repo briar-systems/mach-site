@@ -1,0 +1,66 @@
+# the machlang.org server: graft hosts the site's laurel application in hedge
+#
+# `host.run_with` reads and seals the configuration, assembles the application
+# against it, mounts it under "site", and serves until SIGINT or SIGTERM drains
+# it. hedge serves the static files itself, and starts, drains and stops the
+# application. the process hands hedge a task facility of its own, trusting the
+# system's CA bundle, so the catalog refresh can reach github over https. the
+# exit status is graft's: 0 for a clean drain, 75 for a drain that ran out of
+# time, 78 for a configuration error, 70 otherwise.
+
+use graft.host;
+use hedge_task: hedge.task;
+use laurel_app: laurel.app;
+use site.app;
+use std.allocator;
+use std.allocator.page;
+use std.print;
+use std.runtime;
+use std.types.bool.bool;
+use std.types.error.err;
+use std.types.string.str;
+use tls.cert.bundle;
+
+# the CA bundle the image carries, as debian lays it out
+val CA_BUNDLE: str = "/etc/ssl/certs/ca-certificates.crt";
+
+var site:     app.Site;
+var heap:     allocator.Allocator;
+var anchors:  bundle.Loaded;
+var facility: hedge_task.Tasks;
+
+fun assemble(ctx: ptr, setup: *host.Setup) *laurel_app.App {
+    if (!app.assemble(?site, setup, ?facility)) { ret nil; }
+    ret ?site.app;
+}
+
+fun release(ctx: ptr, assembled: *laurel_app.App) bool {
+    ret app.release(?site);
+}
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    var path: str = "hedge.toml";
+    if (argc > 1 && argv[1] != nil) { path = argv[1]::str; }
+    val made: err[allocator.Error] = page.make(?heap);
+    if (sel made.err) {
+        print.eprintln("site: page allocator initialization failed");
+        ret host.EXIT_RUNTIME;
+    }
+    if (bundle.load(?heap, CA_BUNDLE, ?anchors) != bundle.OK) {
+        print.eprint("site: cannot load the CA bundle ");
+        print.eprintln(CA_BUNDLE);
+        ret host.EXIT_RUNTIME;
+    }
+    var tasks: hedge_task.Options = hedge_task.default_options();
+    tasks.trust = ?anchors.bundle.store;
+    if (!hedge_task.make(?facility, tasks)) {
+        print.eprintln("site: the task facility could not be made");
+        ret host.EXIT_RUNTIME;
+    }
+    var options: host.Options = host.options(path, "site");
+    options.label         = "site";
+    options.process.tasks = ?facility;
+    ret host.run_with(options, host.Application{ctx: nil, assemble: assemble,
+        release: release, memory_bytes: 8388608});
+}

@@ -1,0 +1,282 @@
+# the site's laurel application: the dynamic routes machlang.org serves beside
+# hedge's static files
+#
+# everything the application owns lives in one Site record, which the executable
+# owns for the life of the process. hedge serves every static file itself, so
+# only the routes below ever enter laurel: the ecosystem page and its json, the
+# webhook that refreshes it, and the health check that reports its age.
+
+use graft.host;
+use hedge_task: hedge.task;
+use http.core.method;
+use http_router: http.router.router;
+use laurel.app;
+use laurel.config;
+use laurel.context;
+use laurel.error;
+use laurel.handler;
+use laurel.lifecycle;
+use laurel.middleware;
+use laurel.observability;
+use laurel.provider;
+use laurel.router;
+use laurel_secret: laurel.secret;
+use laurel.security;
+use site.catalog.refresh;
+use site.text;
+use site.web.handlers;
+use std.chrono.duration;
+use std.chrono.time;
+use std.print;
+use std.process.env;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+# requests laurel may serve at once, past which admission refuses them
+val MAX_ACTIVE_REQUESTS: usize = 256;
+# the provider set holds one entry, the one graft supplies
+val PROVIDER_COUNT: usize = 1;
+val ROUTE_COUNT:    usize = 9;
+val SEGMENT_COUNT:  usize = 32;
+val SETTING_BYTES:  usize = 512;
+# the file the catalog is kept in across restarts, a path on a volume. unset
+# keeps none
+val SNAPSHOT_VARIABLE: str = "ECOSYSTEM_SNAPSHOT_PATH";
+
+pub rec Site {
+    routes:         [ROUTE_COUNT]router.Route;
+    specifications: [ROUTE_COUNT]http_router.Route;
+    compiled:       [ROUTE_COUNT]http_router.CompiledRoute;
+    segments:       [SEGMENT_COUNT]http_router.Segment;
+    matcher:        router.Router;
+    stack:          middleware.Stack;
+    entries:        [PROVIDER_COUNT]provider.Provider;
+    providers:      provider.Set;
+    services:       [1]lifecycle.Lifecycle;
+    controller:     lifecycle.Controller;
+    headers:        security.HeadersPolicy;
+    errors:         error.Default;
+    vocabulary:     observability.Vocabulary;
+    observer:       observability.Observer;
+    # the task facility the process hands hedge, which the catalog runs on
+    facility: *hedge_task.Tasks;
+    settings: *config.Provider;
+    # what the catalog's settings read into
+    entries_url: [SETTING_BYTES]u8;
+    graphql_url: [SETTING_BYTES]u8;
+    snapshot:    [SETTING_BYTES]u8;
+    state:       handlers.State;
+    refresher:   refresh.Refresher;
+    app:         app.App;
+}
+
+fun ignore_start(ctx: ptr, event: *observability.RequestEvent) {}
+
+fun ignore_finish(ctx: ptr, event: *observability.RequestEvent) {}
+
+# hedge logs every request it serves, so the observer only surfaces the private
+# detail of a failure, which never reaches the client
+fun report_error(ctx: ptr, event: *observability.RequestEvent, failure: error.AppError) {
+    var copy:   error.AppError = failure;
+    val detail: view.View      = error.private_detail(?copy);
+    var line:   [256]u8;
+    var i:      usize          = 0;
+    for (i < detail.len && i < 255) {
+        line[i] = detail.data[i]::u8;
+        i       = i + 1;
+    }
+    line[i] = 0;
+    print.eprintlnf("site: request failed: status {}: {}", event.status::u64,
+        (?line[0])::*u8);
+}
+
+fun failed(detail: str) res[lifecycle.CallbackStatus, view.View] {
+    ret res[lifecycle.CallbackStatus, view.View].err{text.text(detail)};
+}
+
+fun done() res[lifecycle.CallbackStatus, view.View] {
+    ret res[lifecycle.CallbackStatus, view.View].ok{lifecycle.CALLBACK_DONE};
+}
+
+# one catalog setting, or an empty view when it is absent
+fun setting(site: *Site, key: str, output: *u8, found: *view.View) bool {
+    val read: config.Read = config.read(site.settings, text.text(key), output, SETTING_BYTES);
+    if (read.status == config.READ_MISSING) {
+        @found = view.view(nil, 0);
+        ret true;
+    }
+    if (read.status != config.READ_FOUND) { ret false; }
+    @found = view.view(output::*char, read.len);
+    ret true;
+}
+
+# registers the catalog refresh once hedge has started the application, when
+# its settings can be read, and before any worker serves. the catalog is kept
+# in a file only when ECOSYSTEM_SNAPSHOT_PATH names one
+fun catalog_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
+    val site:     *Site = ctx::*Site;
+    var settings: refresh.Settings;
+    if (!setting(site, "catalog.entries_url", ?site.entries_url[0], ?settings.entries_url)
+        || !setting(site, "catalog.graphql_url", ?site.graphql_url[0], ?settings.graphql_url)) {
+        ret failed("the catalog settings could not be read");
+    }
+    if (settings.entries_url.len == 0 || settings.graphql_url.len == 0) {
+        ret failed("catalog.entries_url and catalog.graphql_url must be set");
+    }
+    settings.snapshot = view.view(nil, 0);
+    val kept: res[opt[usize], env.EnvError] = env.get(SNAPSHOT_VARIABLE, ?site.snapshot[0],
+        SETTING_BYTES);
+    if (sel kept.err) { ret failed("ECOSYSTEM_SNAPSHOT_PATH could not be read"); }
+    if (sel kept.ok.some) {
+        settings.snapshot = view.view((?site.snapshot[0])::*char, kept.ok.some);
+    }
+    if (!refresh.start(?site.refresher, site.facility, settings, site.state.secrets)) {
+        ret failed("the catalog refresh could not be registered");
+    }
+    ret done();
+}
+
+fun catalog_ready(ctx: ptr) lifecycle.Readiness {
+    ret lifecycle.READY_NOW;
+}
+
+# hedge drains the task facility itself, toward the same deadline
+fun catalog_drain(ctx: ptr, deadline: opt[time.Instant])
+    res[lifecycle.CallbackStatus, view.View] {
+    ret done();
+}
+
+fun catalog_stop(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
+    ret done();
+}
+
+# what laurel runs when no route matched
+fun not_found(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    ret handler.fail(error.make(error.NOT_FOUND, 404, "not found",
+        "no route matched the request target", false));
+}
+
+fun route(kind: method.Kind, pattern: str, name: str, call: handler.EnterFun,
+    resume: handler.ResumeFun, ctx: ptr) router.Route {
+    ret router.Route{method: router.exact_method(method.from_kind(kind)),
+        host:       router.any_host(), path: router.path(text.text(pattern)), name: name,
+        parameters: nil, parameter_len: 0,
+        handler:    handler.Handler{ctx: ctx, call: call, resume: resume}};
+}
+
+fun resolved(site: *Site, key: view.View) ptr {
+    val found: res[ptr, view.View] = provider.resolve(?site.providers, key);
+    if (sel found.err) { ret nil; }
+    ret found.ok;
+}
+
+# assemble the application against the limits hedge commits every response
+# under, with the providers graft supplies
+# ---
+# site:     storage for the application, live until it is released
+# setup:    what graft hands the application once the configuration is sealed
+# facility: the task facility the process hands hedge
+# ret:      whether the application was assembled
+pub fun assemble(site: *Site, setup: *host.Setup, facility: *hedge_task.Tasks) bool {
+    if (site == nil || setup == nil || facility == nil) { ret false; }
+    if (!security.secure_headers(?site.headers))        { ret false; }
+    site.facility        = facility;
+    site.state.refresher = ?site.refresher;
+
+    val ctx: ptr = (?site.state)::ptr;
+    site.routes[0] = route(method.GET, "/ecosystem", "ecosystem.moved",
+        handlers.ecosystem_moved, nil, ctx);
+    site.routes[1] = route(method.GET, "/ecosystem/", "ecosystem.page", handlers.ecosystem,
+        nil, ctx);
+    site.routes[2] = route(method.GET, "/ecosystem.json", "ecosystem.json",
+        handlers.catalog, nil, ctx);
+    site.routes[3] = route(method.POST, "/hooks/ecosystem", "ecosystem.hook", handlers.hook,
+        handlers.hook_resume, ctx);
+    site.routes[4] = route(method.GET, "/healthz", "health", handlers.health, nil, ctx);
+    # a HEAD is answered as its GET, without the body
+    site.routes[5] = route(method.HEAD, "/ecosystem", "ecosystem.moved.head",
+        handlers.ecosystem_moved, nil, ctx);
+    site.routes[6] = route(method.HEAD, "/ecosystem/", "ecosystem.page.head",
+        handlers.ecosystem, nil, ctx);
+    site.routes[7] = route(method.HEAD, "/ecosystem.json", "ecosystem.json.head",
+        handlers.catalog, nil, ctx);
+    site.routes[8] = route(method.HEAD, "/healthz", "health.head", handlers.health, nil,
+        ctx);
+    val compiled: router.Compile = router.compile(?site.matcher, ?site.routes[0], ROUTE_COUNT,
+        router.Storage{specifications: ?site.specifications[0],
+        specification_cap:  ROUTE_COUNT, compiled_routes: ?site.compiled[0],
+        compiled_route_cap: ROUTE_COUNT, segments: ?site.segments[0],
+        segment_cap:        SEGMENT_COUNT}, router.limits_default());
+    if (compiled.status != router.COMPILE_OK) { ret false; }
+
+    site.stack      = middleware.Stack{items: nil, len: 0};
+    site.entries[0] = setup.providers;
+    if (!provider.init(?site.providers, ?site.entries[0], PROVIDER_COUNT, PROVIDER_COUNT,
+        32)) { ret false; }
+    val secrets: ptr = resolved(site, laurel_secret.key());
+    site.settings = resolved(site, config.key())::*config.Provider;
+    if (secrets == nil || site.settings == nil) { ret false; }
+    site.state.secrets = @(secrets::*laurel_secret.Source);
+
+    site.services[0] = lifecycle.Lifecycle{ctx: site::ptr, start: catalog_start,
+        ready: catalog_ready, drain: catalog_drain, stop: catalog_stop};
+    if (!lifecycle.init(?site.controller, ?site.services[0], 1, 1)) { ret false; }
+    if (!error.initialize_default(?site.errors, setup.limits, 512)) { ret false; }
+    if (!observability.init_vocabulary(?site.vocabulary, nil, 0))   { ret false; }
+    site.observer = observability.Observer{ctx: nil, start: ignore_start,
+        finish: ignore_finish, error: report_error};
+
+    val assembly: app.Assembly = app.Assembly{
+        config: app.Config{
+            limits: app.Limits{
+                max_body_bytes:          handlers.HOOK_BYTES,
+                max_form_fields:         16,
+                max_upload_bytes:        65536,
+                max_route_params:        4,
+                max_request_id_bytes:    64,
+                max_active_requests:     MAX_ACTIVE_REQUESTS,
+                max_middleware_depth:    4,
+                handler_timeout:         opt[duration.Duration].none{},
+                max_providers:           PROVIDER_COUNT,
+                max_provider_key_bytes:  32,
+                max_background_services: 1
+            },
+            trust_proxy:  false,
+            panic_policy: middleware.PANIC_ABORT
+        },
+        router:        ?site.matcher,
+        middleware:    ?site.stack,
+        fallback:      handler.Handler{ctx: nil, call: not_found, resume: nil},
+        errors:        error.default_mapper(?site.errors),
+        providers:     ?site.providers,
+        lifecycle:     ?site.controller,
+        sessions:      nil,
+        security:      ?site.headers,
+        csrf:          nil,
+        origins:       nil,
+        authenticator: nil,
+        renderer:      nil,
+        observer:      ?site.observer,
+        vocabulary:    ?site.vocabulary,
+        event_policy:  observability.policy_default(),
+        app_state:     nil,
+    };
+    ret app.assemble(?site.app, assembly);
+}
+
+# release what the application holds, once hedge has drained and stopped it.
+# an application a refused start never started holds nothing to release
+pub fun release(site: *Site) bool {
+    if (site == nil)                                  { ret false; }
+    if (site.controller.state == lifecycle.ASSEMBLED) { ret true; }
+    if (!app.release(?site.app))                      { ret false; }
+    ret lifecycle.destroy(?site.controller);
+}

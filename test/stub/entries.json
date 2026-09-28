@@ -1,0 +1,14 @@
+{
+  "categories": [
+    { "id": "core", "title": "Language", "description": "The compiler, toolchain, and standard library." },
+    { "id": "web", "title": "Web", "description": "Servers and frameworks for building on the web." },
+    { "id": "games", "title": "Games and simulation", "description": "Engines, physics, and game tooling." }
+  ],
+  "entries": [
+    { "id": "mach", "name": "mach", "url": "https://github.com/briar-systems/mach", "description": "The Mach compiler & toolchain.", "category": "core" },
+    { "id": "hedge", "name": "hedge", "url": "https://github.com/briar-systems/hedge", "description": "An HTTP server <written> in Mach.", "category": "web" },
+    { "id": "zeta", "name": "Zeta", "url": "https://github.com/someone/zeta.git", "description": "A community \"web\" framework.", "category": "web" },
+    { "id": "gone", "name": "gone", "url": "https://github.com/someone/gone", "description": "A repository github no longer has.", "category": "web" },
+    { "id": "elsewhere", "name": "elsewhere", "url": "https://codeberg.org/someone/elsewhere", "description": "Hosted outside github.", "category": "web" }
+  ]
+}

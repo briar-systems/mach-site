@@ -123,7 +123,7 @@ async function check(root, urls) {
 }
 
 async function main() {
-  const root = path.resolve(__dirname, "..", "..");
+  const root = path.resolve(__dirname, "..", "..", "public");
   const files = process.argv.slice(2);
   const targets = files.length ? files : ["llms.txt", "llms-full.txt"].map((f) => path.join(root, f));
   const urls = [];
