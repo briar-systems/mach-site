@@ -117,9 +117,11 @@ jobs:
           sed -e 's|^entries_url = .*|entries_url = "http://127.0.0.1:18212/entries.json"|' \
               -e 's|^graphql_url = .*|graphql_url = "http://127.0.0.1:18212/graphql"|' \
               hedge.toml > out/stub.toml
+          # the first argument, when given, is the snapshot path the volume keeps
           serve() {
             docker run -d --network host -e LISTEN=127.0.0.1:8080 \
               -e GITHUB_TOKEN=test-token -e ECOSYSTEM_WEBHOOK_SECRET=test-secret \
+              ${1:+-e ECOSYSTEM_SNAPSHOT_PATH="$1"} \
               -v "$PWD/out/stub.toml:/srv/site/stub.toml:ro" -v "$PWD/out/volume:/data" \
               site /srv/site/stub.toml
           }
@@ -135,7 +137,7 @@ jobs:
             docker logs "$1" 2>&1 | grep -v 'request' | tail -n 5
             test "$(docker inspect -f '{{.State.ExitCode}}' "$1")" = 0
           }
-          cid=$(serve)
+          cid=$(serve /data/ecosystem.json)
           up
           SITE_URL=http://127.0.0.1:8080 node --test test/serve.test.js
           SITE_URL=http://127.0.0.1:8080 STUB_PORT=18212 STUB_TOKEN=test-token \
@@ -143,10 +145,17 @@ jobs:
           stop "$cid"
           # the stub is gone with its test, so github is unreachable: a restart
           # serves the catalog kept on the volume and reports its age
-          cid=$(serve)
+          cid=$(serve /data/ecosystem.json)
           up
           curl -fsS http://127.0.0.1:8080/ecosystem.json | grep -q '"id":"fresh"'
           curl -fsS http://127.0.0.1:8080/healthz | grep -q '^catalog_age_seconds [0-9]'
+          stop "$cid"
+          # without a snapshot path nothing is kept or loaded, whatever the
+          # volume holds: a cold boot with github unreachable has no catalog
+          cid=$(serve)
+          up
+          test "$(curl -sS http://127.0.0.1:8080/healthz)" = "$(printf 'ok\ncatalog_generated none')"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ecosystem.json)" = 503
           stop "$cid"
 
   gate:
