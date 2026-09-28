@@ -10,7 +10,7 @@ function fetchWith(body, ok = true) {
 }
 
 test("the export is the baked value or the raw placeholder", () => {
-  // a checkout carries the placeholder, and a deploy or ci checkout carries a real version
+  // a checkout carries the placeholder, and a ci checkout that ran the bake carries a real version
   assert.match(BAKED, /^(\d+\.\d+\.\d+|@MACH_VERSION@)$/);
 });
 
