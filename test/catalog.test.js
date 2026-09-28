@@ -129,6 +129,9 @@ test("the json carries an etag and a short cache lifetime, and revalidates", asy
   assert.ok(res.headers.etag);
   const again = await request("GET", "/ecosystem.json", { "if-none-match": res.headers.etag });
   assert.equal(again.status, 304);
+  const head = await request("HEAD", "/ecosystem.json");
+  assert.equal(head.status, 200);
+  assert.equal(head.headers["content-length"], String(Buffer.byteLength(res.body)));
 });
 
 test("the page holds every card and filters without javascript", async () => {
