@@ -10,6 +10,7 @@ use hedge_task: hedge.task;
 use http.core.exchange;
 use http.core.field;
 use http.core.message;
+use http.core.method;
 use http.core.status;
 use laurel.context;
 use laurel.error;
@@ -73,10 +74,42 @@ fun add(request_context: *context.Context, name: str, value: view.View) bool {
         value: value, sensitive: false}) == field.ADD_OK;
 }
 
+fun is_head(request_context: *context.Context) bool {
+    val request: *message.Request = context.request(request_context);
+    ret request != nil && request.method.kind == method.HEAD;
+}
+
+# a HEAD response carries the type and length the GET would, and no body
+fun respond_head(request_context: *context.Context, code: status.Status, media: str,
+    length: usize) handler.Result {
+    var b:    text.Buf = text.measure();
+    var pass: u8       = 0;
+    for (pass < 2) {
+        text.put_str(?b, media);
+        text.put_str(?b, "; charset=utf-8");
+        text.put_u64(?b, length::u64);
+        if (pass == 0 && !arena_text(request_context, ?b)) {
+            ret handler.fail(internal("storage was refused"));
+        }
+        pass = pass + 1;
+    }
+    val both:  view.View = text.written(?b);
+    val typed: usize     = text.text(media).len + 15;
+    if (!add(request_context, "content-type", view.view(both.data, typed))
+        || !add(request_context, "content-length",
+        view.view(?both.data[typed], both.len - typed))) {
+        ret handler.fail(internal("the head could not be set"));
+    }
+    ret bodyless(request_context, code);
+}
+
 # answer `content` as `media` with status `code`. the bytes must live until
 # the exchange settles, which arena bytes and static text do
 fun respond(request_context: *context.Context, code: status.Status, media: str,
     content: view.View) handler.Result {
+    if (is_head(request_context)) {
+        ret respond_head(request_context, code, media, content.len);
+    }
     val arena: *A.Allocator = arena_of(request_context);
     if (arena == nil) { ret handler.fail(internal("request arena is unavailable")); }
     val allocated: res[*Body, A.Error] = A.zallocate[Body](arena, 1);

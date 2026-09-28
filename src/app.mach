@@ -42,8 +42,8 @@ use std.types.view;
 val MAX_ACTIVE_REQUESTS: usize = 256;
 # the provider set holds one entry, the one graft supplies
 val PROVIDER_COUNT: usize = 1;
-val ROUTE_COUNT:    usize = 5;
-val SEGMENT_COUNT:  usize = 16;
+val ROUTE_COUNT:    usize = 9;
+val SEGMENT_COUNT:  usize = 32;
 val SETTING_BYTES:  usize = 512;
 
 pub rec Site {
@@ -190,6 +190,15 @@ pub fun assemble(site: *Site, setup: *host.Setup, facility: *hedge_task.Tasks) b
     site.routes[3] = route(method.POST, "/hooks/ecosystem", "ecosystem.hook", handlers.hook,
         handlers.hook_resume, ctx);
     site.routes[4] = route(method.GET, "/healthz", "health", handlers.health, nil, ctx);
+    # a HEAD is answered as its GET, without the body
+    site.routes[5] = route(method.HEAD, "/ecosystem", "ecosystem.moved.head",
+        handlers.ecosystem_moved, nil, ctx);
+    site.routes[6] = route(method.HEAD, "/ecosystem/", "ecosystem.page.head",
+        handlers.ecosystem, nil, ctx);
+    site.routes[7] = route(method.HEAD, "/ecosystem.json", "ecosystem.json.head",
+        handlers.catalog, nil, ctx);
+    site.routes[8] = route(method.HEAD, "/healthz", "health.head", handlers.health, nil,
+        ctx);
     val compiled: router.Compile = router.compile(?site.matcher, ?site.routes[0], ROUTE_COUNT,
         router.Storage{specifications: ?site.specifications[0],
         specification_cap:  ROUTE_COUNT, compiled_routes: ?site.compiled[0],
