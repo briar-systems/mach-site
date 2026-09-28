@@ -46,8 +46,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Run the ecosystem tests
+      - name: Run the ecosystem page tests
         run: node --test test/ecosystem.test.js
+
+  # the catalog bake only the pages deploy uses, removed at the cutover
+  pages-bake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the bake tests
+        run: node --test test/bake.test.js
 
       - name: Bake the ecosystem catalog
         env:
@@ -83,8 +92,8 @@ jobs:
       - name: Check every link in both files
         run: node .github/scripts/check-links.js
 
-  # the image railway builds: its formatting, its build, and every file it
-  # serves, then a SIGTERM that must drain and exit 0
+  # the image railway builds: its formatting, its build, every file it serves
+  # and the catalog, then a SIGTERM that must drain and exit 0
   container:
     runs-on: ubuntu-latest
     steps:
@@ -98,22 +107,51 @@ jobs:
       - name: Build the server image
         run: docker build -t site .
 
-      - name: Serve the site from the image and check what it serves
+      # the catalog reads a local stub of github, which the catalog test
+      # starts after checking the cold start without it
+      - name: Serve the site and the catalog from the image and check them
         run: |
           set -eu
-          cid=$(docker run -d -p 127.0.0.1:8080:8080 site)
-          for i in $(seq 1 50); do
-            if curl -sf -o /dev/null http://127.0.0.1:8080/healthz; then break; fi
-            sleep 0.2
-          done
+          mkdir -p out/volume
+          chmod 777 out/volume
+          sed -e 's|^entries_url = .*|entries_url = "http://127.0.0.1:18212/entries.json"|' \
+              -e 's|^graphql_url = .*|graphql_url = "http://127.0.0.1:18212/graphql"|' \
+              hedge.toml > out/stub.toml
+          serve() {
+            docker run -d --network host -e LISTEN=127.0.0.1:8080 \
+              -e GITHUB_TOKEN=test-token -e ECOSYSTEM_WEBHOOK_SECRET=test-secret \
+              -v "$PWD/out/stub.toml:/srv/site/stub.toml:ro" -v "$PWD/out/volume:/data" \
+              site /srv/site/stub.toml
+          }
+          up() {
+            for i in $(seq 1 50); do
+              if curl -sf -o /dev/null http://127.0.0.1:8080/healthz; then return 0; fi
+              sleep 0.2
+            done
+            return 1
+          }
+          stop() {
+            docker stop -t 30 "$1"
+            docker logs "$1" 2>&1 | grep -v 'request' | tail -n 5
+            test "$(docker inspect -f '{{.State.ExitCode}}' "$1")" = 0
+          }
+          cid=$(serve)
+          up
           SITE_URL=http://127.0.0.1:8080 node --test test/serve.test.js
-          docker stop -t 30 "$cid"
-          docker logs "$cid" | tail -n 3
-          test "$(docker inspect -f '{{.State.ExitCode}}' "$cid")" = 0
+          SITE_URL=http://127.0.0.1:8080 STUB_PORT=18212 STUB_TOKEN=test-token \
+            WEBHOOK_SECRET=test-secret node --test test/catalog.test.js
+          stop "$cid"
+          # the stub is gone with its test, so github is unreachable: a restart
+          # serves the catalog kept on the volume and reports its age
+          cid=$(serve)
+          up
+          curl -fsS http://127.0.0.1:8080/ecosystem.json | grep -q '"id":"fresh"'
+          curl -fsS http://127.0.0.1:8080/healthz | grep -q '^catalog_age_seconds [0-9]'
+          stop "$cid"
 
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, highlight, llms, container]
+    needs: [install-check, bake-version, ecosystem, pages-bake, highlight, llms, container]
     runs-on: ubuntu-latest
     steps:
       - uses: briar-systems/.github/.github/actions/gate@main
