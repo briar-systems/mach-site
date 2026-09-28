@@ -1,7 +1,7 @@
 [project]
 id = "site"
 version = "0.1.0"
-mach = "^6.3"
+mach = "^6.5"
 src = "src"
 out = "out/{target.name}/{profile.name}"
 
