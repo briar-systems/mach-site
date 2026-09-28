@@ -6,6 +6,7 @@
 
 use crypto.contracts;
 use crypto.hmac;
+use hedge.clock;
 use hedge_task: hedge.task;
 use http.core.exchange;
 use http.core.field;
@@ -22,12 +23,14 @@ use laurel.render;
 use laurel_secret: laurel.secret;
 use site.catalog.refresh;
 use site.catalog.snapshot;
+use llms_refresh: site.llms.refresh;
 use site.text;
 use site.web.page;
 use A: std.allocator;
 use std.types.bool.bool;
 use std.types.bool.false;
 use std.types.bool.true;
+use std.types.option.opt;
 use std.types.result.res;
 use std.types.size.usize;
 use std.types.string.str;
@@ -44,6 +47,7 @@ val QUERY_BYTES:  usize = 1024;
 # what every handler reaches. written before the workers start, read after
 pub rec State {
     refresher: *refresh.Refresher;
+    llms:      *llms_refresh.Refresher;
     secrets:   laurel_secret.Source;
 }
 
@@ -301,13 +305,45 @@ pub fun catalog(ctx: ptr, request_context: *context.Context, slot: *ptr) handler
         view.view(?whole.data[etag.len], whole.len - etag.len));
 }
 
-# GET /healthz: the process is serving, and how old the catalog is
+# the mach release the llms files are served for, and how long ago the
+# newest release was last confirmed to be that one
+fun put_llms_health(b: *text.Buf, refresher: *llms_refresh.Refresher) {
+    var lease: hedge_task.Lease;
+    if (!llms_refresh.read(refresher, ?lease)) {
+        text.put_str(b, "llms_version none\n");
+        ret;
+    }
+    val head: *llms_refresh.Header = llms_refresh.header(lease.data, lease.len);
+    if (head != nil) {
+        text.put_str(b, "llms_version ");
+        text.put(b, llms_refresh.version(head));
+        text.put_byte(b, '\n');
+    }
+    llms_refresh.release(refresher, ?lease);
+    var report: hedge_task.Report;
+    if (!llms_refresh.report(refresher, ?report)) { ret; }
+    val age: opt[u64] = hedge_task.success_age_ns(?report, clock.monotonic_ns());
+    if (sel age.some) {
+        text.put_str(b, "llms_age_seconds ");
+        text.put_u64(b, age.some / 1000000000);
+        text.put_byte(b, '\n');
+    }
+}
+
+# GET /healthz: the process is serving, how old the catalog is, and which
+# release the llms files are for
 pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
     @slot = nil;
     val state: *State = ctx::*State;
     if (state == nil) { ret handler.fail(internal("handler state is missing")); }
-    var b:    text.Buf = text.measure();
-    var pass: u8       = 0;
+    # sampled once, so both passes write the same lines
+    var llms_line: [128]u8;
+    var l:         text.Buf = text.buf(?llms_line[0], 128);
+    put_llms_health(?l, state.llms);
+    if (!text.fits(?l)) { ret handler.fail(internal("the llms health did not fit")); }
+    val llms_health: view.View = text.written(?l);
+    var b:           text.Buf  = text.measure();
+    var pass:        u8        = 0;
     for (pass < 2) {
         text.put_str(?b, "ok\n");
         var lease: hedge_task.Lease;
@@ -326,6 +362,7 @@ pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.
             refresh.release(state.refresher, ?lease);
         }
         or { text.put_str(?b, "catalog_generated none\n"); }
+        text.put(?b, llms_health);
         if (pass == 0 && !arena_text(request_context, ?b)) {
             ret handler.fail(internal("storage was refused"));
         }
@@ -335,6 +372,51 @@ pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.
         ret handler.fail(internal("the caching could not be set"));
     }
     ret respond(request_context, 200, "text/plain", text.written(?b));
+}
+
+# GET /llms.txt and /llms-full.txt: one file of the llms snapshot, as text.
+# before the first refresh has published one, the client is asked to retry
+fun llms_file(ctx: ptr, request_context: *context.Context, full: bool) handler.Result {
+    val state: *State = ctx::*State;
+    if (state == nil) { ret handler.fail(internal("handler state is missing")); }
+    var lease: hedge_task.Lease;
+    if (!llms_refresh.read(state.llms, ?lease)) {
+        if (!add(request_context, "cache-control", text.text("no-store")) ||
+            !add(request_context, "retry-after", text.text("60"))) {
+            ret handler.fail(internal("the caching could not be set"));
+        }
+        ret respond(request_context, 503, "text/plain",
+            text.text("the llms files are not available yet, the current mach release is still being read\n"));
+    }
+    val head: *llms_refresh.Header = llms_refresh.header(lease.data, lease.len);
+    if (head == nil) {
+        llms_refresh.release(state.llms, ?lease);
+        ret handler.fail(internal("the snapshot is not an llms snapshot"));
+    }
+    var part: llms_refresh.Ref = head.short;
+    if (full) { part = head.full; }
+    val content: view.View = llms_refresh.content(lease.data, part);
+    var b:       text.Buf  = text.measure();
+    text.put(?b, content);
+    val made: bool = !is_head(request_context) && arena_text(request_context, ?b);
+    if (made) { text.put(?b, content); }
+    llms_refresh.release(state.llms, ?lease);
+    if (!add(request_context, "cache-control", text.text("public, max-age=300"))) {
+        ret handler.fail(internal("the caching could not be set"));
+    }
+    if (is_head(request_context)) { ret respond_head(request_context, 200, "text/plain", b.len); }
+    if (!made || !text.fits(?b))  { ret handler.fail(internal("storage was refused")); }
+    ret respond(request_context, 200, "text/plain", text.written(?b));
+}
+
+pub fun llms(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    ret llms_file(ctx, request_context, false);
+}
+
+pub fun llms_full(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    ret llms_file(ctx, request_context, true);
 }
 
 # the webhook's body, read whole across suspensions before its signature is

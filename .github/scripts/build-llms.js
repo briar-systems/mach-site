@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// build llms.txt and llms-full.txt (llmstxt.org) for the current mach release.
-// the version comes from the baked assets/version.js, so run bake-version.sh first.
-// llms-full.txt is this site's docs/ followed by the mach repo's doc/language/
-// at that release tag. needs node 20+. GH_TOKEN, when set, authenticates the
-// github api listing of doc/language. MACH_DOCS_DIR reads doc/language from a
-// local directory instead of github, for offline runs.
+// build the site half of llms.txt and llms-full.txt (llmstxt.org): the templates
+// the server completes for each mach release. llms.txt.in is llms.txt whole, and
+// llms-full.txt.in is llms-full.txt up to its language reference, which is this
+// site's docs/ as markdown. both carry @MACH_VERSION@ wherever the release goes,
+// and the server fills it in and appends mach's doc/language at that release
+// (src/llms/). writes into the directory given, out/llms by default. needs node 20+.
 "use strict";
 
 const fs = require("node:fs");
@@ -15,22 +15,12 @@ const REPO = "briar-systems/mach";
 const REPO_URL = `https://github.com/${REPO}`;
 const DISCORD = "https://discord.com/invite/dfWG9NhGj7";
 const LANG_DIR = "doc/language";
-const PLACEHOLDER = "@MACH_VERSION@";
+// what the server replaces with the release, such as 6.7.0
+const VERSION = "@MACH_VERSION@";
 
 const SUMMARY =
   "Mach is a statically typed, compiled, self-hosted systems language with no hidden control flow, " +
   "no hidden allocation, and no type inference.";
-
-// the baked release version, refusing a raw checkout
-function bakedVersion(root) {
-  const file = path.join(root, "assets", "version.js");
-  delete require.cache[require.resolve(file)];
-  const v = require(file).MACH_VERSION;
-  if (v === PLACEHOLDER || !/^\d+\.\d+\.\d+$/.test(v)) {
-    throw new Error(`${file} carries '${v}', not a baked version: run .github/scripts/bake-version.sh first`);
-  }
-  return v;
-}
 
 // html parsing, scoped to the regular markup of docs/*.html
 
@@ -274,29 +264,7 @@ function sitePages(root, shift) {
   return pages;
 }
 
-// mach doc/language markdown
-
-// the .md files the index links, in order, first mention wins
-function indexOrder(readme) {
-  const seen = [];
-  for (const m of readme.matchAll(/\]\(([A-Za-z0-9_-]+\.md)(?:#[^)]*)?\)/g)) {
-    if (!seen.includes(m[1])) { seen.push(m[1]); }
-  }
-  return seen;
-}
-
-// rewrite relative links in one doc to absolute github urls at the tag, outside fences
-function absolutize(md, file, tag) {
-  const blob = `${REPO_URL}/blob/${tag}/`;
-  const here = `${LANG_DIR}/${file}`;
-  return mapText(md, (seg) =>
-    seg.replace(/(\]\()([^)\s]+)(\))/g, (m, open, href, close) => {
-      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { return m; }
-      const url = href.startsWith("#") ? blob + here + href : new URL(href, blob + here).href;
-      return open + url + close;
-    }),
-  );
-}
+// markdown prose, which check-links.js reads links from
 
 // apply fn to every line outside fenced code blocks
 function mapProse(md, fn) {
@@ -327,35 +295,6 @@ function mapText(md, fn) {
     }
     return out + fn(line.slice(at));
   });
-}
-
-function demote(md, shift) {
-  return mapProse(md, (line) => line.replace(/^(#{1,6})(?=\s)/, (h) => "#".repeat(Math.min(6, h.length + shift))));
-}
-
-async function fetchText(url, headers = {}) {
-  const res = await fetch(url, { headers });
-  if (!res.ok) { throw new Error(`${url}: ${res.status} ${res.statusText}`); }
-  return res.text();
-}
-
-// { name: markdown } for doc/language at the tag
-async function languageDocs(tag) {
-  const local = process.env.MACH_DOCS_DIR;
-  if (local) {
-    const out = {};
-    for (const f of fs.readdirSync(local).filter((f) => f.endsWith(".md"))) { out[f] = fs.readFileSync(path.join(local, f), "utf8"); }
-    return out;
-  }
-  const headers = { Accept: "application/vnd.github+json" };
-  if (process.env.GH_TOKEN) { headers.Authorization = `Bearer ${process.env.GH_TOKEN}`; }
-  const listing = JSON.parse(await fetchText(`https://api.github.com/repos/${REPO}/contents/${LANG_DIR}?ref=${tag}`, headers));
-  const names = listing.filter((e) => e.type === "file" && e.name.endsWith(".md")).map((e) => e.name);
-  const out = {};
-  await Promise.all(names.map(async (n) => {
-    out[n] = await fetchText(`https://raw.githubusercontent.com/${REPO}/${tag}/${LANG_DIR}/${n}`);
-  }));
-  return out;
 }
 
 // output
@@ -436,20 +375,16 @@ fun main(argc: i64, argv: **u8) i64 {
 }
 \`\`\``;
 
-function llmsFullTxt(version, pages, lang) {
+// llms-full.txt up to and including its language reference heading. the server
+// appends each doc/language file after it, README.md first
+function llmsFullTxt(version, pages) {
   const tag = `v${version}`;
-  const order = indexOrder(lang["README.md"] || "");
-  const rest = Object.keys(lang).filter((n) => n !== "README.md" && !order.includes(n)).sort();
-  const missing = order.filter((n) => !(n in lang));
-  if (missing.length) { throw new Error(`${LANG_DIR}/README.md at ${tag} links missing files: ${missing.join(", ")}`); }
-  const refs = ["README.md", ...order, ...rest].filter((n) => n in lang);
-
   const parts = [
     `# Mach ${version}: complete reference`,
     "",
     `> ${SUMMARY}`,
     "",
-    `This file is generated at each deploy of ${SITE} from the current release, Mach ${version}: the guide at ${SITE}/docs/, then the language reference in ${REPO_URL}/tree/${tag}/${LANG_DIR}. ` +
+    `This file is served by ${SITE}, which rebuilds it from each new Mach release. It covers the current release, Mach ${version}: the guide at ${SITE}/docs/, then the language reference in ${REPO_URL}/tree/${tag}/${LANG_DIR}. ` +
       `The canonical repository is ${REPO_URL}. Where the two parts differ, the language reference is authoritative. The short index is ${SITE}/llms.txt.`,
     "",
     RULES,
@@ -461,28 +396,26 @@ function llmsFullTxt(version, pages, lang) {
     parts.push(`Source: ${p.url}`, "", p.markdown, "");
   }
   parts.push("## Language reference", "");
-  for (const n of refs) {
-    const src = `${REPO_URL}/blob/${tag}/${LANG_DIR}/${n}`;
-    parts.push(`Source: ${src}`, "", demote(absolutize(lang[n].trim(), n, tag), 2), "");
-  }
   return parts.join("\n");
 }
 
-async function main() {
+function main() {
   const root = path.resolve(__dirname, "..", "..", "public");
-  const version = bakedVersion(root);
+  const out = path.resolve(process.argv[2] || path.join(__dirname, "..", "..", "out", "llms"));
   const pages = sitePages(root, 2);
-  const lang = await languageDocs(`v${version}`);
-  fs.writeFileSync(path.join(root, "llms.txt"), llmsTxt(version, pages));
-  fs.writeFileSync(path.join(root, "llms-full.txt"), llmsFullTxt(version, pages, lang));
-  console.log(`built llms.txt and llms-full.txt for mach ${version}: ${pages.length} guide pages, ${Object.keys(lang).length} reference files`);
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, "llms.txt.in"), llmsTxt(VERSION, pages));
+  fs.writeFileSync(path.join(out, "llms-full.txt.in"), llmsFullTxt(VERSION, pages));
+  console.log(`built the llms templates in ${out}: ${pages.length} guide pages`);
 }
 
 if (require.main === module) {
-  main().catch((e) => {
+  try {
+    main();
+  } catch (e) {
     console.error(`error: ${e.message}`);
     process.exit(1);
-  });
+  }
 }
 
-module.exports = { parse, blocks, indexOrder, absolutize, demote, mapProse, mapText, bakedVersion, llmsTxt, llmsFullTxt, sitePages };
+module.exports = { VERSION, parse, blocks, mapProse, mapText, llmsTxt, llmsFullTxt, sitePages };

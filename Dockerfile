@@ -2,9 +2,10 @@
 #
 # build: installs the pinned mach release, realizes the dependencies at the
 # release tags mach.toml names, builds the server in release and precompresses
-# the text files it serves. llms: builds llms.txt and llms-full.txt for the
-# newest mach release. the final image holds the server, its configuration,
-# public/ and the CA bundle, and nothing else.
+# the text files it serves. llms: builds the site's half of llms.txt and
+# llms-full.txt from public/docs/, which the server completes with mach's newest
+# release. the final image holds the server, its configuration, public/, the
+# llms templates and the CA bundle, and nothing else.
 
 # the compiler, and the sha256 its release lists in SHA256SUMS
 ARG MACH_VERSION=6.5.0
@@ -40,25 +41,10 @@ RUN find public -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -exec gzip -9 -k -n {} \; -exec brotli -q 11 -k {} \;
 
 FROM node:22-bookworm-slim AS llms
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends brotli ca-certificates git \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /site
 COPY .github/scripts/build-llms.js .github/scripts/
 COPY public public
-RUN set -eu; \
-    tag=$(git ls-remote --tags --refs https://github.com/briar-systems/mach 'v*' \
-        | sed 's|.*refs/tags/||' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1); \
-    test -n "$tag"; \
-    git clone -q --depth 1 --branch "$tag" --filter=blob:none --sparse \
-        https://github.com/briar-systems/mach /tmp/mach; \
-    git -C /tmp/mach sparse-checkout set doc/language; \
-    sed -i "s/@MACH_VERSION@/${tag#v}/" public/assets/version.js; \
-    MACH_DOCS_DIR=/tmp/mach/doc/language node .github/scripts/build-llms.js; \
-    mkdir /out; \
-    for f in llms.txt llms-full.txt; do \
-        cp "public/$f" /out/; gzip -9 -k -n "/out/$f"; brotli -q 11 -k "/out/$f"; \
-    done
+RUN node .github/scripts/build-llms.js /out
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
@@ -66,7 +52,7 @@ WORKDIR /srv/site
 COPY --from=build /src/out/linux-x86_64/release/bin/site ./site
 COPY --from=build /src/hedge.toml ./hedge.toml
 COPY --from=build /src/public ./public
-COPY --from=llms /out/ ./public/
+COPY --from=llms /out/ ./llms/
 USER 65534:65534
 ENV LISTEN=0.0.0.0:8080
 EXPOSE 8080

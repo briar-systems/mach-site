@@ -4,7 +4,8 @@
 # plain HTTP/1.1 on the one address the platform routes to. hedge serves every
 # static file under public/ and the health check itself. the laurel application
 # graft mounts under "site" serves the dynamic routes: the ecosystem page, its
-# json, the webhook that refreshes it, and the health check.
+# json, the webhook that refreshes it, llms.txt and llms-full.txt, and the
+# health check.
 
 [server]
 name = "machlang.org"
@@ -84,6 +85,14 @@ webhook = "ecosystem-webhook"
 entries_url = "https://raw.githubusercontent.com/briar-systems/mach-ecosystem/main/entries.json"
 graphql_url = "https://api.github.com/graphql"
 
+# where llms.txt and llms-full.txt come from: the templates the image builds
+# from public/docs/ (.github/scripts/build-llms.js), relative to the working
+# directory, completed with mach's doc/language at its newest release
+[application.site.settings.llms]
+templates = "llms"
+api_url = "https://api.github.com/repos/briar-systems/mach"
+raw_url = "https://raw.githubusercontent.com/briar-systems/mach"
+
 # a literal path outranks the catch-all, so these reach the application and
 # everything else is a file
 [[route]]
@@ -114,6 +123,18 @@ service = "site"
 name = "ecosystem-hook"
 host = "site"
 path = "/hooks/ecosystem"
+service = "site"
+
+[[route]]
+name = "llms"
+host = "site"
+path = "/llms.txt"
+service = "site"
+
+[[route]]
+name = "llms-full"
+host = "site"
+path = "/llms-full.txt"
 service = "site"
 
 [[route]]

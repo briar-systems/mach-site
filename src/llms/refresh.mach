@@ -1,0 +1,764 @@
+# the llms refresh: a hedge background task that serves llms.txt and
+# llms-full.txt for mach's newest release
+#
+# the image carries this site's half of both files as two templates, built
+# from public/docs/ at deploy. each run asks github for mach's release tags and
+# picks the newest vX.Y.Z. when it differs from the release being served, the
+# run lists doc/language at that tag, fetches every .md file in it, completes
+# both templates and publishes them. a run that fails publishes nothing and
+# leaves the current snapshot in place, and until one succeeds there is none.
+#
+# runs are single-flight, as the catalog's are. every step is non-blocking, and
+# the run's state lives here, reset whenever a new run begins.
+
+use crypto.contracts;
+use hedge.clock;
+use hedge.outbound;
+use hedge.service;
+use hedge_task: hedge.task;
+use http.core.field;
+use http.core.method;
+use laurel_secret: laurel.secret;
+use site.llms.markdown;
+use site.text;
+use A: std.allocator;
+use std.allocator.fixed;
+use std.data.json;
+use std.filesystem;
+use io_error: std.io.error;
+use std.print;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.error.err;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+# a release shows up within one period of its tag
+pub val PERIOD_NS:  u64 = 900000000000;
+val     TIMEOUT_NS: u64 = 300000000000;
+
+# what the templates carry wherever the release goes
+val VERSION_TOKEN: str = "@MACH_VERSION@";
+val SHORT_NAME:    str = "llms.txt.in";
+val FULL_NAME:     str = "llms-full.txt.in";
+val INDEX_NAME:    str = "README.md";
+
+val     URL_BYTES:      usize = 512;
+val     REQUEST_BYTES:  usize = 65536;
+val     RESPONSE_BYTES: usize = 1048576;
+val     ARENA_BYTES:    usize = 1048576;
+val     AUTH_BYTES:     usize = 512;
+val     FIELD_ITEMS:    usize = 64;
+val     SHORT_BYTES:    usize = 65536;
+val     FULL_BYTES:     usize = 2097152;
+val     SOURCE_BYTES:   usize = 4194304;
+pub val MAX_FILES:      usize = 128;
+val     NAME_BYTES:     usize = 64;
+val     VERSION_BYTES:  usize = 32;
+
+val SLOT_COUNT: usize = 3;
+val SLOT_BYTES: usize = 4194304;
+val SLOT_WORDS: usize = 524288;
+
+val PHASE_START:    u8 = 0;
+val PHASE_TAGS:     u8 = 1;
+val PHASE_LISTING:  u8 = 2;
+val PHASE_NEXT:     u8 = 3;
+val PHASE_FETCHING: u8 = 4;
+val PHASE_PUBLISH:  u8 = 5;
+
+val MAGIC: u32 = 1280003411;
+
+pub rec Ref {
+    off: u32;
+    len: u32;
+}
+
+# the published snapshot: this header, then both files
+pub rec Header {
+    magic:       u32;
+    version_len: u32;
+    version:     [VERSION_BYTES]u8;
+    short:       Ref;
+    full:        Ref;
+}
+
+# one doc/language file of the release being fetched
+rec Source {
+    name:     [NAME_BYTES]u8;
+    name_len: usize;
+    off:      usize;
+    len:      usize;
+}
+
+pub rec Refresher {
+    # set once when the task is registered
+    api_url:     [URL_BYTES]u8;
+    api_url_len: usize;
+    raw_url:     [URL_BYTES]u8;
+    raw_url_len: usize;
+    short:       [SHORT_BYTES]u8;
+    short_len:   usize;
+    full:        [FULL_BYTES]u8;
+    full_len:    usize;
+    secrets:     laurel_secret.Source;
+    facility:    *hedge_task.Tasks;
+    handle:      hedge_task.Handle;
+    registered:  bool;
+    slots:       [SLOT_COUNT * SLOT_WORDS]u64;
+    # the release being served, which only the task reads and writes
+    served:     [VERSION_BYTES]u8;
+    served_len: usize;
+    # the run in flight
+    sequence:    u64;
+    phase:       u8;
+    exchange:    outbound.Exchange;
+    request:     [REQUEST_BYTES]u8;
+    response:    [RESPONSE_BYTES]u8;
+    items:       [FIELD_ITEMS]field.Field;
+    headers:     [2]field.Field;
+    auth:        [AUTH_BYTES]u8;
+    authorized:  bool;
+    target:      [URL_BYTES]u8;
+    version:     [VERSION_BYTES]u8;
+    version_len: usize;
+    files:       [MAX_FILES]Source;
+    file_len:    usize;
+    fetched:     usize;
+    sources:     [SOURCE_BYTES]u8;
+    source_len:  usize;
+    detail:      [256]u8;
+    heap:        A.Allocator;
+    heap_state:  fixed.FixedState;
+    arena:       [ARENA_BYTES]u8;
+}
+
+# where the llms files come from
+pub rec Settings {
+    # the directory holding llms.txt.in and llms-full.txt.in
+    templates: view.View;
+    # mach's repository in github's rest api, and its raw files
+    api_url: view.View;
+    raw_url: view.View;
+}
+
+fun done() service.Step {
+    ret service.Step{status: service.STEP_DONE, detail: view.view(nil, 0)};
+}
+
+fun pending() service.Step {
+    ret service.Step{status: service.STEP_PENDING, detail: view.view(nil, 0)};
+}
+
+fun clear_auth(refresher: *Refresher) {
+    var i: usize = 0;
+    for (i < AUTH_BYTES) {
+        refresher.auth[i] = 0;
+        i                 = i + 1;
+    }
+    refresher.authorized = false;
+}
+
+# ends the run as failed, logging why. the detail is copied into the
+# refresher, which outlives the step
+fun failed(refresher: *Refresher, reason: str, cause: u64) service.Step {
+    clear_auth(refresher);
+    var b: text.Buf = text.buf(?refresher.detail[0], 255);
+    text.put_str(?b, reason);
+    if (cause != 0) {
+        text.put_str(?b, " (cause ");
+        text.put_u64(?b, cause);
+        text.put_byte(?b, ')');
+    }
+    var length: usize = b.len;
+    if (length > 255) { length = 255; }
+    refresher.detail[length] = 0;
+    print.eprint("site: llms refresh failed: ");
+    print.eprintln((?refresher.detail[0])::str);
+    refresher.phase = PHASE_START;
+    ret service.Step{status: service.STEP_FAILED,
+        detail: view.view((?refresher.detail[0])::*char, length)};
+}
+
+fun copy_setting(output: *u8, capacity: usize, value: view.View) usize {
+    if (value.len >= capacity) { ret 0; }
+    var i: usize = 0;
+    for (i < value.len) {
+        output[i] = value.data[i]::u8;
+        i         = i + 1;
+    }
+    output[value.len] = 0;
+    ret value.len;
+}
+
+fun stored(storage: *u8, length: usize) view.View {
+    ret view.view(storage::*char, length);
+}
+
+# the snapshot's header, or nil when the block is not an llms snapshot
+pub fun header(data: *u8, len: usize) *Header {
+    if (data == nil || len < $size_of(Header)) { ret nil; }
+    val found: *Header = data::*Header;
+    if (found.magic != MAGIC) { ret nil; }
+    ret found;
+}
+
+pub fun version(head: *Header) view.View {
+    ret view.view((?head.version[0])::*char, head.version_len::usize);
+}
+
+pub fun content(data: *u8, value: Ref) view.View {
+    ret view.view((?data[value.off::usize])::*char, value.len::usize);
+}
+
+# the snapshot the task publishes, read by any thread without waiting
+pub fun read(refresher: *Refresher, lease: *hedge_task.Lease) bool {
+    if (refresher == nil || !refresher.registered) { ret false; }
+    ret hedge_task.read(refresher.facility, refresher.handle, lease) == hedge_task.STATUS_OK;
+}
+
+pub fun release(refresher: *Refresher, lease: *hedge_task.Lease) {
+    hedge_task.release(refresher.facility, lease);
+}
+
+# the task's report, for the health check
+pub fun report(refresher: *Refresher, output: *hedge_task.Report) bool {
+    if (refresher == nil || !refresher.registered) { ret false; }
+    ret hedge_task.report(refresher.facility, refresher.handle, output) == hedge_task.STATUS_OK;
+}
+
+# one template, read whole. a template that is missing, unreadable or larger
+# than `capacity` is refused
+fun load(directory: view.View, name: str, output: *u8, capacity: usize, length: *usize)
+    bool {
+    var path: [URL_BYTES]u8;
+    var b:    text.Buf = text.buf(?path[0], URL_BYTES - 1);
+    text.put(?b, directory);
+    text.put_byte(?b, '/');
+    text.put_str(?b, name);
+    if (!text.fits(?b)) { ret false; }
+    path[b.len] = 0;
+    val opened: res[filesystem.File, io_error.Error] = filesystem.open((?path[0])::str);
+    if (sel opened.err) {
+        print.eprint("site: no llms template at ");
+        print.eprintln((?path[0])::str);
+        ret false;
+    }
+    var file:  filesystem.File = opened.ok;
+    var total: usize           = 0;
+    var whole: bool            = false;
+    for (total < capacity) {
+        val got: res[usize, io_error.Error] = filesystem.read(file, ?output[total],
+            capacity - total);
+        if (sel got.err) { brk; }
+        if (got.ok == 0) {
+            whole = true;
+            brk;
+        }
+        total = total + got.ok;
+    }
+    filesystem.close(?file);
+    if (!whole) {
+        print.eprint("site: the llms template is unreadable or too large: ");
+        print.eprintln((?path[0])::str);
+        ret false;
+    }
+    @length = total;
+    ret true;
+}
+
+# reads both templates, registers the refresh task with the facility and asks
+# for its first run
+# ---
+# refresher: storage, live and in place until the process has stopped
+# facility:  the task facility the process hands hedge
+# settings:  where the templates are and where mach is read from
+# secrets:   the application's secrets, which grant `github`
+# ret:       whether the task was registered
+pub fun start(refresher: *Refresher, facility: *hedge_task.Tasks, settings: Settings,
+    secrets: laurel_secret.Source) bool {
+    if (refresher == nil || facility == nil || refresher.registered) { ret false; }
+    refresher.api_url_len = copy_setting(?refresher.api_url[0], URL_BYTES, settings.api_url);
+    refresher.raw_url_len = copy_setting(?refresher.raw_url[0], URL_BYTES, settings.raw_url);
+    if (refresher.api_url_len == 0 || refresher.raw_url_len == 0) { ret false; }
+    if (!load(settings.templates, SHORT_NAME, ?refresher.short[0], SHORT_BYTES,
+        ?refresher.short_len)
+        || !load(settings.templates, FULL_NAME, ?refresher.full[0], FULL_BYTES,
+        ?refresher.full_len)) { ret false; }
+    refresher.secrets    = secrets;
+    refresher.facility   = facility;
+    refresher.phase      = PHASE_START;
+    refresher.sequence   = 0;
+    refresher.served_len = 0;
+    val made: err[A.Error] = fixed.make(?refresher.heap, ?refresher.heap_state,
+        ?refresher.arena[0], ARENA_BYTES);
+    if (sel made.err) { ret false; }
+    if (!outbound.make_exchange(?refresher.exchange, ?refresher.request[0], REQUEST_BYTES,
+        ?refresher.response[0], RESPONSE_BYTES, ?refresher.items[0], FIELD_ITEMS,
+        field.limits(FIELD_ITEMS, 65536, 128, 16384))) { ret false; }
+    var spec: hedge_task.Spec = hedge_task.Spec{name: text.text("llms"),
+        state: refresher::ptr, step: step, period_ns: PERIOD_NS, timeout_ns: TIMEOUT_NS,
+        slots: (?refresher.slots[0])::*u8, slot_bytes: SLOT_BYTES, slot_count: SLOT_COUNT};
+    if (hedge_task.register(facility, ?spec, ?refresher.handle) != hedge_task.STATUS_OK) {
+        ret false;
+    }
+    refresher.registered = true;
+    hedge_task.trigger(facility, refresher.handle);
+    ret true;
+}
+
+fun use_token(ctx: ptr, secret: contracts.SecretBytes) bool {
+    val refresher: *Refresher = ctx::*Refresher;
+    refresher.authorized = outbound.secret_header(?refresher.headers[1],
+        text.text("authorization"), text.text("bearer "), secret, ?refresher.auth[0],
+        AUTH_BYTES);
+    ret refresher.authorized;
+}
+
+# begins a GET of the url in `target`, authorized with the github token. an
+# api request asks for github's json
+fun begin_get(refresher: *Refresher, run: *hedge_task.Run, length: usize, api: bool) bool {
+    clear_auth(refresher);
+    if (laurel_secret.borrow(refresher.secrets, text.text("github"), use_token,
+        refresher::ptr) != laurel_secret.BORROW_OK) { ret false; }
+    var accept: str = "*/*";
+    if (api) { accept = "application/vnd.github+json"; }
+    refresher.headers[0] = field.Field{name: text.text("accept"), value: text.text(accept),
+        sensitive: false};
+    var request: outbound.Request = outbound.request(method.GET,
+        stored(?refresher.target[0], length));
+    request.headers      = ?refresher.headers[0];
+    request.header_count = 2;
+    ret hedge_task.begin(run, ?refresher.exchange, request) != outbound.INVALID;
+}
+
+# the exchange's progress: 1 answered 200, 0 still pending, -1 failed
+fun settle(refresher: *Refresher) i64 {
+    val polled: outbound.Status = outbound.poll(?refresher.exchange, clock.instant());
+    if (polled == outbound.PENDING) { ret 0; }
+    if (polled != outbound.OK)      { ret -1; }
+    ret 1;
+}
+
+# how a finished exchange ended: pending, or a failed step, or none for 200
+fun answered(refresher: *Refresher, what: str, step: *service.Step) bool {
+    val progress: i64 = settle(refresher);
+    if (progress == 0) {
+        @step = pending();
+        ret false;
+    }
+    if (progress < 0) {
+        @step = failed(refresher, what, outbound.cause(?refresher.exchange)::u64);
+        ret false;
+    }
+    val code: u64 = outbound.response(?refresher.exchange).status::u64;
+    if (code != 200) {
+        @step = failed(refresher, what, code);
+        ret false;
+    }
+    ret true;
+}
+
+fun body_of(refresher: *Refresher) view.View {
+    ret outbound.response(?refresher.exchange).body;
+}
+
+fun parse_body(refresher: *Refresher, output: *json.Value) bool {
+    fixed.reset(?refresher.heap_state);
+    val body:   view.View                       = body_of(refresher);
+    val parsed: res[json.Value, json.JsonError] = json.parse(body.data::*u8, body.len,
+        ?refresher.heap);
+    if (sel parsed.err) { ret false; }
+    @output = parsed.ok;
+    ret true;
+}
+
+fun find(value: *json.Value, name: str) *json.Value {
+    if (value == nil || value.kind != json.OBJECT) { ret nil; }
+    val found: opt[*json.Value] = json.value_find(value, name);
+    if (sel found.none) { ret nil; }
+    ret found.some;
+}
+
+fun raw(value: *json.Value) view.View {
+    ret view.view(value.str_val::*char, value.str_len);
+}
+
+# the three numbers of an X.Y.Z version, or false for anything else
+fun numbers(value: view.View, output: *u64) bool {
+    var part: usize = 0;
+    var at:   usize = 0;
+    for (part < 3) {
+        var number: u64   = 0;
+        val start:  usize = at;
+        for (at < value.len && value.data[at]::u8 >= '0' && value.data[at]::u8 <= '9') {
+            number = number * 10 + (value.data[at]::u8 - '0')::u64;
+            at     = at + 1;
+        }
+        if (at == start || at - start > 9) { ret false; }
+        output[part] = number;
+        part         = part + 1;
+        if (part < 3) {
+            if (at >= value.len || value.data[at]::u8 != '.') { ret false; }
+            at = at + 1;
+        }
+    }
+    ret at == value.len;
+}
+
+fun newer(a: *u64, b: *u64) bool {
+    var i: usize = 0;
+    for (i < 3) {
+        if (a[i] != b[i]) { ret a[i] > b[i]; }
+        i = i + 1;
+    }
+    ret false;
+}
+
+# the newest vX.Y.Z tag in github's list of matching refs, into `version`
+# without its v
+fun newest(refresher: *Refresher, refs: *json.Value) bool {
+    if (refs.kind != json.ARRAY) { ret false; }
+    val prefix: view.View = text.text("refs/tags/v");
+    var best:   [3]u64;
+    var found:  bool      = false;
+    var i:      usize     = 0;
+    for (i < refs.count) {
+        val name: *json.Value = find(?refs.children[i], "ref");
+        if (name != nil && name.kind == json.STRING) {
+            val full:  view.View = raw(name);
+            var parts: [3]u64;
+            if (full.len > prefix.len && full.len - prefix.len < VERSION_BYTES
+                && text.same(view.view(full.data, prefix.len), prefix)) {
+                val release: view.View = view.view(?full.data[prefix.len],
+                    full.len - prefix.len);
+                if (numbers(release, ?parts[0]) && (!found || newer(?parts[0], ?best[0]))) {
+                    found                 = true;
+                    best[0]               = parts[0];
+                    best[1]               = parts[1];
+                    best[2]               = parts[2];
+                    refresher.version_len = copy_setting(?refresher.version[0], VERSION_BYTES,
+                        release);
+                }
+            }
+        }
+        i = i + 1;
+    }
+    ret found;
+}
+
+fun version_view(refresher: *Refresher) view.View {
+    ret stored(?refresher.version[0], refresher.version_len);
+}
+
+fun tag_into(b: *text.Buf, refresher: *Refresher) {
+    text.put_byte(b, 'v');
+    text.put(b, version_view(refresher));
+}
+
+fun target_done(refresher: *Refresher, b: *text.Buf, length: *usize) bool {
+    if (b.len >= URL_BYTES) { ret false; }
+    refresher.target[b.len] = 0;
+    @length                 = b.len;
+    ret true;
+}
+
+fun start_run(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    outbound.set_user_agent(outbound.client(run.loop), text.text("machlang.org"));
+    var b: text.Buf = text.buf(?refresher.target[0], URL_BYTES);
+    text.put(?b, stored(?refresher.api_url[0], refresher.api_url_len));
+    text.put_str(?b, "/git/matching-refs/tags/v");
+    var length: usize = 0;
+    if (!target_done(refresher, ?b, ?length) || !begin_get(refresher, run, length, true)) {
+        ret failed(refresher, "mach's tags could not be requested", 0);
+    }
+    refresher.phase = PHASE_TAGS;
+    ret pending();
+}
+
+fun take_tags(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    var step: service.Step;
+    if (!answered(refresher, "mach's tags could not be fetched", ?step)) { ret step; }
+    var refs:   json.Value;
+    val parsed: bool = parse_body(refresher, ?refs);
+    val found:  bool = parsed && newest(refresher, ?refs);
+    outbound.finish(?refresher.exchange);
+    fixed.reset(?refresher.heap_state);
+    clear_auth(refresher);
+    if (!found) { ret failed(refresher, "mach has no vX.Y.Z tag", 0); }
+    if (text.same(version_view(refresher), stored(?refresher.served[0], refresher.served_len))) {
+        refresher.phase = PHASE_START;
+        ret done();
+    }
+    var b: text.Buf = text.buf(?refresher.target[0], URL_BYTES);
+    text.put(?b, stored(?refresher.api_url[0], refresher.api_url_len));
+    text.put_str(?b, "/contents/doc/language?ref=");
+    tag_into(?b, refresher);
+    var length: usize = 0;
+    if (!target_done(refresher, ?b, ?length) || !begin_get(refresher, run, length, true)) {
+        ret failed(refresher, "doc/language could not be requested", 0);
+    }
+    refresher.phase = PHASE_LISTING;
+    ret pending();
+}
+
+fun name_byte(c: u8) bool {
+    ret (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+        || c == '-' || c == '_' || c == '.';
+}
+
+# a markdown file name that is safe in a url path
+fun markdown_name(name: view.View) bool {
+    if (name.len <= 3 || name.len >= NAME_BYTES || name.data[0]::u8 == '.') { ret false; }
+    var i: usize = 0;
+    for (i < name.len) {
+        if (!name_byte(name.data[i]::u8)) { ret false; }
+        i = i + 1;
+    }
+    ret text.same(view.view(?name.data[name.len - 3], 3), text.text(".md"));
+}
+
+# the markdown files of github's directory listing
+fun gather(refresher: *Refresher, listing: *json.Value) bool {
+    if (listing.kind != json.ARRAY) { ret false; }
+    refresher.file_len = 0;
+    var i: usize = 0;
+    for (i < listing.count) {
+        val entry: *json.Value = ?listing.children[i];
+        val kind:  *json.Value = find(entry, "type");
+        val name:  *json.Value = find(entry, "name");
+        if (kind != nil && kind.kind == json.STRING && name != nil && name.kind == json.STRING
+            && text.same(raw(kind), text.text("file")) && markdown_name(raw(name))) {
+            if (refresher.file_len == MAX_FILES) { ret false; }
+            val source: *Source = ?refresher.files[refresher.file_len];
+            source.name_len    = copy_setting(?source.name[0], NAME_BYTES, raw(name));
+            source.off         = 0;
+            source.len         = 0;
+            refresher.file_len = refresher.file_len + 1;
+        }
+        i = i + 1;
+    }
+    ret true;
+}
+
+fun source_name(source: *Source) view.View {
+    ret stored(?source.name[0], source.name_len);
+}
+
+fun take_listing(refresher: *Refresher) service.Step {
+    var step: service.Step;
+    if (!answered(refresher, "doc/language could not be listed", ?step)) { ret step; }
+    var listing:  json.Value;
+    val parsed:   bool = parse_body(refresher, ?listing);
+    val gathered: bool = parsed && gather(refresher, ?listing);
+    outbound.finish(?refresher.exchange);
+    fixed.reset(?refresher.heap_state);
+    clear_auth(refresher);
+    if (!gathered) { ret failed(refresher, "doc/language's listing is not a directory", 0); }
+    refresher.fetched    = 0;
+    refresher.source_len = 0;
+    refresher.phase      = PHASE_NEXT;
+    ret pending();
+}
+
+fun next_file(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    if (refresher.fetched == refresher.file_len) {
+        refresher.phase = PHASE_PUBLISH;
+        ret pending();
+    }
+    var b: text.Buf = text.buf(?refresher.target[0], URL_BYTES);
+    text.put(?b, stored(?refresher.raw_url[0], refresher.raw_url_len));
+    text.put_byte(?b, '/');
+    tag_into(?b, refresher);
+    text.put_str(?b, "/doc/language/");
+    text.put(?b, source_name(?refresher.files[refresher.fetched]));
+    var length: usize = 0;
+    if (!target_done(refresher, ?b, ?length) || !begin_get(refresher, run, length, false)) {
+        ret failed(refresher, "a doc/language file could not be requested", 0);
+    }
+    refresher.phase = PHASE_FETCHING;
+    ret pending();
+}
+
+fun take_file(refresher: *Refresher) service.Step {
+    var step: service.Step;
+    if (!answered(refresher, "a doc/language file could not be fetched", ?step)) { ret step; }
+    val body: view.View = body_of(refresher);
+    if (body.len > SOURCE_BYTES - refresher.source_len) {
+        outbound.finish(?refresher.exchange);
+        ret failed(refresher, "doc/language is too large", 0);
+    }
+    val source: *Source = ?refresher.files[refresher.fetched];
+    source.off = refresher.source_len;
+    source.len = body.len;
+    var i: usize = 0;
+    for (i < body.len) {
+        refresher.sources[source.off + i] = body.data[i]::u8;
+        i                                 = i + 1;
+    }
+    refresher.source_len = refresher.source_len + body.len;
+    outbound.finish(?refresher.exchange);
+    clear_auth(refresher);
+    refresher.fetched = refresher.fetched + 1;
+    refresher.phase   = PHASE_NEXT;
+    ret pending();
+}
+
+fun source_text(refresher: *Refresher, source: *Source) view.View {
+    ret view.view((?refresher.sources[source.off])::*char, source.len);
+}
+
+fun source_named(refresher: *Refresher, name: view.View) *Source {
+    var i: usize = 0;
+    for (i < refresher.file_len) {
+        if (text.same(source_name(?refresher.files[i]), name)) { ret ?refresher.files[i]; }
+        i = i + 1;
+    }
+    ret nil;
+}
+
+# a template with the release wherever it carries the token
+fun put_template(b: *text.Buf, template: view.View, release: view.View) {
+    val token: view.View = text.text(VERSION_TOKEN);
+    var i:     usize     = 0;
+    for (i < template.len) {
+        if (i + token.len <= template.len
+            && text.same(view.view(?template.data[i], token.len), token)) {
+            text.put(b, release);
+            i = i + token.len;
+            cnt;
+        }
+        text.put_byte(b, template.data[i]::u8);
+        i = i + 1;
+    }
+}
+
+# the language reference: README.md, the files it links in its order, then
+# the rest by name
+# ---
+# ret: whether it was written, and `reason` why not when it was not
+fun put_references(refresher: *Refresher, b: *text.Buf, tag: view.View, reason: *str) bool {
+    val index: *Source = source_named(refresher, text.text(INDEX_NAME));
+    if (index == nil) {
+        @reason = "doc/language has no README.md";
+        ret false;
+    }
+    var order: [MAX_FILES]view.View;
+    val count: usize = markdown.index_order(source_text(refresher, index), ?order[0], MAX_FILES);
+    if (count > MAX_FILES) {
+        @reason = "doc/language/README.md links too many files";
+        ret false;
+    }
+    var picked: [MAX_FILES]*Source;
+    picked[0] = index;
+    var picks: usize = 1;
+    var i:     usize = 0;
+    for (i < count) {
+        val source: *Source = source_named(refresher, order[i]);
+        if (source == nil) {
+            @reason = "doc/language/README.md links a missing file";
+            ret false;
+        }
+        if (source != index) {
+            picked[picks] = source;
+            picks         = picks + 1;
+        }
+        i = i + 1;
+    }
+    # the files the index leaves out, each the least name not yet placed
+    for (picks < refresher.file_len) {
+        var least: *Source = nil;
+        var j:     usize   = 0;
+        for (j < refresher.file_len) {
+            val candidate: *Source = ?refresher.files[j];
+            var placed:    bool    = false;
+            var k:         usize   = 0;
+            for (k < picks) {
+                if (picked[k] == candidate) { placed = true; }
+                k = k + 1;
+            }
+            if (!placed && (least == nil
+                || text.compare(source_name(candidate), source_name(least)) < 0)) {
+                least = candidate;
+            }
+            j = j + 1;
+        }
+        picked[picks] = least;
+        picks         = picks + 1;
+    }
+    i = 0;
+    for (i < picks) {
+        text.put_byte(b, '\n');
+        if (!markdown.put_reference(b, source_name(picked[i]),
+            source_text(refresher, picked[i]), tag)) {
+            @reason = "a doc/language link is too deep to resolve";
+            ret false;
+        }
+        i = i + 1;
+    }
+    ret true;
+}
+
+# completes both templates for the release fetched and publishes them
+fun finish_run(refresher: *Refresher, run: *hedge_task.Run) service.Step {
+    var draft: hedge_task.Draft;
+    if (hedge_task.draft(run, ?draft) != hedge_task.STATUS_OK) {
+        ret failed(refresher, "no snapshot slot is free", 0);
+    }
+    val at: usize = ($size_of(Header) + 7) / 8 * 8;
+    if (draft.capacity < at) {
+        hedge_task.discard(run, ?draft);
+        ret failed(refresher, "the snapshot slot is too small", 0);
+    }
+    val release: view.View = version_view(refresher);
+    var tag:     [VERSION_BYTES + 1]u8;
+    var t:       text.Buf  = text.buf(?tag[0], VERSION_BYTES + 1);
+    tag_into(?t, refresher);
+    var b: text.Buf = text.buf(?draft.data[at], draft.capacity - at);
+    put_template(?b, stored(?refresher.short[0], refresher.short_len), release);
+    val short_len: usize = b.len;
+    put_template(?b, stored(?refresher.full[0], refresher.full_len), release);
+    var reason: str = "";
+    if (!put_references(refresher, ?b, text.written(?t), ?reason)) {
+        hedge_task.discard(run, ?draft);
+        ret failed(refresher, reason, 0);
+    }
+    if (!text.fits(?b)) {
+        hedge_task.discard(run, ?draft);
+        ret failed(refresher, "the llms files are too large", 0);
+    }
+    val head: *Header = draft.data::*Header;
+    head.magic       = MAGIC;
+    head.version_len = copy_setting(?head.version[0], VERSION_BYTES, release)::u32;
+    head.short       = Ref{off: at::u32, len: short_len::u32};
+    head.full        = Ref{off: (at + short_len)::u32, len: (b.len - short_len)::u32};
+    if (hedge_task.commit(run, ?draft, at + b.len) != hedge_task.STATUS_OK) {
+        ret failed(refresher, "the llms files could not be published", 0);
+    }
+    refresher.served_len = copy_setting(?refresher.served[0], VERSION_BYTES, release);
+    print.printlnf("site: llms files published for mach {}: {} reference files",
+        (?refresher.version[0])::*u8, refresher.file_len);
+    refresher.phase = PHASE_START;
+    ret done();
+}
+
+# one step of a run, on hedge's task thread
+fun step(state: ptr, run: *hedge_task.Run) service.Step {
+    val refresher: *Refresher = state::*Refresher;
+    if (run.sequence != refresher.sequence) {
+        refresher.sequence = run.sequence;
+        refresher.phase    = PHASE_START;
+        clear_auth(refresher);
+    }
+    if (refresher.phase == PHASE_START)    { ret start_run(refresher, run); }
+    if (refresher.phase == PHASE_TAGS)     { ret take_tags(refresher, run); }
+    if (refresher.phase == PHASE_LISTING)  { ret take_listing(refresher); }
+    if (refresher.phase == PHASE_NEXT)     { ret next_file(refresher, run); }
+    if (refresher.phase == PHASE_FETCHING) { ret take_file(refresher); }
+    ret finish_run(refresher, run);
+}

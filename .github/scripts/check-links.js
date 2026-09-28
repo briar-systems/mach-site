@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// check every link in the given markdown files (default llms.txt and llms-full.txt).
-// a link is a markdown link target or a bare url in prose, outside code. machlang.org
-// urls resolve against this checkout, fragments included, since the files ship with
-// it, and a path hedge.toml routes to the application counts as served. every other
-// url must answer 2xx over http after redirects. exits 1 on any failure.
+// check every link in the given markdown files (default the llms templates
+// build-llms.js writes to out/llms). a link is a markdown link target or a bare url
+// in prose, outside code. @MACH_VERSION@ is read as MACH_VERSION from the
+// environment, which a file carrying it needs. machlang.org urls resolve against
+// this checkout, fragments included, and a path hedge.toml routes to the
+// application counts as served. every other url must answer 2xx over http after
+// redirects. exits 1 on any failure.
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { mapText, parse } = require("./build-llms.js");
+const { VERSION, mapText, parse } = require("./build-llms.js");
 
 const SITE_HOST = "machlang.org";
 const CONCURRENCY = 8;
@@ -144,10 +146,16 @@ async function check(root, urls) {
 async function main() {
   const root = path.resolve(__dirname, "..", "..", "public");
   const files = process.argv.slice(2);
-  const targets = files.length ? files : ["llms.txt", "llms-full.txt"].map((f) => path.join(root, f));
+  const built = path.resolve(__dirname, "..", "..", "out", "llms");
+  const targets = files.length ? files : ["llms.txt.in", "llms-full.txt.in"].map((f) => path.join(built, f));
   const urls = [];
   for (const f of targets) {
-    for (const u of links(fs.readFileSync(f, "utf8"))) { if (!urls.includes(u)) { urls.push(u); } }
+    let md = fs.readFileSync(f, "utf8");
+    if (md.includes(VERSION)) {
+      if (!/^\d+\.\d+\.\d+$/.test(process.env.MACH_VERSION || "")) { throw new Error(`${f} carries ${VERSION}: set MACH_VERSION to a release, such as 6.7.0`); }
+      md = md.replaceAll(VERSION, process.env.MACH_VERSION);
+    }
+    for (const u of links(md)) { if (!urls.includes(u)) { urls.push(u); } }
   }
   const failures = await check(root, urls);
   for (const f of failures) { console.error(`broken: ${f.url} (${f.why})`); }
