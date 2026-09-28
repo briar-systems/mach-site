@@ -3,7 +3,8 @@
 # the service runs behind a platform edge that terminates TLS, so it serves
 # plain HTTP/1.1 on the one address the platform routes to. hedge serves every
 # static file under public/ and the health check itself. the laurel application
-# graft mounts under "site" serves the dynamic routes.
+# graft mounts under "site" serves the dynamic routes: the ecosystem page, its
+# json, the webhook that refreshes it, and the health check.
 
 [server]
 name = "machlang.org"
@@ -59,15 +60,61 @@ cache_control_rules = [
 not_found = "/404.html"
 media_types = { ps1 = "text/plain; charset=utf-8" }
 
-[service.health]
-kind = "fixed"
-body = "ok\n"
+[service.site]
+kind = "application"
+application = "site"
 
+# both secrets come from the environment, and a process without either refuses
+# to start
+[secret.github-token]
+provider = "env"
+key = "GITHUB_TOKEN"
+
+[secret.ecosystem-webhook]
+provider = "env"
+key = "ECOSYSTEM_WEBHOOK_SECRET"
+
+[application.site.secrets]
+github = "github-token"
+webhook = "ecosystem-webhook"
+
+# where the catalog comes from. the environment's ECOSYSTEM_SNAPSHOT_PATH, when
+# set, names a file that keeps the last good catalog across restarts
+[application.site.settings.catalog]
+entries_url = "https://raw.githubusercontent.com/briar-systems/mach-ecosystem/main/entries.json"
+graphql_url = "https://api.github.com/graphql"
+
+# a literal path outranks the catch-all, so these reach the application and
+# everything else is a file
 [[route]]
 name = "health"
 host = "site"
 path = "/healthz"
-service = "health"
+service = "site"
+
+[[route]]
+name = "ecosystem-moved"
+host = "site"
+path = "/ecosystem"
+service = "site"
+
+[[route]]
+name = "ecosystem"
+host = "site"
+path = "/ecosystem/"
+service = "site"
+
+[[route]]
+name = "ecosystem-json"
+host = "site"
+path = "/ecosystem.json"
+service = "site"
+
+[[route]]
+name = "ecosystem-hook"
+host = "site"
+path = "/hooks/ecosystem"
+service = "site"
 
 [[route]]
 name = "files"

@@ -1,0 +1,449 @@
+# the site's dynamic routes
+#
+# every handler owns its response storage, taken from the request arena, which
+# the host frees when the exchange settles. a handler that reads the snapshot
+# holds a lease on it only while it renders, never across a suspension.
+
+use crypto.contracts;
+use crypto.hmac;
+use hedge_task: hedge.task;
+use http.core.exchange;
+use http.core.field;
+use http.core.message;
+use http.core.method;
+use http.core.status;
+use laurel.context;
+use laurel.error;
+use laurel.form;
+use laurel.handler;
+use laurel.query;
+use laurel.raw;
+use laurel.render;
+use laurel_secret: laurel.secret;
+use site.catalog.refresh;
+use site.catalog.snapshot;
+use site.text;
+use site.web.page;
+use A: std.allocator;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+# a snapshot older than two refresh periods has missed a refresh
+pub val STALE_AFTER_S: i64 = 600;
+# the largest webhook delivery read. mach-ecosystem's pushes are far smaller
+pub val HOOK_BYTES: usize = 2097152;
+
+val QUERY_FIELDS: usize = 8;
+val QUERY_BYTES:  usize = 1024;
+
+# what every handler reaches. written before the workers start, read after
+pub rec State {
+    refresher: *refresh.Refresher;
+    secrets:   laurel_secret.Source;
+}
+
+rec Body {
+    media: render.Media;
+    fixed: render.Fixed;
+}
+
+fun internal(detail: str) error.AppError {
+    ret error.make(error.INTERNAL, 500, "internal server error", detail, false);
+}
+
+fun arena_of(request_context: *context.Context) *A.Allocator {
+    ret request_context.alloc;
+}
+
+fun header(request_context: *context.Context, name: str) view.View {
+    val request: *message.Request = context.request(request_context);
+    if (request == nil) { ret view.view(nil, 0); }
+    val found: *field.Field = field.find_first(?request.fields, text.text(name));
+    if (found == nil) { ret view.view(nil, 0); }
+    ret found.value;
+}
+
+fun add(request_context: *context.Context, name: str, value: view.View) bool {
+    val response: *message.Response = context.response(request_context);
+    ret response != nil && message.add_field(response, field.Field{name: text.text(name),
+        value: value, sensitive: false}) == field.ADD_OK;
+}
+
+fun is_head(request_context: *context.Context) bool {
+    val request: *message.Request = context.request(request_context);
+    ret request != nil && request.method.kind == method.HEAD;
+}
+
+# a HEAD response carries the type and length the GET would, and no body
+fun respond_head(request_context: *context.Context, code: status.Status, media: str,
+    length: usize) handler.Result {
+    var b:    text.Buf = text.measure();
+    var pass: u8       = 0;
+    for (pass < 2) {
+        text.put_str(?b, media);
+        text.put_str(?b, "; charset=utf-8");
+        text.put_u64(?b, length::u64);
+        if (pass == 0 && !arena_text(request_context, ?b)) {
+            ret handler.fail(internal("storage was refused"));
+        }
+        pass = pass + 1;
+    }
+    val both:  view.View = text.written(?b);
+    val typed: usize     = text.text(media).len + 15;
+    if (!add(request_context, "content-type", view.view(both.data, typed))
+        || !add(request_context, "content-length",
+        view.view(?both.data[typed], both.len - typed))) {
+        ret handler.fail(internal("the head could not be set"));
+    }
+    ret bodyless(request_context, code);
+}
+
+# answer `content` as `media` with status `code`. the bytes must live until
+# the exchange settles, which arena bytes and static text do
+fun respond(request_context: *context.Context, code: status.Status, media: str,
+    content: view.View) handler.Result {
+    if (is_head(request_context)) {
+        ret respond_head(request_context, code, media, content.len);
+    }
+    val arena: *A.Allocator = arena_of(request_context);
+    if (arena == nil) { ret handler.fail(internal("request arena is unavailable")); }
+    val allocated: res[*Body, A.Error] = A.zallocate[Body](arena, 1);
+    if (sel allocated.err) { ret handler.fail(internal("response storage was refused")); }
+    val holder:   *Body              = allocated.ok;
+    val response: *message.Response  = context.response(request_context);
+    val bound:    *exchange.Exchange = context.exchange_ref(request_context);
+    if (response == nil || bound == nil
+        || !render.init_media(?holder.media, text.text(media), text.text("utf-8"))
+        || !render.init_fixed(?holder.fixed, content, response.generation, bound.limits,
+        ?response.trailers, context.cancellation(request_context))) {
+        ret handler.fail(internal("response installation failed"));
+    }
+    if (render.respond_with_limits(request_context, code, ?holder.media,
+        render.fixed_body(?holder.fixed), bound.limits) != render.RESPOND_OK) {
+        ret handler.fail(internal("response installation failed"));
+    }
+    ret handler.respond();
+}
+
+# answer `code` with no body, as a 304 must
+fun bodyless(request_context: *context.Context, code: status.Status) handler.Result {
+    val response: *message.Response = context.response(request_context);
+    if (response == nil || message.set_status(response, code) != message.RESPONSE_OK) {
+        ret handler.fail(internal("the status could not be set"));
+    }
+    ret handler.respond();
+}
+
+fun arena_text(request_context: *context.Context, b: *text.Buf) bool {
+    val allocated: res[*u8, A.Error] = A.allocate[u8](arena_of(request_context), b.len + 1);
+    if (sel allocated.err) { ret false; }
+    @b = text.buf(allocated.ok, b.len + 1);
+    ret true;
+}
+
+# GET /ecosystem: the page lives at /ecosystem/, with the same query
+pub fun ecosystem_moved(ctx: ptr, request_context: *context.Context, slot: *ptr)
+    handler.Result {
+    @slot = nil;
+    val request: *message.Request = context.request(request_context);
+    if (request == nil) { ret handler.fail(internal("the request is unavailable")); }
+    var b: text.Buf = text.measure();
+    text.put_str(?b, "/ecosystem/");
+    if (request.target.query.len != 0) {
+        text.put_byte(?b, '?');
+        text.put(?b, request.target.query);
+    }
+    if (!arena_text(request_context, ?b)) { ret handler.fail(internal("storage was refused")); }
+    text.put_str(?b, "/ecosystem/");
+    if (request.target.query.len != 0) {
+        text.put_byte(?b, '?');
+        text.put(?b, request.target.query);
+    }
+    if (!add(request_context, "location", text.written(?b))) {
+        ret handler.fail(internal("the location could not be set"));
+    }
+    ret respond(request_context, 301, "text/plain", view.view(nil, 0));
+}
+
+fun field_value(values: *form.Form, name: str) view.View {
+    val found: *form.Field = form.find(values, text.text(name));
+    if (found == nil) { ret view.view(nil, 0); }
+    ret found.value;
+}
+
+# GET /ecosystem/: the catalog, filtered and sorted as the query asks
+pub fun ecosystem(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    val state: *State       = ctx::*State;
+    val arena: *A.Allocator = arena_of(request_context);
+    if (state == nil || arena == nil) { ret handler.fail(internal("handler state is missing")); }
+    var fields:  [QUERY_FIELDS]form.Field;
+    var bytes:   [QUERY_BYTES]u8;
+    var decoder: form.UrlEncoded;
+    val decoded: form.Operation = query.parse(request_context, ?decoder,
+        form.Storage{fields: ?fields[0], field_capacity: QUERY_FIELDS, bytes: ?bytes[0],
+        byte_capacity: QUERY_BYTES},
+        form.Limits{max_bytes: QUERY_BYTES, max_fields: QUERY_FIELDS, max_name_bytes: 16,
+        max_value_bytes: 256, max_temporary_bytes: QUERY_BYTES});
+    if (decoded.status != form.COMPLETE) { ret handler.fail(decoded.app_error); }
+    var values: form.Form = decoded.form;
+
+    var shown: page.Page;
+    shown.ask          = page.default_view();
+    shown.ask.q        = field_value(?values, "q");
+    shown.ask.category = field_value(?values, "category");
+    if (text.same(shown.ask.category, text.text("all"))) { shown.ask.category = view.view(nil, 0); }
+    shown.ask.source = page.parse_source(field_value(?values, "source"));
+    shown.ask.sort   = page.parse_sort(field_value(?values, "sort"));
+    shown.now        = text.now();
+    shown.data       = nil;
+    shown.len        = 0;
+    shown.shown      = 0;
+
+    var lease:  hedge_task.Lease;
+    val leased: bool = refresh.read(state.refresher, ?lease);
+    if (leased) {
+        shown.data = lease.data;
+        shown.len  = lease.len;
+        val head:  *snapshot.Header = snapshot.header(lease.data, lease.len);
+        var count: usize            = 0;
+        if (head != nil) { count = head.entries::usize; }
+        val items: res[*page.Item, A.Error] = A.allocate[page.Item](arena, count + 1);
+        if (sel items.err) {
+            refresh.release(state.refresher, ?lease);
+            ret handler.fail(internal("page storage was refused"));
+        }
+        shown.items = items.ok;
+        page.select(?shown);
+    }
+    var b: text.Buf = text.measure();
+    page.render(?b, ?shown);
+    val made: bool = arena_text(request_context, ?b);
+    if (made)                    { page.render(?b, ?shown); }
+    if (leased)                  { refresh.release(state.refresher, ?lease); }
+    if (!made || !text.fits(?b)) { ret handler.fail(internal("page storage was refused")); }
+    if (!add(request_context, "cache-control", text.text("no-cache"))) {
+        ret handler.fail(internal("the caching could not be set"));
+    }
+    ret respond(request_context, 200, "text/html", text.written(?b));
+}
+
+fun stale(head: *snapshot.Header, now: i64) bool {
+    ret now - head.generated > STALE_AFTER_S;
+}
+
+# GET /ecosystem.json: the snapshot's document, with whether it is stale
+pub fun catalog(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    val state: *State = ctx::*State;
+    if (state == nil) { ret handler.fail(internal("handler state is missing")); }
+    var lease: hedge_task.Lease;
+    if (!refresh.read(state.refresher, ?lease)) {
+        if (!add(request_context, "cache-control", text.text("no-store")) ||
+            !add(request_context, "retry-after", text.text("60"))) {
+            ret handler.fail(internal("the caching could not be set"));
+        }
+        ret respond(request_context, 503, "application/json",
+            text.text("{\"error\":\"the catalog is unavailable\"}\n"));
+    }
+    val head: *snapshot.Header = snapshot.header(lease.data, lease.len);
+    if (head == nil) {
+        refresh.release(state.refresher, ?lease);
+        ret handler.fail(internal("the snapshot is not a catalog"));
+    }
+    val is_stale: bool     = stale(head, text.now());
+    var tag:      [48]u8;
+    var t:        text.Buf = text.buf(?tag[0], 48);
+    text.put_byte(?t, '"');
+    text.put_i64(?t, head.generated);
+    if (is_stale) { text.put_str(?t, "-stale\""); }
+    or            { text.put_str(?t, "-fresh\""); }
+    val etag: view.View = text.written(?t);
+    if (text.same(header(request_context, "if-none-match"), etag)) {
+        refresh.release(state.refresher, ?lease);
+        var copy: text.Buf = text.measure();
+        text.put(?copy, etag);
+        if (!arena_text(request_context, ?copy)) { ret handler.fail(internal("storage was refused")); }
+        text.put(?copy, etag);
+        if (!add(request_context, "etag", text.written(?copy))
+            || !add(request_context, "cache-control", text.text("public, max-age=60"))) {
+            ret handler.fail(internal("the caching could not be set"));
+        }
+        ret bodyless(request_context, 304);
+    }
+    val doc:  view.View = snapshot.document(lease.data);
+    var b:    text.Buf  = text.measure();
+    var pass: u8        = 0;
+    for (pass < 2) {
+        text.put(?b, etag);
+        if (is_stale) { text.put_str(?b, "{\"stale\":true,"); }
+        or            { text.put_str(?b, "{\"stale\":false,"); }
+        text.put(?b, view.view(?doc.data[1], doc.len - 1));
+        if (pass == 0 && !arena_text(request_context, ?b)) {
+            refresh.release(state.refresher, ?lease);
+            ret handler.fail(internal("storage was refused"));
+        }
+        pass = pass + 1;
+    }
+    refresh.release(state.refresher, ?lease);
+    if (!text.fits(?b)) { ret handler.fail(internal("the document did not fit")); }
+    val whole: view.View = text.written(?b);
+    if (!add(request_context, "etag", view.view(whole.data, etag.len))
+        || !add(request_context, "cache-control", text.text("public, max-age=60"))) {
+        ret handler.fail(internal("the caching could not be set"));
+    }
+    ret respond(request_context, 200, "application/json",
+        view.view(?whole.data[etag.len], whole.len - etag.len));
+}
+
+# GET /healthz: the process is serving, and how old the catalog is
+pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    val state: *State = ctx::*State;
+    if (state == nil) { ret handler.fail(internal("handler state is missing")); }
+    var b:    text.Buf = text.measure();
+    var pass: u8       = 0;
+    for (pass < 2) {
+        text.put_str(?b, "ok\n");
+        var lease: hedge_task.Lease;
+        if (refresh.read(state.refresher, ?lease)) {
+            val head: *snapshot.Header = snapshot.header(lease.data, lease.len);
+            if (head != nil) {
+                val now: i64 = text.now();
+                text.put_str(?b, "catalog_generated ");
+                text.put_timestamp(?b, head.generated);
+                text.put_str(?b, "\ncatalog_age_seconds ");
+                text.put_i64(?b, now - head.generated);
+                text.put_str(?b, "\ncatalog_stale ");
+                if (stale(head, now)) { text.put_str(?b, "true\n"); }
+                or                    { text.put_str(?b, "false\n"); }
+            }
+            refresh.release(state.refresher, ?lease);
+        }
+        or { text.put_str(?b, "catalog_generated none\n"); }
+        if (pass == 0 && !arena_text(request_context, ?b)) {
+            ret handler.fail(internal("storage was refused"));
+        }
+        pass = pass + 1;
+    }
+    if (!add(request_context, "cache-control", text.text("no-store"))) {
+        ret handler.fail(internal("the caching could not be set"));
+    }
+    ret respond(request_context, 200, "text/plain", text.written(?b));
+}
+
+# the webhook's body, read whole across suspensions before its signature is
+# checked
+rec HookWork {
+    body:   raw.Body;
+    buffer: [HOOK_BYTES]u8;
+}
+
+fun hex_value(c: u8) i64 {
+    if (c >= '0' && c <= '9') { ret (c - '0')::i64; }
+    if (c >= 'a' && c <= 'f') { ret (c - 'a' + 10)::i64; }
+    ret -1;
+}
+
+# what one signature check compares: the body and the tag the sender claims
+rec Check {
+    body:     view.View;
+    claimed:  [32]u8;
+    verified: bool;
+}
+
+fun verify(ctx: ptr, key: contracts.SecretBytes) bool {
+    val check: *Check              = ctx::*Check;
+    var tag:   [32]u8;
+    val made:  contracts.Operation = hmac.sha256(key,
+        contracts.Bytes{data: check.body.data::*u8, len: check.body.len},
+        contracts.Buffer{data: ?tag[0], capacity: 32});
+    if (made.error != contracts.OK) { ret false; }
+    # every byte is compared, so the time taken says nothing about where a
+    # forged tag first differs
+    var difference: u8    = 0;
+    var i:          usize = 0;
+    for (i < 32) {
+        difference = difference | (tag[i] ^ check.claimed[i]);
+        i          = i + 1;
+    }
+    check.verified = difference == 0;
+    ret true;
+}
+
+# whether the body carries a valid X-Hub-Signature-256 for the webhook secret
+fun signed(state: *State, request_context: *context.Context, body: view.View) bool {
+    val claimed: view.View = header(request_context, "x-hub-signature-256");
+    val prefix:  view.View = text.text("sha256=");
+    if (claimed.len != prefix.len + 64
+        || !text.same(view.view(claimed.data, prefix.len), prefix)) { ret false; }
+    var check: Check;
+    check.body     = body;
+    check.verified = false;
+    var i: usize = 0;
+    for (i < 32) {
+        val high: i64 = hex_value(claimed.data[prefix.len + 2 * i]::u8);
+        val low:  i64 = hex_value(claimed.data[prefix.len + 2 * i + 1]::u8);
+        if (high < 0 || low < 0) { ret false; }
+        check.claimed[i] = (high * 16 + low)::u8;
+        i                = i + 1;
+    }
+    if (laurel_secret.borrow(state.secrets, text.text("webhook"), verify, (?check)::ptr)
+        != laurel_secret.BORROW_OK) { ret false; }
+    ret check.verified;
+}
+
+fun hook_read(state: *State, request_context: *context.Context, current: raw.Operation)
+    handler.Result {
+    if (current.status == raw.PENDING)  { ret handler.suspend(current.token); }
+    if (current.status != raw.COMPLETE) { ret handler.fail(current.app_error); }
+    if (!signed(state, request_context, current.bytes)) {
+        ret respond(request_context, 401, "application/json",
+            text.text("{\"error\":\"the signature does not match\"}\n"));
+    }
+    val queued: hedge_task.Status = refresh.trigger(state.refresher);
+    if (queued == hedge_task.STATUS_OK) {
+        ret respond(request_context, 202, "application/json",
+            text.text("{\"refresh\":\"queued\"}\n"));
+    }
+    if (queued == hedge_task.STATUS_COALESCED) {
+        ret respond(request_context, 202, "application/json",
+            text.text("{\"refresh\":\"coalesced\"}\n"));
+    }
+    ret respond(request_context, 503, "application/json",
+        text.text("{\"error\":\"no refresh can be queued now\"}\n"));
+}
+
+# POST /hooks/ecosystem: github's push webhook from mach-ecosystem, which
+# refreshes the catalog now
+pub fun hook(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    val state:   *State           = ctx::*State;
+    val request: *message.Request = context.request(request_context);
+    val arena:   *A.Allocator     = arena_of(request_context);
+    if (state == nil || request == nil || request.body == nil || arena == nil) {
+        ret handler.fail(internal("the request is unavailable"));
+    }
+    val allocated: res[*HookWork, A.Error] = A.zallocate[HookWork](arena, 1);
+    if (sel allocated.err) { ret handler.fail(internal("body storage was refused")); }
+    val work: *HookWork = allocated.ok;
+    @slot = work::ptr;
+    if (!raw.init(?work.body, request.body, ?work.buffer[0], HOOK_BYTES)) {
+        ret handler.fail(internal("the body reader was refused"));
+    }
+    ret hook_read(state, request_context, raw.poll(?work.body));
+}
+
+pub fun hook_resume(ctx: ptr, request_context: *context.Context, slot: ptr,
+    settlement: handler.Settlement, token: u64) handler.Result {
+    val state: *State    = ctx::*State;
+    val work:  *HookWork = slot::*HookWork;
+    if (state == nil || work == nil)            { ret handler.fail(internal("body state did not survive")); }
+    if (settlement == handler.SETTLE_ABANDONED) { ret handler.respond(); }
+    ret hook_read(state, request_context, raw.complete(?work.body, token));
+}

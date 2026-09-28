@@ -1,0 +1,338 @@
+# bounded text building and the small formats the site writes
+#
+# a Buf appends into caller storage and counts every byte it was asked for,
+# whether it fit or not. a Buf over nil storage only measures, so a renderer
+# runs once to learn its length and again into storage of exactly that size.
+
+use std.chrono.date;
+use std.chrono.format;
+use std.chrono.time;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.option.opt;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+pub rec Buf {
+    data: *u8;
+    cap:  usize;
+    len:  usize;
+}
+
+pub fun buf(data: *u8, cap: usize) Buf {
+    ret Buf{data: data, cap: cap, len: 0};
+}
+
+# a Buf that stores nothing and counts what it is given
+pub fun measure() Buf {
+    ret Buf{data: nil, cap: 0, len: 0};
+}
+
+# whether everything appended fit
+pub fun fits(b: *Buf) bool {
+    ret b.len <= b.cap;
+}
+
+pub fun written(b: *Buf) view.View {
+    ret view.view(b.data::*char, b.len);
+}
+
+pub fun put_byte(b: *Buf, value: u8) {
+    if (b.data != nil && b.len < b.cap) { b.data[b.len] = value; }
+    b.len = b.len + 1;
+}
+
+pub fun put(b: *Buf, value: view.View) {
+    var i: usize = 0;
+    for (i < value.len) {
+        put_byte(b, value.data[i]::u8);
+        i = i + 1;
+    }
+}
+
+pub fun put_str(b: *Buf, value: str) {
+    var i: usize = 0;
+    for (value[i] != 0) {
+        put_byte(b, value[i]);
+        i = i + 1;
+    }
+}
+
+pub fun put_u64(b: *Buf, value: u64) {
+    var digits: [20]u8;
+    var count:  usize = 0;
+    var rest:   u64   = value;
+    for {
+        digits[count] = ('0'::u8) + (rest % 10)::u8;
+        count         = count + 1;
+        rest          = rest / 10;
+        if (rest == 0) { brk; }
+    }
+    for (count > 0) {
+        count = count - 1;
+        put_byte(b, digits[count]);
+    }
+}
+
+pub fun put_i64(b: *Buf, value: i64) {
+    if (value < 0) {
+        put_byte(b, '-');
+        put_u64(b, (0 - value)::u64);
+        ret;
+    }
+    put_u64(b, value::u64);
+}
+
+# text as html character data or a quoted attribute value
+pub fun put_html(b: *Buf, value: view.View) {
+    var i: usize = 0;
+    for (i < value.len) {
+        val c: u8 = value.data[i]::u8;
+        if (c == '&')  { put_str(b, "&amp;"); }
+        or (c == '<')  { put_str(b, "&lt;"); }
+        or (c == '>')  { put_str(b, "&gt;"); }
+        or (c == '"')  { put_str(b, "&quot;"); }
+        or (c == '\'') { put_str(b, "&#39;"); }
+        or             { put_byte(b, c); }
+        i = i + 1;
+    }
+}
+
+fun hex_digit(value: u8) u8 {
+    if (value < 10) { ret ('0'::u8) + value; }
+    ret ('A'::u8) + value - 10;
+}
+
+# text as a query string value: unreserved bytes as they are, space as +, and
+# everything else percent-encoded
+pub fun put_query(b: *Buf, value: view.View) {
+    var i: usize = 0;
+    for (i < value.len) {
+        val c: u8 = value.data[i]::u8;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+            || c == '-' || c == '_' || c == '.' || c == '~') {
+            put_byte(b, c);
+        }
+        or (c == ' ') { put_byte(b, '+'); }
+        or {
+            put_byte(b, '%');
+            put_byte(b, hex_digit(c >> 4));
+            put_byte(b, hex_digit(c & 15));
+        }
+        i = i + 1;
+    }
+}
+
+pub fun text(value: str) view.View {
+    var length: usize = 0;
+    for (value[length] != 0) { length = length + 1; }
+    ret view.view(value::*char, length);
+}
+
+pub fun same(a: view.View, b: view.View) bool {
+    if (a.len != b.len) { ret false; }
+    var i: usize = 0;
+    for (i < a.len) {
+        if (a.data[i] != b.data[i]) { ret false; }
+        i = i + 1;
+    }
+    ret true;
+}
+
+pub fun lower(c: u8) u8 {
+    if (c >= 'A' && c <= 'Z') { ret c + 32; }
+    ret c;
+}
+
+# whether `needle`, already lowercase, occurs in `hay` ignoring ascii case
+pub fun contains_folded(hay: view.View, needle: view.View) bool {
+    if (needle.len == 0)      { ret true; }
+    if (needle.len > hay.len) { ret false; }
+    var at: usize = 0;
+    for (at + needle.len <= hay.len) {
+        var i: usize = 0;
+        for (i < needle.len && lower(hay.data[at + i]::u8) == needle.data[i]::u8) { i = i + 1; }
+        if (i == needle.len) { ret true; }
+        at = at + 1;
+    }
+    ret false;
+}
+
+# -1, 0 or 1 as `a` sorts before, with or after `b`, ignoring ascii case
+pub fun compare_folded(a: view.View, b: view.View) i64 {
+    var i: usize = 0;
+    for (i < a.len && i < b.len) {
+        val x: u8 = lower(a.data[i]::u8);
+        val y: u8 = lower(b.data[i]::u8);
+        if (x < y) { ret -1; }
+        if (x > y) { ret 1; }
+        i = i + 1;
+    }
+    if (a.len < b.len) { ret -1; }
+    if (a.len > b.len) { ret 1; }
+    ret 0;
+}
+
+pub fun compare(a: view.View, b: view.View) i64 {
+    var i: usize = 0;
+    for (i < a.len && i < b.len) {
+        if (a.data[i]::u8 < b.data[i]::u8) { ret -1; }
+        if (a.data[i]::u8 > b.data[i]::u8) { ret 1; }
+        i = i + 1;
+    }
+    if (a.len < b.len) { ret -1; }
+    if (a.len > b.len) { ret 1; }
+    ret 0;
+}
+
+fun digits(value: view.View, at: usize, count: usize, output: *i64) bool {
+    if (at + count > value.len) { ret false; }
+    var total: i64   = 0;
+    var i:     usize = 0;
+    for (i < count) {
+        val c: u8 = value.data[at + i]::u8;
+        if (c < '0' || c > '9') { ret false; }
+        total = total * 10 + (c - '0')::i64;
+        i     = i + 1;
+    }
+    @output = total;
+    ret true;
+}
+
+# the unix seconds of a utc timestamp as github writes one,
+# YYYY-MM-DDTHH:MM:SSZ, with an optional fraction before the Z
+pub fun parse_timestamp(value: view.View) opt[i64] {
+    var year:   i64 = 0;
+    var month:  i64 = 0;
+    var day:    i64 = 0;
+    var hour:   i64 = 0;
+    var minute: i64 = 0;
+    var second: i64 = 0;
+    if (value.len < 20 || !digits(value, 0, 4, ?year) || value.data[4]::u8 != '-'
+        || !digits(value, 5, 2, ?month) || value.data[7]::u8 != '-'
+        || !digits(value, 8, 2, ?day) || value.data[10]::u8 != 'T'
+        || !digits(value, 11, 2, ?hour) || value.data[13]::u8 != ':'
+        || !digits(value, 14, 2, ?minute) || value.data[16]::u8 != ':'
+        || !digits(value, 17, 2, ?second)) { ret opt[i64].none{}; }
+    var at: usize = 19;
+    if (value.data[at]::u8 == '.') {
+        at = at + 1;
+        for (at < value.len && value.data[at]::u8 >= '0' && value.data[at]::u8 <= '9') {
+            at = at + 1;
+        }
+    }
+    if (at + 1 != value.len || value.data[at]::u8 != 'Z') { ret opt[i64].none{}; }
+    if (month < 1 || month > 12 || day < 1 || day > date.days_in_month(year, month)
+        || hour > 23 || minute > 59 || second > 60) { ret opt[i64].none{}; }
+    ret opt[i64].some{date.civil_to_days(year, month, day) * 86400 + hour * 3600
+        + minute * 60 + second};
+}
+
+# the current unix second
+pub fun now() i64 {
+    val sampled: time.Clock = time.now();
+    if (sel sampled.ok) { ret time.time_unix_sec(sampled.ok); }
+    ret 0;
+}
+
+# `seconds` as a utc timestamp, YYYY-MM-DDTHH:MM:SSZ
+pub fun put_timestamp(b: *Buf, seconds: i64) {
+    var scratch: [40]u8;
+    val length:  usize = format.rfc3339(date.datetime_from_time(time.unix(seconds, 0)),
+        ?scratch[0], 40);
+    put(b, view.view((?scratch[0])::*char, length));
+}
+
+# how long ago `then` was from `now`, in the words the ecosystem page uses
+pub fun put_relative(b: *Buf, then: i64, now: i64) {
+    var days: i64 = (now - then) / 86400;
+    if (now < then) { days = 0; }
+    if (days < 1) {
+        put_str(b, "today");
+        ret;
+    }
+    if (days == 1) {
+        put_str(b, "yesterday");
+        ret;
+    }
+    if (days < 30) {
+        put_i64(b, days);
+        put_str(b, " days ago");
+        ret;
+    }
+    val months: i64 = days / 30;
+    if (months < 12) {
+        if (months == 1) {
+            put_str(b, "a month ago");
+            ret;
+        }
+        put_i64(b, months);
+        put_str(b, " months ago");
+        ret;
+    }
+    val years: i64 = days / 365;
+    if (years <= 1) {
+        put_str(b, "a year ago");
+        ret;
+    }
+    put_i64(b, years);
+    put_str(b, " years ago");
+}
+
+# how long `seconds` is, in its largest whole unit
+pub fun put_age(b: *Buf, seconds: i64) {
+    if (seconds < 120) {
+        put_i64(b, seconds);
+        put_str(b, " seconds");
+        ret;
+    }
+    if (seconds < 7200) {
+        put_i64(b, seconds / 60);
+        put_str(b, " minutes");
+        ret;
+    }
+    if (seconds < 172800) {
+        put_i64(b, seconds / 3600);
+        put_str(b, " hours");
+        ret;
+    }
+    put_i64(b, seconds / 86400);
+    put_str(b, " days");
+}
+
+# a count as the page shows it: 950, 1.2k, 12k
+pub fun put_compact(b: *Buf, value: i64) {
+    if (value < 1000) {
+        put_i64(b, value);
+        ret;
+    }
+    if (value < 10000) {
+        val tenths: i64 = (value + 50) / 100;
+        put_i64(b, tenths / 10);
+        if (tenths % 10 != 0) {
+            put_byte(b, '.');
+            put_i64(b, tenths % 10);
+        }
+        put_byte(b, 'k');
+        ret;
+    }
+    put_i64(b, (value + 500) / 1000);
+    put_byte(b, 'k');
+}
+
+test parse_timestamp__github_forms {
+    val plain: opt[i64] = parse_timestamp(text("2026-09-28T11:46:44Z"));
+    if (sel plain.none)           { ret 1; }
+    if (plain.some != 1790596004) { ret 2; }
+    val fraction: opt[i64] = parse_timestamp(text("2024-02-29T00:00:00.789Z"));
+    if (sel fraction.none)           { ret 3; }
+    if (fraction.some != 1709164800) { ret 4; }
+    val leap: opt[i64] = parse_timestamp(text("2023-02-29T00:00:00Z"));
+    if (sel leap.some) { ret 5; }
+    val offset: opt[i64] = parse_timestamp(text("2026-09-28T11:46:44+01:00"));
+    if (sel offset.some) { ret 6; }
+    ret 0;
+}
