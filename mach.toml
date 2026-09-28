@@ -1,0 +1,55 @@
+[project]
+id = "site"
+version = "0.1.0"
+mach = "^6.3"
+src = "src"
+out = "out/{target.name}/{profile.name}"
+
+[target.linux-x86_64]
+default = true
+isa = "x86_64"
+os = "linux"
+abi = "sysv64"
+
+[profile.debug]
+default = true
+opt = 0
+debug = true
+simd = "scalarize"
+vectorize = false
+float_reassoc = false
+
+[profile.release]
+opt = 2
+debug = false
+simd = "scalarize"
+vectorize = true
+float_reassoc = false
+
+[artifact.site]
+kind = "bin"
+entry = "bin/main.mach"
+out = "bin/site"
+targets = ["*"]
+link = []
+need = []
+
+[dep.std]
+git = "https://github.com/briar-systems/mach-std"
+version = "^9.4.1"
+
+[dep.http]
+git = "https://github.com/briar-systems/mach-http"
+version = "^0.25"
+
+[dep.hedge]
+git = "https://github.com/briar-systems/hedge"
+version = "^0.16"
+
+[dep.laurel]
+git = "https://github.com/briar-systems/laurel"
+version = "^0.22"
+
+[dep.graft]
+git = "https://github.com/briar-systems/graft"
+version = "^0.2"
