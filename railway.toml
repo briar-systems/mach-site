@@ -1,0 +1,17 @@
+# railway service settings for machlang.org. DEPLOY.md is the runbook.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# hedge answers /healthz for every host name, the health checker's included
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+# the new deployment takes traffic before the old one is stopped, and the old
+# one gets SIGTERM with 30 seconds to drain (hedge.toml drains in 10, then
+# stops within 5) before it is killed
+overlapSeconds = "15"
+drainingSeconds = "30"

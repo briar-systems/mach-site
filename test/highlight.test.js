@@ -1,7 +1,7 @@
 // run with: node --test test/highlight.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { tokenize, toml } = require("../assets/highlight.js");
+const { tokenize, toml } = require("../public/assets/highlight.js");
 
 test("toml marks table heads, keys and strings", () => {
   assert.equal(

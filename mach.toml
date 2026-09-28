@@ -1,0 +1,75 @@
+[project]
+id = "site"
+version = "0.1.0"
+mach = "^6.5"
+src = "src"
+out = "out/{target.name}/{profile.name}"
+
+[target.linux-x86_64]
+default = true
+isa = "x86_64"
+os = "linux"
+abi = "sysv64"
+
+[profile.debug]
+default = true
+opt = 0
+debug = true
+simd = "scalarize"
+vectorize = false
+float_reassoc = false
+
+[profile.release]
+opt = 2
+debug = false
+simd = "scalarize"
+vectorize = true
+float_reassoc = false
+
+[artifact.site]
+kind = "bin"
+entry = "bin/main.mach"
+out = "bin/site"
+targets = ["*"]
+link = []
+need = []
+
+# every dependency of the closure is named here at an exact release tag, so a
+# checkout without git metadata, such as a container build context, realizes
+# the same tree the committed gitlinks pin. the ones this project does not
+# import itself are reached through hedge and laurel.
+[dep.std]
+git = "https://github.com/briar-systems/mach-std"
+ref = "tag/v9.4.1"
+
+[dep.http]
+git = "https://github.com/briar-systems/mach-http"
+ref = "tag/v0.25.1"
+
+[dep.hedge]
+git = "https://github.com/briar-systems/hedge"
+ref = "tag/v0.17.0"
+
+[dep.laurel]
+git = "https://github.com/briar-systems/laurel"
+ref = "tag/v0.23.0"
+
+[dep.graft]
+git = "https://github.com/briar-systems/graft"
+ref = "tag/v0.3.0"
+
+[dep.crypto]
+git = "https://github.com/briar-systems/mach-crypto"
+ref = "tag/v0.26.0"
+
+[dep.tls]
+git = "https://github.com/briar-systems/mach-tls"
+ref = "tag/v0.16.0"
+
+[dep.quic]
+git = "https://github.com/briar-systems/mach-quic"
+ref = "tag/v0.25.1"
+
+[dep.acme]
+git = "https://github.com/briar-systems/mach-acme"
+ref = "tag/v0.14.0"

@@ -1,0 +1,33 @@
+# the machlang.org server: graft hosts the site's laurel application in hedge
+#
+# `host.run` reads and seals the configuration, assembles the application
+# against it, mounts it under "site", and serves until SIGINT or SIGTERM drains
+# it. hedge serves the static files and /healthz itself, and starts, drains and
+# stops the application. the exit status is graft's: 0 for a clean drain, 75
+# for a drain that ran out of time, 78 for a configuration error, 70 otherwise.
+
+use graft.host;
+use laurel_app: laurel.app;
+use site.app;
+use std.runtime;
+use std.types.bool.bool;
+use std.types.string.str;
+
+var site: app.Site;
+
+fun assemble(ctx: ptr, setup: *host.Setup) *laurel_app.App {
+    if (!app.assemble(?site, setup)) { ret nil; }
+    ret ?site.app;
+}
+
+fun release(ctx: ptr, assembled: *laurel_app.App) bool {
+    ret app.release(?site);
+}
+
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    var path: str = "hedge.toml";
+    if (argc > 1 && argv[1] != nil) { path = argv[1]::str; }
+    ret host.run(path, "site", host.Application{ctx: nil, assemble: assemble,
+        release: release, memory_bytes: 65536});
+}

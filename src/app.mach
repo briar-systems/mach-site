@@ -1,0 +1,163 @@
+# the site's laurel application: the dynamic routes machlang.org serves beside
+# hedge's static files
+#
+# everything the application owns lives in one Site record, which the executable
+# owns for the life of the process. hedge serves every static file and /healthz
+# itself, so only the routes below ever enter laurel.
+
+use graft.host;
+use laurel.app;
+use laurel.context;
+use laurel.error;
+use laurel.handler;
+use laurel.lifecycle;
+use laurel.middleware;
+use laurel.observability;
+use laurel.provider;
+use laurel.router;
+use laurel.security;
+use std.chrono.duration;
+use std.chrono.time;
+use std.print;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.view;
+
+# requests laurel may serve at once, past which admission refuses them
+val MAX_ACTIVE_REQUESTS: usize = 256;
+# the provider set holds one entry, the one graft supplies
+val PROVIDER_COUNT: usize = 1;
+
+pub rec Site {
+    matcher:    router.Router;
+    stack:      middleware.Stack;
+    entries:    [PROVIDER_COUNT]provider.Provider;
+    providers:  provider.Set;
+    services:   [1]lifecycle.Lifecycle;
+    controller: lifecycle.Controller;
+    headers:    security.HeadersPolicy;
+    errors:     error.Default;
+    vocabulary: observability.Vocabulary;
+    observer:   observability.Observer;
+    app:        app.App;
+}
+
+fun ignore_start(ctx: ptr, event: *observability.RequestEvent) {}
+
+fun ignore_finish(ctx: ptr, event: *observability.RequestEvent) {}
+
+# hedge logs every request it serves, so the observer only surfaces the private
+# detail of a failure, which never reaches the client
+fun report_error(ctx: ptr, event: *observability.RequestEvent, failure: error.AppError) {
+    var copy:   error.AppError = failure;
+    val detail: view.View      = error.private_detail(?copy);
+    var text:   [256]u8;
+    var i:      usize          = 0;
+    for (i < detail.len && i < 255) {
+        text[i] = detail.data[i]::u8;
+        i       = i + 1;
+    }
+    text[i] = 0;
+    print.eprintlnf("site: request failed: status {}: {}", event.status::u64,
+        (?text[0])::*u8);
+}
+
+fun service_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
+    ret res[lifecycle.CallbackStatus, view.View].ok{lifecycle.CALLBACK_DONE};
+}
+
+fun service_ready(ctx: ptr) lifecycle.Readiness {
+    ret lifecycle.READY_NOW;
+}
+
+fun service_drain(ctx: ptr, deadline: opt[time.Instant])
+    res[lifecycle.CallbackStatus, view.View] {
+    ret res[lifecycle.CallbackStatus, view.View].ok{lifecycle.CALLBACK_DONE};
+}
+
+fun service_stop(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
+    ret res[lifecycle.CallbackStatus, view.View].ok{lifecycle.CALLBACK_DONE};
+}
+
+# what laurel runs when no route matched
+fun not_found(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
+    @slot = nil;
+    ret handler.fail(error.make(error.NOT_FOUND, 404, "not found",
+        "no route matched the request target", false));
+}
+
+# assemble the application against the limits hedge commits every response
+# under, with the providers graft supplies
+# ---
+# site:  storage for the application, live until it is released
+# setup: what graft hands the application once the configuration is sealed
+# ret:   whether the application was assembled
+pub fun assemble(site: *Site, setup: *host.Setup) bool {
+    if (site == nil || setup == nil)             { ret false; }
+    if (!security.secure_headers(?site.headers)) { ret false; }
+    val compiled: router.Compile = router.compile(?site.matcher, nil, 0,
+        router.Storage{specifications: nil, specification_cap: 0, compiled_routes: nil,
+        compiled_route_cap: 0, segments: nil, segment_cap: 0}, router.limits_default());
+    if (compiled.status != router.COMPILE_OK) { ret false; }
+    site.stack      = middleware.Stack{items: nil, len: 0};
+    site.entries[0] = setup.providers;
+    if (!provider.init(?site.providers, ?site.entries[0], PROVIDER_COUNT, PROVIDER_COUNT,
+        32)) { ret false; }
+    site.services[0] = lifecycle.Lifecycle{ctx: nil, start: service_start,
+        ready: service_ready, drain: service_drain, stop: service_stop};
+    if (!lifecycle.init(?site.controller, ?site.services[0], 1, 1)) { ret false; }
+    if (!error.initialize_default(?site.errors, setup.limits, 512)) { ret false; }
+    if (!observability.init_vocabulary(?site.vocabulary, nil, 0))   { ret false; }
+    site.observer = observability.Observer{ctx: nil, start: ignore_start,
+        finish: ignore_finish, error: report_error};
+
+    val assembly: app.Assembly = app.Assembly{
+        config: app.Config{
+            limits: app.Limits{
+                max_body_bytes:          65536,
+                max_form_fields:         16,
+                max_upload_bytes:        65536,
+                max_route_params:        4,
+                max_request_id_bytes:    64,
+                max_active_requests:     MAX_ACTIVE_REQUESTS,
+                max_middleware_depth:    4,
+                handler_timeout:         opt[duration.Duration].none{},
+                max_providers:           PROVIDER_COUNT,
+                max_provider_key_bytes:  32,
+                max_background_services: 1
+            },
+            trust_proxy:  false,
+            panic_policy: middleware.PANIC_ABORT
+        },
+        router:        ?site.matcher,
+        middleware:    ?site.stack,
+        fallback:      handler.Handler{ctx: nil, call: not_found, resume: nil},
+        errors:        error.default_mapper(?site.errors),
+        providers:     ?site.providers,
+        lifecycle:     ?site.controller,
+        sessions:      nil,
+        security:      ?site.headers,
+        csrf:          nil,
+        origins:       nil,
+        authenticator: nil,
+        renderer:      nil,
+        observer:      ?site.observer,
+        vocabulary:    ?site.vocabulary,
+        event_policy:  observability.policy_default(),
+        app_state:     nil,
+    };
+    ret app.assemble(?site.app, assembly);
+}
+
+# release what the application holds, once hedge has drained and stopped it.
+# an application a refused start never started holds nothing to release
+pub fun release(site: *Site) bool {
+    if (site == nil)                                  { ret false; }
+    if (site.controller.state == lifecycle.ASSEMBLED) { ret true; }
+    if (!app.release(?site.app))                      { ret false; }
+    ret lifecycle.destroy(?site.controller);
+}

@@ -1,0 +1,76 @@
+# hedge configuration for machlang.org
+#
+# the service runs behind a platform edge that terminates TLS, so it serves
+# plain HTTP/1.1 on the one address the platform routes to. hedge serves every
+# static file under public/ and the health check itself. the laurel application
+# graft mounts under "site" serves the dynamic routes.
+
+[server]
+name = "machlang.org"
+# fixed rather than one per cpu the container happens to see
+workers = 2
+pin_workers = false
+
+# every connection arrives through the platform's edge, so a handful of edge
+# addresses carry every client, and the per-peer cap sits far above hedge's
+# default of 100
+[server.limits]
+max_connections_per_peer = 4096
+
+# a redeploy sends SIGTERM and waits before it kills the process, so the drain
+# and the stop together fit well inside that wait
+[server.timeouts]
+drain_ms = 10000
+linger_ms = 2000
+stop_ms = 5000
+
+# the platform assigns the port, so the address comes from the environment,
+# for example LISTEN=0.0.0.0:8080
+[[listener]]
+name = "public"
+address = "${ENV:LISTEN}"
+transport = "tcp"
+protocols = ["http/1.1"]
+backlog = 512
+
+# "*" answers every host name: the public names, the platform's own domain and
+# the platform's health checker, which sends Host: healthcheck.railway.app
+[host.site]
+listener = "public"
+names = ["*"]
+
+# html and the install forwarders are revalidated on every use, so a deploy is
+# seen at once. the rest of the site is not fingerprinted, so it is cached
+# briefly rather than forever. each rule's trailing * also covers the file's
+# precompressed .gz and .br variants
+[service.files]
+kind = "static"
+root = "public"
+index = "index.html"
+precompressed = true
+cache_control = "public, max-age=600"
+cache_control_rules = [
+  { path = "/**/*.html*", value = "no-cache" },
+  { path = "/install.sh*", value = "no-cache" },
+  { path = "/install.ps1*", value = "no-cache" },
+  { path = "/assets/*.png", value = "public, max-age=86400" },
+  { path = "/assets/*.svg*", value = "public, max-age=86400" },
+]
+not_found = "/404.html"
+media_types = { ps1 = "text/plain; charset=utf-8" }
+
+[service.health]
+kind = "fixed"
+body = "ok\n"
+
+[[route]]
+name = "health"
+host = "site"
+path = "/healthz"
+service = "health"
+
+[[route]]
+name = "files"
+host = "site"
+path = "/**"
+service = "files"

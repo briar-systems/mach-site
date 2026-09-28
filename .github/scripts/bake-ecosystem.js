@@ -116,7 +116,7 @@ async function fetchMetadata(targets, token) {
 async function main() {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   if (!token) { throw new Error("GH_TOKEN is not set"); }
-  const out = process.argv[2] || path.join(__dirname, "..", "..", "ecosystem", "data.json");
+  const out = process.argv[2] || path.join(__dirname, "..", "..", "public", "ecosystem", "data.json");
 
   const from = process.env.ENTRIES_URL || DEFAULT_ENTRIES;
   const listing = /^https?:/.test(from) ? await fetchJson(from) : JSON.parse(fs.readFileSync(from, "utf8"));
