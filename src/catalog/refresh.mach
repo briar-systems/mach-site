@@ -2,10 +2,11 @@
 #
 # each run fetches mach-ecosystem's entries.json, asks github's graphql api for
 # the metadata of every github repository it lists, 100 to a query, writes the
-# catalog document, publishes its snapshot and keeps the document on the
-# volume. the first run publishes the volume's copy before it asks github, so
-# a restart serves the last good catalog whether github answers or not. a run
-# that fails publishes nothing and leaves the current snapshot in place.
+# catalog document and publishes its snapshot. when it is given a file, it
+# keeps the document there, and the first run publishes the file's copy before
+# it asks github, so a restart serves the last good catalog whether github
+# answers or not. a run that fails publishes nothing and leaves the current
+# snapshot in place.
 #
 # runs are single-flight: the facility runs one at a time and coalesces
 # triggers. every step is non-blocking, and the run's state lives here, reset
@@ -193,7 +194,7 @@ fun copy_setting(output: *u8, capacity: usize, value: view.View) usize {
     ret value.len;
 }
 
-# what the refresher reads from the application's settings
+# where the catalog comes from and where it is kept
 pub rec Settings {
     entries_url: view.View;
     graphql_url: view.View;

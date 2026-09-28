@@ -28,6 +28,7 @@ use site.web.handlers;
 use std.chrono.duration;
 use std.chrono.time;
 use std.print;
+use std.process.env;
 use std.types.bool.bool;
 use std.types.bool.false;
 use std.types.bool.true;
@@ -45,6 +46,9 @@ val PROVIDER_COUNT: usize = 1;
 val ROUTE_COUNT:    usize = 9;
 val SEGMENT_COUNT:  usize = 32;
 val SETTING_BYTES:  usize = 512;
+# the file the catalog is kept in across restarts, a path on a volume. unset
+# keeps none
+val SNAPSHOT_VARIABLE: str = "ECOSYSTEM_SNAPSHOT_PATH";
 
 pub rec Site {
     routes:         [ROUTE_COUNT]router.Route;
@@ -114,17 +118,24 @@ fun setting(site: *Site, key: str, output: *u8, found: *view.View) bool {
 }
 
 # registers the catalog refresh once hedge has started the application, when
-# its settings can be read, and before any worker serves
+# its settings can be read, and before any worker serves. the catalog is kept
+# in a file only when ECOSYSTEM_SNAPSHOT_PATH names one
 fun catalog_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
     val site:     *Site = ctx::*Site;
     var settings: refresh.Settings;
     if (!setting(site, "catalog.entries_url", ?site.entries_url[0], ?settings.entries_url)
-        || !setting(site, "catalog.graphql_url", ?site.graphql_url[0], ?settings.graphql_url)
-        || !setting(site, "catalog.snapshot", ?site.snapshot[0], ?settings.snapshot)) {
+        || !setting(site, "catalog.graphql_url", ?site.graphql_url[0], ?settings.graphql_url)) {
         ret failed("the catalog settings could not be read");
     }
     if (settings.entries_url.len == 0 || settings.graphql_url.len == 0) {
         ret failed("catalog.entries_url and catalog.graphql_url must be set");
+    }
+    settings.snapshot = view.view(nil, 0);
+    val kept: res[opt[usize], env.EnvError] = env.get(SNAPSHOT_VARIABLE, ?site.snapshot[0],
+        SETTING_BYTES);
+    if (sel kept.err) { ret failed("ECOSYSTEM_SNAPSHOT_PATH could not be read"); }
+    if (sel kept.ok.some) {
+        settings.snapshot = view.view((?site.snapshot[0])::*char, kept.ok.some);
     }
     if (!refresh.start(?site.refresher, site.facility, settings, site.state.secrets)) {
         ret failed("the catalog refresh could not be registered");
