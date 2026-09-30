@@ -92,7 +92,7 @@
       </div>
 
       <h2 id="installer">What the installer does</h2>
-      <p>Each script verifies the download against the release <code>SHA256SUMS</code> before installing, then drops the <code>mach</code> binary into a per-user location.</p>
+      <p>Each script verifies the download against the release <code>SHA256SUMS</code> before extracting it, and a mismatch or a missing entry installs nothing. It then drops the <code>mach</code> binary into a per-user location. At a terminal it asks for the install directory, offering the default below. <code>MACH_INSTALL_DIR</code> skips the prompt with a directory of your own, and <code>MACH_VERSION</code> pins a release (for example <code>6.8.0</code>) instead of the latest.</p>
       <table>
         <thead><tr><th>Platform</th><th>Install location</th></tr></thead>
         <tbody>

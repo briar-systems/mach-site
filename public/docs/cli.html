@@ -108,19 +108,18 @@
       </table>
 
       <h2 id="global-flags">Global flags</h2>
-      <p>Read by <code>build</code>, <code>run</code>, <code>test</code>, and <code>doc</code>, which share one config parser. Passing a verbosity flag and <code>--quiet</code> together is a parse error.</p>
+      <p>Read by <code>build</code>, <code>check</code>, <code>run</code>, <code>test</code>, and <code>doc</code>, which share one config parser. Passing a verbosity flag and <code>--quiet</code> together is a parse error.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
           <tr><td><code>-v</code></td><td>-</td><td>verbose readout: build phase timing, plus per-test lines under <code>mach test</code></td></tr>
           <tr><td><code>-vv</code></td><td>-</td><td><code>-v</code> plus per-module / per-file (or passing-test) detail</td></tr>
           <tr><td><code>--quiet</code>, <code>-q</code></td><td>-</td><td>suppress non-error output</td></tr>
-          <tr><td><code>--target &lt;name&gt;</code></td><td>target name</td><td>select a <code>[target.&lt;name&gt;]</code> entry</td></tr>
-          <tr><td><code>--profile &lt;name&gt;</code></td><td>profile name</td><td>select a <code>[profile.&lt;name&gt;]</code> variant; absent, the first declared</td></tr>
-          <tr><td><code>--bin &lt;name&gt;</code></td><td>artifact name</td><td>narrow the build to one <code>bin</code>-kind artifact</td></tr>
-          <tr><td><code>--lib &lt;name&gt;</code></td><td>artifact name</td><td>narrow to one library artifact (mutually exclusive with <code>--bin</code>)</td></tr>
+          <tr><td><code>-a</code>, <code>--artifact &lt;pattern&gt;</code></td><td>name or glob</td><td>select <code>[artifact.&lt;name&gt;]</code> entries; repeatable. Absent, the default selection: the artifacts marked <code>default = true</code> for each selected target, or all of them when none is marked</td></tr>
+          <tr><td><code>-t</code>, <code>--target &lt;pattern&gt;</code></td><td>name or glob</td><td>select <code>[target.&lt;name&gt;]</code> entries; repeatable. Absent, the <a href="manifest.html#native">native</a> target, or the one a named artifact settles</td></tr>
+          <tr><td><code>-p</code>, <code>--profile &lt;pattern&gt;</code></td><td>name or glob</td><td>select <code>[profile.&lt;name&gt;]</code> entries; repeatable. Absent, the sole declared profile or the one marked <code>default = true</code></td></tr>
+          <tr><td><code>--all</code></td><td>-</td><td>fill every axis no <code>-a</code>, <code>-t</code> or <code>-p</code> narrows with <code>*</code>: every artifact on every target it supports, in every profile</td></tr>
           <tr><td><code>-o &lt;path&gt;</code></td><td>path</td><td>override the linked-binary path; accepted only when the selection resolves to a single build cell</td></tr>
-          <tr><td><code>--all-targets</code></td><td>-</td><td>build every declared target rather than the manifest default</td></tr>
           <tr><td><code>-g</code></td><td>-</td><td>emit debug info for this build, overriding the profile's <code>debug</code> key</td></tr>
           <tr><td><code>--pie</code></td><td>-</td><td>emit a position-independent (<code>ET_DYN</code>) executable</td></tr>
           <tr><td><code>--subsystem &lt;kind&gt;</code></td><td>console, gui</td><td>the environment a windows executable declares; overrides the artifact's <code>subsystem</code> key, inert off windows</td></tr>
@@ -129,6 +128,7 @@
           <tr><td><code>--verify-ir</code></td><td>-</td><td>run the IR verifier after each optimisation pass</td></tr>
         </tbody>
       </table>
+      <p>A selection pattern is an exact name, which must be declared, or a glob in which <code>*</code> matches any run of characters and <code>?</code> any one, which must match at least one entry. The axis takes every entry any of its patterns names, in declaration order. Quote a glob so the shell leaves it alone: <code>-a '*'</code>. A glob skips the cells an artifact's <code>targets</code> list does not declare, while naming such a pair exactly is refused. <code>mach test . --all -p debug</code> selects every artifact and target in <code>debug</code> only. <code>check</code> does not take <code>-o</code>, <code>run</code> does not take <code>--all</code>, and <code>doc</code> selects with <code>-a</code> and <code>-t</code> only.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p>IR and assembly emission is a CLI concern only - there is no profile key for it. There are no <code>--no-emit-*</code> inverses, no <code>--release</code> flag (use <code>-O2</code> or <code>--profile</code>), no <code>--color</code> flag, and no <code>--verbose</code> long form.</p>
@@ -140,7 +140,7 @@
 
       <h2 id="build">build</h2>
       <pre class="code"><code>mach build &lt;path&gt; [options]</code></pre>
-      <p>Compiles the project rooted at <code>&lt;path&gt;</code> (for example <code>mach build .</code>). With no <code>--bin</code> or <code>--lib</code>, it builds every declared artifact for the default target and profile. Every reachable module is driven through sema, lower, optimise, and codegen to one relocatable object under the manifest's <code>obj</code> template. For a <code>kind = "bin"</code> artifact the objects are linked into the resolved <code>out</code> path; for a <code>static</code> artifact they are archived into an <code>ar</code> archive there, and with <code>--emit obj</code> the objects are the deliverable and nothing is linked.</p>
+      <p>Compiles the project rooted at <code>&lt;path&gt;</code> (for example <code>mach build .</code>). With no <code>-a</code>, it builds the default selection for the default target and profile, and <code>--all</code> builds every artifact on every target it supports in every profile. A selection that spans several profiles builds one profile after another. Every reachable module is driven through sema, lower, optimise, and codegen to one relocatable object under the manifest's <code>obj</code> template. For a <code>kind = "bin"</code> artifact the objects are linked into the resolved <code>out</code> path; for a <code>static</code> artifact they are archived into an <code>ar</code> archive there, and with <code>--emit obj</code> the objects are the deliverable and nothing is linked.</p>
       <table>
         <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
         <tbody>
@@ -175,7 +175,7 @@
 
       <h2 id="run">run</h2>
       <pre class="code"><code>mach run &lt;path&gt; [options] [-- args...]</code></pre>
-      <p>Executes the binary <code>mach build</code> already produced for <code>&lt;path&gt;</code> without rebuilding. The build selection flags (<code>--target</code>, <code>--profile</code>, <code>--bin</code> / <code>--lib</code>) resolve which artifact to run. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>, and the child's exit code becomes this command's exit code.</p>
+      <p>Executes the binary <code>mach build</code> already produced for <code>&lt;path&gt;</code> without rebuilding. The selection options (<code>-a</code>, <code>-t</code>, <code>-p</code>) must resolve to exactly one cell, and <code>--all</code> is not accepted. With no <code>-a</code>, it runs the sole <code>bin</code> the target builds. Arguments after a <code>--</code> separator are forwarded to the child as its <code>argv</code>, and the child's exit code becomes this command's exit code.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p><code>mach run</code> does not build. Run <code>mach build</code> first to produce or refresh the executable.</p>
@@ -187,7 +187,7 @@
           <tr><td><code>--timeout &lt;duration&gt;</code></td><td>duration</td><td>terminate the run and its process group after the duration (<code>30ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>), exiting <code>3</code> (default unbounded)</td></tr>
         </tbody>
       </table>
-      <p><code>--runner</code> names a host-side launcher for binaries the host cannot exec directly, for example <code>mach run . --target windows --runner wine</code>. <code>&lt;cmd&gt;</code> is a single command name or path (no shell-style word splitting); a bare name is resolved on <code>PATH</code>. Without the flag the binary is exec'd directly, and a launch failure reports exit <code>127</code> when <code>execve</code> rejects the binary, with no auto-detection.</p>
+      <p><code>--runner</code> names a host-side launcher for binaries the host cannot exec directly, for example <code>mach run . -t windows --runner wine</code>. <code>&lt;cmd&gt;</code> is a single command name or path (no shell-style word splitting); a bare name is resolved on <code>PATH</code>. Without the flag the binary is exec'd directly, and a launch failure reports exit <code>127</code> when <code>execve</code> rejects the binary, with no auto-detection.</p>
 
       <h2 id="test">test</h2>
       <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
