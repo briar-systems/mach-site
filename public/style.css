@@ -286,6 +286,8 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 .eco-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .eco-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 .eco-name { font-size: 22px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.eco-archived { display: inline-flex; align-items: center; color: var(--text-faint); cursor: help; }
+.eco-archived svg { width: 16px; height: 16px; }
 .chip-official { color: var(--accent); border-color: var(--accent); flex-shrink: 0; }
 .eco-repo { font-size: 13px; color: var(--text-faint); overflow-wrap: anywhere; }
 .eco-desc { flex: 1; font-size: 15px; line-height: 1.6; color: var(--text-body); }

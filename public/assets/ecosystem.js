@@ -140,6 +140,20 @@
     try { return new URL(url).host; } catch (e) { return url; }
   }
 
+  function archivedMark() {
+    var mark = el("span", "eco-archived");
+    mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "archived");
+    mark.title = "archived: no longer maintained";
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    var use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#icon-archive");
+    svg.appendChild(use);
+    mark.appendChild(svg);
+    return mark;
+  }
+
   function card(entry, titles, now, showSource) {
     var g = entry.github;
     var root = el("article", "panel eco-card");
@@ -152,6 +166,7 @@
     head.appendChild(name);
     var tags = el("div", "eco-tags");
     if (showSource && entry.official) { tags.appendChild(el("span", "chip chip-official", "official")); }
+    if (entry.archived) { tags.appendChild(archivedMark()); }
     var cat = el("button", "chip eco-cat", titles[entry.category] || entry.category);
     cat.type = "button";
     cat.setAttribute("data-category", entry.category);
