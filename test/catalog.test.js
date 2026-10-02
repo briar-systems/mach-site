@@ -116,6 +116,8 @@ test("a signed webhook refreshes the catalog within seconds", async () => {
   assert.deepEqual(byId.mach.github, { repo: "briar-systems/mach", owner: "briar-systems", stars: 137, forks: 5, pushed: "2026-09-27T10:33:26Z", license: "MIT", release: { tag: "v6.6.0", published: "2026-09-28T05:48:18Z" } });
   assert.equal(byId.hedge.github.license, "Other");
   assert.equal(byId.zeta.official, false);
+  assert.equal(byId.zeta.archived, true);
+  assert.equal(byId.hedge.archived, false);
   assert.equal(byId.zeta.github.license, null);
   assert.equal(byId.gone.github, null);
   assert.equal(byId.elsewhere.github, null);
@@ -141,6 +143,8 @@ test("the page holds every card and filters without javascript", async () => {
   assert.deepEqual(cards(all.body), ["hedge", "mach", "Zeta", "elsewhere", "gone"]);
   assert.match(all.body, /An HTTP server &lt;written&gt; in Mach\./);
   assert.match(all.body, /showing all 5 projects/);
+  assert.equal(all.body.match(/aria-label="archived"/g).length, 1);
+  assert.match(all.body, /Zeta<\/a><div class="eco-tags"><span class="eco-archived" role="img" aria-label="archived" title="archived/);
   const embedded = /<script type="application\/json" id="eco-data">([^<]*)<\/script>/.exec(all.body);
   assert.equal(JSON.parse(embedded[1]).entries.length, 5);
 

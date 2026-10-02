@@ -140,7 +140,7 @@ need    = []</code></pre>
 
 <span class="kw">use</span> <span class="mod">app.test.parser</span>;
 <span class="kw">use</span> <span class="mod">app.test.roundtrip</span>;</code></pre>
-      <p><code>mach test .</code> then runs the tests the default artifact reaches, and <code>mach test . --lib tests</code> the test-only suites. The entry reaches the runtime's startup (<code>use std.runtime;</code>) because a library artifact's closure is all the test dispatcher links.</p>
+      <p><code>mach test .</code> then runs the tests the default artifact reaches, and <code>mach test . -a tests</code> the test-only suites. The entry reaches the runtime's startup (<code>use std.runtime;</code>) because a library artifact's closure is all the test dispatcher links.</p>
       <p>Only the current project's own tests are collected by default, so a dependency's suite never runs (or fails) as part of your <code>mach test</code>. <code>--include-deps</code> collects dependency tests as well, which is useful when working on a dependency in-tree.</p>
 
       <h2 id="running">Running with mach test</h2>
@@ -175,7 +175,7 @@ mach test . --list           <span class="cmt"># enumerate tests, run nothing</s
 mach test . --timeout 30s    <span class="cmt"># bound each test to 30 seconds</span></code></pre>
       <p><code>--filter</code> selects before the dispatcher links, so the dispatcher holds only the selected tests and what they reach, and changing the filter relinks without recompiling. <code>--list</code> prints each selected test's qualified name and the test object that holds it, and exits without linking or running anything:</p>
       <pre class="code"><code>app.parser#rejects_trailing_comma ./out/linux-x86_64/debug/obj/app/parser.test.o</code></pre>
-      <p>The <code>build</code> and global flags apply too, and <code>-v</code> reports build phase timing as <code>mach build -v</code> does. <code>--runner</code> names a host-side launcher for foreign-target tests the host cannot exec directly, e.g. <code>mach test . --target windows --runner wine</code>. Without it, a test the host cannot launch reports a per-test failure, with no auto-detection.</p>
+      <p>The <code>build</code> and global flags apply too, and <code>-v</code> reports build phase timing as <code>mach build -v</code> does. <code>--runner</code> names a host-side launcher for foreign-target tests the host cannot exec directly, e.g. <code>mach test . -t windows --runner wine</code>, and needs the selection to resolve to one cell. Without it, only a target whose <code>os</code> and <code>isa</code> are the host's runs its tests: any other is built and reported on a <code>skip</code> line, whatever emulation the host has. A run in which nothing was runnable exits <code>1</code>, so a green run always ran something.</p>
 
       <h3 id="timeouts">Timeouts</h3>
       <p><code>--timeout &lt;duration&gt;</code> bounds each spawned test process independently, from its own spawn, on its whole process group, so a process the test started dies with it. A test that exceeds the bound is the distinct outcome <strong>timed out</strong>: it renders as <code>(timed out after &lt;duration&gt;)</code>, is counted separately on the summary line, and still fails the run.</p>

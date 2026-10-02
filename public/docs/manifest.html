@@ -165,7 +165,7 @@ version = <span class="str">"^9.0"</span>                    <span class="cmt">#
       <p>The compiler's version is the last release it was built from. A build from an unreleased tree reports that release, so a project cannot require an unreleased feature by version.</p>
 
       <h2 id="targets">Targets</h2>
-      <p>Each <code>&lt;name&gt;</code> in <code>[target.&lt;name&gt;]</code> is a selector you pass to <code>--target &lt;name&gt;</code>. A target is a fully-spelled platform tuple; nothing is inferred from another key.</p>
+      <p>Each <code>&lt;name&gt;</code> in <code>[target.&lt;name&gt;]</code> is a selector you pass to <code>-t &lt;name&gt;</code>. A target is a fully-spelled platform tuple; nothing is inferred from another key.</p>
       <table>
         <thead><tr><th>Key</th><th>Req</th><th>Meaning</th></tr></thead>
         <tbody>
@@ -273,7 +273,7 @@ manifest  = <span class="str">"assets/game.manifest"</span></code></pre>
           <tr><td><code>simd</code></td><td>yes</td><td>SIMD scalarization lever. <code>"scalarize"</code> builds for a target without hardware SIMD by emitting a defined unrolled scalar expansion of each vector operator; <code>"require"</code> makes a build for an incapable target a hard error naming the offending operator.</td></tr>
           <tr><td><code>vectorize</code></td><td>yes</td><td>Auto-vectorization lever. When <code>true</code>, the release pipeline rewrites provably safe counted loops to 128-bit SIMD on a target with hardware vectors. <code>false</code> skips the pass, changing performance but never semantics.</td></tr>
           <tr><td><code>float_reassoc</code></td><td>yes</td><td>Permission to treat floating-point addition and multiplication as <strong>associative</strong>. It lets the vectorizer reduce an <code>f32</code> / <code>f64</code> accumulator through lane-count partial sums, which changes the result. The only profile key that can change a program computed answer.</td></tr>
-          <tr><td><code>default</code></td><td>no</td><td><code>true</code> marks the profile a build uses when several are declared and <code>--profile</code> is omitted. Exactly one profile may carry it.</td></tr>
+          <tr><td><code>default</code></td><td>no</td><td><code>true</code> marks the profile a build uses when several are declared and <code>-p</code> is omitted. Exactly one profile may carry it.</td></tr>
         </tbody>
       </table>
       <p>All five keys (<code>opt</code>, <code>debug</code>, <code>simd</code>, <code>vectorize</code>, <code>float_reassoc</code>) are required in a declared root profile. Emission of the human-readable IR and assembly side-artifacts is not a profile concern. It is controlled only by the <code>--emit-ir</code> and <code>--emit-asm</code> CLI flags.</p>
@@ -369,16 +369,17 @@ export  = true</code></pre>
       <h2 id="build-matrix">The build matrix</h2>
       <p>A build cell is one artifact times one target times one profile.</p>
       <ul>
-        <li><code>mach build &lt;path&gt;</code> builds every declared artifact whose <code>targets</code> includes the selected target, for the default profile. <code>--all-targets</code> crosses every artifact with every target in its <code>targets</code>.</li>
-        <li><code>mach run &lt;path&gt;</code> and <code>mach test &lt;path&gt;</code> build exactly one artifact; with several declared and no narrowing flag, they ask you to pick one, naming every candidate.</li>
-        <li>A cell whose artifact does not list the cell's target is a cell the manifest never declared, so enumerating skips it. <em>Naming</em> that pair is a different act and is refused by name, because you asked for a cell that does not exist.</li>
+        <li>Cells are selected with <code>-a/--artifact</code>, <code>-t/--target</code> and <code>-p/--profile</code>, one per axis. Each takes an exact name, which must be declared, or a glob with <code>*</code> and <code>?</code>, which must match, and repeats. <code>--all</code> fills every axis no option names with <code>*</code>: <code>mach build . --all</code> builds every artifact on every target it supports in every profile, and <code>mach test . --all -p debug</code> does the same in <code>debug</code> only.</li>
+        <li>An axis no option names, without <code>--all</code>, takes the manifest's default: the <a href="#native">native</a> target (or the one a named artifact settles), the sole profile or the one marked <code>default = true</code>, and the default selection of artifacts, those marked <code>default = true</code> for the target when any is marked and every one of them when none is. No default is chosen by table order.</li>
+        <li><code>mach build &lt;path&gt;</code> and <code>mach check &lt;path&gt;</code> take the whole default selection. <code>mach test &lt;path&gt;</code> takes it when it holds one artifact, and <code>mach run &lt;path&gt;</code> takes the sole <code>bin</code> the target builds; with several candidates and none marked, they refuse, naming every candidate.</li>
+        <li>A cell whose artifact does not list the cell's target is a cell the manifest never declared, so a glob that reaches it skips it. <em>Naming</em> that pair exactly (<code>-a kernel -t linux-x86_64</code>) is a different act and is refused by name, because you asked for a cell that does not exist.</li>
         <li>Every cell is attempted; a failure does not abandon the ones after it. Each cell's diagnostics are reported under its own heading, and every cell that succeeded leaves its artifact on disk.</li>
         <li><code>-o</code> is accepted exactly when the selection resolves to a single build cell, and refused otherwise, naming the cells it resolved to.</li>
       </ul>
       <p>Artifacts cannot share an output path: a manifest whose expanded <code>out</code> templates collide is rejected before the build starts.</p>
 
       <h3 id="native">native target resolution</h3>
-      <p><code>native</code> resolves the host's <code>(isa, os)</code> against the <strong>declared</strong> targets only, never a synthesized tuple. Exactly one host match is chosen; several matching tuples is an ambiguity error naming the candidates; no match warns and falls back to the first declared target, so a cross-only project still builds on a foreign host.</p>
+      <p><code>native</code> resolves the host's <code>(isa, os)</code> against the <strong>declared</strong> targets only, never a synthesized tuple. Exactly one host match is chosen; several matching tuples is an ambiguity error naming the candidates. With no match <code>native</code> is an error, raised before any step runs: a declared target that does not match the host is built only when <code>-t</code> names it, so a cross-only project with hosted targets selects its target with <code>-t</code>.</p>
 
   <h2 id="example">Annotated example</h2>
       <p>A project that cross-compiles to linux and windows, links a system library on each, and vendors a C object through a build step. Note where the conditions live: <code>[step.miniz]</code> carries no filter of its own, so it runs only because <code>[link.miniz]</code> demands it, and that entry is gated to <code>os = "linux"</code> since the host <code>cc</code> emits an ELF object. On the windows cell the entry filters out, the step is never demanded, and it never runs. To vendor C for the windows cell too, add a second step whose <code>argv</code> cross-compiles (it can branch on <code>MACH_TARGET_OS</code>) and a second link entry gated to <code>os = "windows"</code>.</p>

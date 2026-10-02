@@ -6,7 +6,7 @@
 #   {"generated": "<utc timestamp>", "source": "<url>",
 #    "categories": [{"id", "title", "description"}],
 #    "entries": [{"id", "name", "url", "description", "category", "official",
-#                 "github": null | {"repo", "owner", "stars", "forks", "pushed",
+#                 "archived", "github": null | {"repo", "owner", "stars", "forks", "pushed",
 #                   "license": null | "<spdx or name>",
 #                   "release": null | {"tag", "published"}}}]}
 #
@@ -66,6 +66,7 @@ pub rec Entry {
     released:    i64;
     index:       u32;
     official:    bool;
+    archived:    bool;
     github:      bool;
     has_release: bool;
 }
@@ -258,6 +259,8 @@ pub fun build(doc: view.View, output: *u8, capacity: usize, arena: *A.Allocator)
         item.released    = 0;
         val official: *json.Value = field(value, "official");
         item.official = official != nil && official.kind == json.BOOL && official.bool_val != 0;
+        val archived: *json.Value = field(value, "archived");
+        item.archived = archived != nil && archived.kind == json.BOOL && archived.bool_val != 0;
         fill_github(?builder, item, field(value, "github"));
         if (builder.ok) {
             item.index = category_index(output, categories.count, item.category);
