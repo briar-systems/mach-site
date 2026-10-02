@@ -338,6 +338,9 @@ fun put_card(b: *text.Buf, page: *Page, item: *snapshot.Entry, show_source: bool
     if (show_source && item.official) {
         text.put_str(b, "<span class=\"chip chip-official\">official</span>");
     }
+    if (item.archived) {
+        text.put_str(b, "<span class=\"eco-archived\" role=\"img\" aria-label=\"archived\" title=\"archived: no longer maintained\"><svg aria-hidden=\"true\"><use href=\"#icon-archive\" /></svg></span>");
+    }
     var ask: View = page.ask;
     ask.category = snapshot.string(data, item.category);
     text.put_str(b, "<a class=\"chip eco-cat\" href=\"");

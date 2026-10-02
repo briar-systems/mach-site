@@ -650,6 +650,11 @@ fun write_document(refresher: *Refresher) bool {
         put_quoted(?b, find(item, "category"));
         if (found.present && found.official) { text.put_str(?b, ",\"official\":true"); }
         or                                   { text.put_str(?b, ",\"official\":false"); }
+        val archived: *json.Value = find(item, "archived");
+        if (archived != nil && archived.kind == json.BOOL && archived.bool_val != 0) {
+            text.put_str(?b, ",\"archived\":true");
+        }
+        or { text.put_str(?b, ",\"archived\":false"); }
         text.put_str(?b, ",\"github\":");
         if (found.present) {
             text.put(?b, view.view((?refresher.meta[found.off])::*char, found.len));
