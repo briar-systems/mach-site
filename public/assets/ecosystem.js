@@ -141,7 +141,7 @@
   }
 
   function archivedMark() {
-    var mark = el("span", "eco-archived");
+    var mark = el("li", "eco-archived");
     mark.setAttribute("role", "img");
     mark.setAttribute("aria-label", "archived");
     mark.title = "archived: no longer maintained";
@@ -166,7 +166,6 @@
     head.appendChild(name);
     var tags = el("div", "eco-tags");
     if (showSource && entry.official) { tags.appendChild(el("span", "chip chip-official", "official")); }
-    if (entry.archived) { tags.appendChild(archivedMark()); }
     var cat = el("button", "chip eco-cat", titles[entry.category] || entry.category);
     cat.type = "button";
     cat.setAttribute("data-category", entry.category);
@@ -178,8 +177,11 @@
     root.appendChild(el("p", "eco-repo", g ? g.repo : host(entry.url)));
     root.appendChild(el("p", "eco-desc", entry.description));
 
-    if (g) {
+    if (g || entry.archived) {
       var meta = el("ul", "eco-meta");
+      root.appendChild(meta);
+    }
+    if (g) {
       var stars = el("li", "eco-stars", compact(g.stars));
       stars.setAttribute("aria-label", g.stars + " stars");
       meta.appendChild(stars);
@@ -188,8 +190,8 @@
       var pushed = el("li", null, "updated " + relative(g.pushed, now));
       pushed.title = g.pushed.slice(0, 10);
       meta.appendChild(pushed);
-      root.appendChild(meta);
     }
+    if (entry.archived) { meta.appendChild(archivedMark()); }
     return root;
   }
 
