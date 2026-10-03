@@ -338,9 +338,6 @@ fun put_card(b: *text.Buf, page: *Page, item: *snapshot.Entry, show_source: bool
     if (show_source && item.official) {
         text.put_str(b, "<span class=\"chip chip-official\">official</span>");
     }
-    if (item.archived) {
-        text.put_str(b, "<span class=\"eco-archived\" role=\"img\" aria-label=\"archived\" title=\"archived: no longer maintained\"><svg aria-hidden=\"true\"><use href=\"#icon-archive\" /></svg></span>");
-    }
     var ask: View = page.ask;
     ask.category = snapshot.string(data, item.category);
     text.put_str(b, "<a class=\"chip eco-cat\" href=\"");
@@ -357,8 +354,13 @@ fun put_card(b: *text.Buf, page: *Page, item: *snapshot.Entry, show_source: bool
     text.put_str(b, "</p><p class=\"eco-desc\">");
     text.put_html(b, snapshot.string(data, item.description));
     text.put_str(b, "</p>");
+    if (!item.github && !item.archived) {
+        text.put_str(b, "</article>");
+        ret;
+    }
+    text.put_str(b, "<ul class=\"eco-meta\">");
     if (item.github) {
-        text.put_str(b, "<ul class=\"eco-meta\"><li class=\"eco-stars\" aria-label=\"");
+        text.put_str(b, "<li class=\"eco-stars\" aria-label=\"");
         text.put_i64(b, item.stars);
         text.put_str(b, " stars\">");
         text.put_compact(b, item.stars);
@@ -378,9 +380,12 @@ fun put_card(b: *text.Buf, page: *Page, item: *snapshot.Entry, show_source: bool
         text.put_html(b, view.view(pushed.data, 10));
         text.put_str(b, "\">updated ");
         text.put_relative(b, item.pushed, page.now);
-        text.put_str(b, "</li></ul>");
+        text.put_str(b, "</li>");
     }
-    text.put_str(b, "</article>");
+    if (item.archived) {
+        text.put_str(b, "<li class=\"eco-archived\" role=\"img\" aria-label=\"archived\" title=\"archived: no longer maintained\"><svg aria-hidden=\"true\"><use href=\"#icon-archive\" /></svg></li>");
+    }
+    text.put_str(b, "</ul></article>");
 }
 
 fun put_sorts(b: *text.Buf, current: u8) {

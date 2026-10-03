@@ -144,7 +144,8 @@ test("the page holds every card and filters without javascript", async () => {
   assert.match(all.body, /An HTTP server &lt;written&gt; in Mach\./);
   assert.match(all.body, /showing all 5 projects/);
   assert.equal(all.body.match(/aria-label="archived"/g).length, 1);
-  assert.match(all.body, /Zeta<\/a><div class="eco-tags"><span class="eco-archived" role="img" aria-label="archived" title="archived/);
+  assert.match(all.body, /<li class="eco-archived" role="img" aria-label="archived" title="archived: no longer maintained">.*?<\/li><\/ul><\/article>/);
+  assert.doesNotMatch(all.body, /<div class="eco-tags">(?:(?!<\/div>).)*eco-archived/);
   const embedded = /<script type="application\/json" id="eco-data">([^<]*)<\/script>/.exec(all.body);
   assert.equal(JSON.parse(embedded[1]).entries.length, 5);
 
