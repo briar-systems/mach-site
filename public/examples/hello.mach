@@ -1,8 +1,8 @@
+use std.print;
 use std.runtime;
-use std.print.println;
 
 #[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {
-    println("Hello, World!");
+    print.println("Hello, World!");
     ret 0;
 }

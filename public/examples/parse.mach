@@ -1,6 +1,6 @@
-use parse: std.text.parse;
 use std.print.printf;
 use std.runtime;
+use std.text.parse;
 use std.types.result.res;
 
 #[symbol("main")]

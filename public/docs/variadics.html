@@ -80,14 +80,15 @@
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Comptime<span class="sep">/</span>Variadic packs</div>
       <h1>Variadic packs</h1>
       <p class="lead">A trailing <code>va: ...</code> parameter collects a variable number of call-site arguments into a compile-time sequence. The compiler monomorphizes the function once per distinct argument type-list. There is no runtime structure, no <code>va_list</code>, and no <code>any</code>.</p>
+      <p>A pack and the C-variadic signature share only the spelling. A pack is a <em>named</em> parameter (<code>va: ...</code>) on a mach function, and it is the only variadic form a mach function takes. The C-variadic form is a <em>bare</em> trailing <code>...</code>, declared only on an <code>ext fun</code> to describe a foreign callee. See <a href="ext-fun.html#variadic">External functions</a>.</p>
 
       <h2 id="declaring">Declaring a pack</h2>
-      <p>A pack parameter is a named parameter whose type is <code>...</code>. It must be last; any number of fixed, typed parameters may precede it.</p>
+      <p>A pack parameter is a named parameter whose type is <code>...</code>. It must be last, and a parameter after it is refused with <code>a variadic pack `...` must be the last parameter</code>. Any number of fixed, typed parameters may precede it.</p>
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">name</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">RetType</span> { ... }
 <span class="kw">fun</span> <span class="fn">name</span>(<span class="param">fixed</span>: <span class="type">T</span>, <span class="param">va</span>: <span class="ct">...</span>) <span class="type">RetType</span> { ... }   <span class="cmt"># leading fixed params are allowed</span></code></pre>
 
       <h2 id="each">Iterating with <code>$each</code></h2>
-      <p><code>$each a in va</code> unrolls the body once per element, with <code>a</code> bound to the element and re-typed to that element's concrete type per instantiation. This is the only way to consume a pack.</p>
+      <p><code>$each a in va</code> unrolls the body once per element, with <code>a</code> bound to the element and re-typed to that element's concrete type per instantiation. This is the only way to consume a pack's elements: a pack cannot be indexed, and its only member is <code>.len</code>.</p>
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">sum</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> {
     <span class="kw">var</span> <span class="param">t</span>: <span class="type">i64</span> = <span class="num">0</span>;
     <span class="ct">$each</span> a <span class="kw">in</span> va {
@@ -98,7 +99,7 @@
 
 <span class="fn">sum</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>)       <span class="cmt"># 6</span>
 <span class="fn">sum</span>()              <span class="cmt"># 0, the body never runs on an empty pack</span></code></pre>
-      <p>Because each element has its own concrete type at monomorphization, the body can handle a heterogeneous pack by casting each element:</p>
+      <p>Because each element has its own concrete type at monomorphization, the body can handle a heterogeneous pack by casting each element. The body is checked once per element of each instance, and an element it does not type for is reported at the call that asked for the instance:</p>
       <pre class="code"><code><span class="ct">$each</span> a <span class="kw">in</span> va {
     t = t + a::<span class="type">i64</span>;          <span class="cmt"># cast each element's concrete type to i64</span>
 }</code></pre>
@@ -108,7 +109,7 @@
       </div>
 
       <h2 id="len">Counting with <code>va.len</code></h2>
-      <p><code>va.len</code> folds to the instance's element count at compile time.</p>
+      <p><code>va.len</code> is a <code>u64</code> that folds to the instance's element count. It is not a comptime value, so a <code>$if</code> gate cannot read it and it cannot size an array type.</p>
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">count</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> { <span class="kw">ret</span> va.len::<span class="type">i64</span>; }
 
 <span class="fn">count</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>)   <span class="cmt"># 3</span></code></pre>
@@ -118,7 +119,7 @@
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">outer</span>(<span class="param">va</span>: <span class="ct">...</span>) <span class="type">i64</span> { <span class="kw">ret</span> <span class="fn">sum</span>(va<span class="ct">...</span>); }</code></pre>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p><code>va...</code> is valid only as the sole trailing argument of a pack-tailed callee. Spreading into a callee with no pack parameter, spreading with other arguments after it, or spreading only part of a pack are all rejected.</p>
+        <p><code>va...</code> is valid only as the sole trailing argument of a pack-tailed callee, though leading fixed arguments may precede it, as in <code>bias(100, va...)</code>. Spreading into a callee with no pack parameter, spreading with other arguments after it, spreading only part of a pack, and passing the pack bare as <code>g(va)</code> are all rejected.</p>
       </div>
 
       <h2 id="mono">Monomorphization and ABI</h2>
@@ -133,8 +134,10 @@
       </table>
       <div class="callout warn">
         <span class="callout-label">Not a stable ABI</span>
-        <p>A pack-tailed function has no single entry point, so it is not a stable-ABI symbol. It cannot be the target of an <code>ext fun</code> or a function pointer shared across compilation units. It is source-level only.</p>
+        <p>A pack-tailed function has no single entry point, so it is not a stable-ABI symbol. A pack cannot appear on an <code>ext fun</code> or a body-less <code>fun</code>, and a pack-tailed function cannot be taken as a function pointer value. It is source-level only.</p>
       </div>
+      <p>A pack tail composes with generic parameters, and the instance key is then the product of the type arguments and the element type-list.</p>
+      <p>A <code>^</code> secret may not be passed to a pack, including one nested inside an aggregate argument, since a pack commonly feeds formatting or logging. The call is refused with <code>a secret value cannot be passed to a variadic `...` argument</code>. A pointer to secret storage is admitted.</p>
 
       <h2 id="vformat">Example: vformat</h2>
       <p>The standard library's <code>vformat</code> is a pack-tailed function. Each <code>$each</code> iteration handles one format argument in order, with <code>$type_of</code> dispatch selecting the right writer per element type.</p>

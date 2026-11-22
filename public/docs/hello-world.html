@@ -81,9 +81,9 @@
       <p class="lead">A complete mach program in a handful of lines: a couple of imports, an entry point, and one printed line. Every piece is explicit, so nothing runs that you did not write.</p>
 
       <h2 id="program">The program</h2>
-      <p>This is the whole thing, and it is exactly the <code>src/root.mach</code> that <code>mach init</code> writes. It imports the runtime and the print module, declares an entry point, prints a line, and returns a zero exit code.</p>
-      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;
-<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;
+      <p>This is the whole thing, and it is exactly the <code>src/bin/main.mach</code> that <code>mach init</code> writes. It imports the print module and the runtime, declares an entry point, prints a line, and returns a zero exit code.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.print</span>;
+<span class="kw">use</span> <span class="mod">std.runtime</span>;
 
 <span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
 <span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
@@ -96,16 +96,16 @@
       </div>
 
       <h2 id="imports">Imports</h2>
-      <p>Modules are named by full, project-rooted dotted paths. The first line pulls in the standard runtime that every program builds against; it takes no alias because nothing here calls it directly.</p>
-      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.runtime</span>;          <span class="cmt"># bring the runtime into the build</span>
-<span class="kw">use</span> <span class="alias">print</span>: <span class="mod">std.print</span>;     <span class="cmt"># bind std.print to the short name print</span></code></pre>
-      <p>The <code>use alias: path</code> form binds a short handle to a path. With <code>print</code> bound, the module's symbols are reached through it as <code>print.println</code>. See <a href="modules.html">Modules</a> for path resolution and aliases.</p>
+      <p>Modules are named by full, project-rooted dotted paths: the project id, then the file's path under its source directory. A <code>use</code> binds the module under its last segment, so <code>use std.print;</code> makes its symbols reachable as <code>print.println</code>. The runtime line brings the standard runtime into the build. Nothing here calls it by name, but the program cannot link without it.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.print</span>;            <span class="cmt"># bound as print</span>
+<span class="kw">use</span> <span class="mod">std.runtime</span>;          <span class="cmt"># bring the runtime into the build</span></code></pre>
+      <p>The <code>use alias: path</code> form binds another name: after <code>use out: std.print;</code> the same function is <code>out.println</code>. See <a href="modules.html">Modules</a> for path resolution and aliases.</p>
 
       <h2 id="entry">The entry point</h2>
       <p>Execution starts at a single function. Its name in source can be anything; what makes it the entry point is the exported symbol and its signature.</p>
 
       <h3 id="symbol">The symbol decorator</h3>
-      <p><code>#[symbol("main")]</code> exports the function under the symbol <code>main</code>, which is the name the program is entered through. Decorators attach to the declaration that follows them.</p>
+      <p><code>#[symbol("main")]</code> exports the function under the symbol <code>main</code>, which is the function the runtime calls once it has started the process (the image itself is entered at the runtime's <code>_start</code> on linux). Decorators attach to the declaration that follows them.</p>
       <pre class="code"><code><span class="deco">#[symbol(<span class="str">"main"</span>)]</span>
 <span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> { ... }</code></pre>
       <div class="callout note">
@@ -123,11 +123,16 @@
 
       <h2 id="build">Build and run</h2>
       <p>The same toolchain scaffolds, fetches dependencies, builds and links:</p>
-      <pre class="code"><code>mach init hello    <span class="cmt"># scaffold hello/ with src/root.mach and std</span>
-cd hello
-mach build .       <span class="cmt"># compile and link</span>
-mach run .         <span class="cmt"># build and run: Hello, World!</span></code></pre>
-      <p>The binary lands at <code>out/&lt;target&gt;/&lt;profile&gt;/bin/hello</code>, for example <code>out/linux-x86_64/debug/bin/hello</code>. <code>mach init</code> already fetches std, so there is no separate fetch step. See the <a href="cli.html">CLI</a> reference for the full command set.</p>
+      <pre class="code"><code>$ mach init hello
+   created  hello
+  realized  std  a78d528f4b89  branch/dev
+$ cd hello
+$ mach build .
+     built  hello  linux-x86_64  debug
+            ./out/linux-x86_64/debug/bin/hello   51 KiB   51 modules   1.4s
+$ mach run .
+Hello, World!</code></pre>
+      <p><code>mach init</code> scaffolds <code>hello/</code> with <code>src/bin/main.mach</code> and checks std out, so there is no separate fetch step. <code>mach build</code> compiles and links, and the binary lands at <code>out/&lt;target&gt;/&lt;profile&gt;/bin/hello</code>. <code>mach run</code> runs what the build wrote and never builds, so build again after an edit. See the <a href="cli.html">CLI</a> reference for the full command set.</p>
 
       <div class="see-also">
         <h2>See also</h2>
