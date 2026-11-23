@@ -104,6 +104,10 @@
       <pre class="code"><code><span class="kw">val</span> <span class="param">p</span>: <span class="type">Point</span>          = <span class="type">Point</span>{ <span class="param">x</span>: <span class="num">1</span>, <span class="param">y</span>: <span class="num">2</span> };
 <span class="kw">val</span> <span class="param">q</span>: <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]  = <span class="type">Pair</span>[<span class="type">i64</span>, <span class="type">u8</span>]{ <span class="param">left</span>: <span class="num">5</span>, <span class="param">right</span>: <span class="num">6u8</span> };
 <span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span>            = p.x;            <span class="cmt"># field access via .</span></code></pre>
+      <p>A field given twice in one literal, or a name the record does not declare, is refused. A positional literal such as <code>Point{1, 2}</code> is refused too, because positional braces build a vector.</p>
+      <p>A literal may leave fields out. <strong>Every omitted field is zero-initialized</strong>: integers and floats read <code>0</code>, pointers read <code>nil</code>, and a nested record or array is zero in every byte. This holds for a literal built at run time and for a constant one alike, and <code>T{}</code> is all zero. Padding between fields is not a field, and it is unspecified unless the record holds a secret.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">z</span>: <span class="type">Point</span> = <span class="type">Point</span>{ <span class="param">x</span>: <span class="num">3</span> };                 <span class="cmt"># z.y is 0</span></code></pre>
+      <p><code>==</code> and <code>!=</code> on a whole record, union or tag are refused. Compare the fields, or use <code>std.derive.eq</code>.</p>
 
       <h2 id="layout">Memory layout</h2>
       <p>By default the compiler may insert padding between fields to satisfy each field's alignment, following the natural C-style rule. The <code>#[align(N)]</code> decorator on a record raises its minimum type alignment to <code>N</code> bytes, where <code>N</code> is a power of two.</p>
@@ -120,7 +124,7 @@
     <span class="param">length</span>:   <span class="type">u32</span>;   <span class="cmt"># offset 3</span>
     <span class="param">checksum</span>: <span class="type">u64</span>;   <span class="cmt"># offset 7</span>
 }                    <span class="cmt"># $size_of == 15, $align_of == 1</span></code></pre>
-      <p>Packing is <strong>not transitive</strong>: a record a packed record contains keeps its own internal padding and is merely placed without any. Taking the address of a packed field is refused, since the resulting pointer type would state an alignment its storage does not have; <code>?r</code> on the whole record stays legal. See <a href="decorators.html#packed">Decorators</a> for the full rule set.</p>
+      <p>Packing is <strong>not transitive</strong>: a record a packed record contains keeps its own internal padding and is merely placed without any. Taking the address of a packed field is refused, since the resulting pointer type would state an alignment its storage does not have (<code>cannot take the address of a field of a `#[packed]` record, because it may be misaligned for its type</code>); <code>?r</code> on the whole record stays legal. <code>#[volatile]</code> on a record or union makes every access to its storage a volatile access, the way a memory-mapped register block is declared. See <a href="decorators.html#packed">Decorators</a> for the full rule set.</p>
 
       <h2 id="unions">Unions</h2>
       <p>A <code>uni</code> is a collection of named fields that share the same memory. Writing one field overwrites whatever bytes the others held. A union's size is the size of its largest field plus any alignment padding. Unions may be generic.</p>
@@ -135,12 +139,12 @@
 }</code></pre>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p>The compiler does not track which field of a union is live. Reading a field other than the one last written reinterprets raw bytes; keeping the active field straight is the programmer's responsibility.</p>
+        <p>The compiler does not track which field of a union is live. Reading a field other than the one last written reinterprets raw bytes; keeping the active field straight is the programmer's responsibility. A literal writes the field it names and nothing else, so the bytes past that field are unspecified.</p>
       </div>
 
       <h2 id="tags">Tags</h2>
-      <p>A <code>tag</code> defines a discriminated value with compiler-enforced payload safety. Unlike an untracked union, a tag stores a discriminator alongside an overlapping payload area, and the compiler prevents reading any payload unless the active case is proven by a dominating guard.</p>
-      <p>The discriminator type is written after the tag name and must be an unsigned integer type from <code>u8</code> through <code>u64</code>. Cases may carry a single typed payload or remain payload-free.</p>
+      <p>A <code>tag</code> defines a discriminated value with compiler-enforced payload safety. Unlike an untracked union, a tag stores a discriminator alongside its payload area, and the compiler refuses to read any payload outside a lexical guard for its case.</p>
+      <p>The discriminator type is written after the tag name and must be one of <code>u8</code>, <code>u16</code>, <code>u32</code> or <code>u64</code>, wide enough to number every case. Case codes follow declaration order from zero. Cases may carry a single typed payload or remain payload-free, and several values ride one case as a record payload.</p>
       <pre class="code"><code><span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Shape</span>: <span class="type">u8</span> {
     <span class="param">circle</span>: <span class="type">f64</span>;
     <span class="param">rect</span>: <span class="type">Rect</span>;
@@ -154,10 +158,18 @@
       <p>Values are constructed using the type name, case name, and curly braces. A payload case supplies its value inside the braces, while a unit case uses empty braces.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">c</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">circle</span>{<span class="num">3.14</span>};
 <span class="kw">val</span> <span class="param">p</span>: <span class="type">Shape</span> = <span class="type">Shape</span>.<span class="param">point</span>{};</code></pre>
+      <p>There is no other construction form: omitting a required payload, supplying one to a payloadless case, supplying two, naming the payload, or writing <code>Shape{...}</code> with no case is a compile error. <code>Shape.circle</code> alone is a case selector, not a value. A zero-initialized tag holds its first declared case, with that case's payload zeroed. Whole tags can be assigned, passed and returned.</p>
+
+      <h3 id="std-tags">The std failure tags</h3>
+      <p>The failure types every std API answers with are ordinary std tags, imported like any other declaration. The compiler has no knowledge of their names.</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">tag</span> <span class="type">res</span>[<span class="type">T</span>, <span class="type">E</span>]: <span class="type">u8</span> { <span class="param">err</span>: <span class="type">E</span>; <span class="param">ok</span>: <span class="type">T</span>; }   <span class="cmt"># std.types.result</span>
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">opt</span>[<span class="type">T</span>]:    <span class="type">u8</span> { <span class="param">none</span>; <span class="param">some</span>: <span class="type">T</span>; } <span class="cmt"># std.types.option</span>
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">err</span>[<span class="type">E</span>]:    <span class="type">u8</span> { <span class="param">err</span>: <span class="type">E</span>; <span class="param">ok</span>; }    <span class="cmt"># std.types.error</span></code></pre>
+      <p>The error case comes first, so a zero-initialized <code>res</code> or <code>err</code> is a failure and a zero-initialized <code>opt</code> is <code>none</code>.</p>
 
       <h2 id="guards">Payload guards and sel</h2>
-      <p>The <code>sel</code> keyword tests whether a tag instance currently holds a specific case. The expression <code>sel place.case</code> yields a <code>bool</code>.</p>
-      <p>Reading a case payload is permitted only where a lexical guard guarantees that case is active. Accessing a payload without a dominating guard produces a compile error.</p>
+      <p>The <code>sel</code> keyword tests whether a tag instance currently holds a specific case. The expression <code>sel place.case</code> reads only the discriminator and yields a <code>u1</code>, so it can be stored in a <code>bool</code>, negated, and combined with <code>&amp;&amp;</code> and <code>||</code>. The operand is a place, and <code>sel p.case</code> on a pointer to a tag reads through it once.</p>
+      <p>Reading, writing or addressing a case payload is permitted only inside a lexical guard for that place and case. A payload read outside one is refused with <code>a tag payload requires a `sel` guard for its case</code>.</p>
       <pre class="code"><code><span class="kw">fun</span> <span class="param">area</span>(<span class="param">s</span>: <span class="type">Shape</span>) <span class="type">f64</span> {
     <span class="kw">if</span> (<span class="kw">sel</span> <span class="param">s</span>.<span class="param">circle</span>) {
         <span class="kw">ret</span> <span class="num">3.141592653589793</span> * <span class="param">s</span>.<span class="param">circle</span> * <span class="param">s</span>.<span class="param">circle</span>;
@@ -169,13 +181,19 @@
 }</code></pre>
       <p>Guards obey strict lexical scope rules:</p>
       <ul>
-        <li>The body of an <code>if (sel p.c)</code> block guards <code>p.c</code> for the duration of that block.</li>
-        <li>The right-hand side of a logical <code>&&</code> expression is guarded when <code>sel p.c</code> appears on the left.</li>
-        <li>When an <code>if (sel p.c)</code> arm exits through a return, break, or continue, later code in the enclosing block is not guarded for <code>p.c</code>. However, exiting when all other possibilities are handled allows narrowing.</li>
+        <li>The body of an arm whose condition is exactly <code>sel p.c</code> guards <code>p.c</code> for the duration of that block.</li>
+        <li>Inside a condition, the right operand of <code>&amp;&amp;</code> is guarded when <code>sel p.c</code> is its left operand. The arm's body is not.</li>
+        <li>A chain whose every arm exits through <code>ret</code>, <code>brk</code> or <code>cnt</code> guards the rest of the enclosing block for the one case the chain left untested. A chain's final bare <code>or</code> is guarded the same way.</li>
       </ul>
+      <p>That last rule is the failure-handling pattern: test the error case, leave, and read the success payload after.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">increment</span>(<span class="param">input</span>: <span class="type">u8</span>) <span class="type">res</span>[<span class="type">i64</span>, <span class="type">ParseError</span>] {
+    <span class="kw">val</span> <span class="param">res_parsed</span>: <span class="type">res</span>[<span class="type">i64</span>, <span class="type">ParseError</span>] = <span class="fn">parse</span>(input);
+    <span class="kw">if</span> (<span class="kw">sel</span> res_parsed.err) { <span class="kw">ret</span> <span class="type">res</span>[<span class="type">i64</span>, <span class="type">ParseError</span>].err{res_parsed.err}; }
+    <span class="kw">ret</span> <span class="type">res</span>[<span class="type">i64</span>, <span class="type">ParseError</span>].ok{res_parsed.ok + <span class="num">1</span>};   <span class="cmt"># guarded: the chain above exits</span>
+}</code></pre>
       <div class="callout warn">
         <span class="callout-label">Guard restrictions</span>
-        <p>Guards must be unambiguous. An <code>or</code> branch is not guarded because the condition evaluated to false. Logical <code>||</code> and negation with <code>!</code> do not open a payload guard. Test one condition at a time.</p>
+        <p>A guard is matched by spelling, so a guarded place is a path of names, fields, dereferences and indexes by a name or a literal. <code>||</code>, <code>!</code> and every other operator open no guard. Whole-value assignment to the guarded place is refused inside the guard. Assigning a name the place is spelled with, such as the <code>i</code> of <code>sel items[i].c</code>, ends the guard from that point on.</p>
       </div>
 
       <div class="see-also">
@@ -198,6 +216,7 @@
       <a href="#layout">Memory layout</a>
       <a href="#unions">Unions</a>
       <a href="#tags">Tags</a>
+      <a class="sub" href="#std-tags">The std failure tags</a>
       <a href="#guards">Payload guards and sel</a>
     </nav>
   </div>

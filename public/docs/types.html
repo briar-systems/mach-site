@@ -81,35 +81,40 @@
       <p class="lead">Mach ships a small set of compiler-seeded primitive types plus a uniform grammar for building pointers, arrays, and function types out of them. There are no compiler-known aliases: names like <code>bool</code>, <code>usize</code>, and <code>str</code> are stdlib <code>def</code>s.</p>
 
       <h2 id="scalars">Primitive scalars</h2>
-      <p>Eleven names make up the complete set of primitive types the compiler seeds. Everything else is built on top of them.</p>
+      <p>These names make up the complete set of primitive types the compiler seeds. Everything else is built on top of them.</p>
       <table>
         <thead><tr><th>Family</th><th>Members</th></tr></thead>
         <tbody>
-          <tr><td>Unsigned int</td><td><code><span class="type">u8</span></code>, <code><span class="type">u16</span></code>, <code><span class="type">u32</span></code>, <code><span class="type">u64</span></code></td></tr>
-          <tr><td>Signed int</td><td><code><span class="type">i8</span></code>, <code><span class="type">i16</span></code>, <code><span class="type">i32</span></code>, <code><span class="type">i64</span></code></td></tr>
-          <tr><td>Float</td><td><code><span class="type">f32</span></code>, <code><span class="type">f64</span></code></td></tr>
+          <tr><td>Truth value</td><td><code><span class="type">u1</span></code></td></tr>
+          <tr><td>Unsigned int</td><td><code><span class="type">u8</span></code>, <code><span class="type">u16</span></code>, <code><span class="type">u32</span></code>, <code><span class="type">u64</span></code>, <code><span class="type">u128</span></code>, <code><span class="type">u256</span></code>, <code><span class="type">u512</span></code></td></tr>
+          <tr><td>Signed int</td><td><code><span class="type">i8</span></code>, <code><span class="type">i16</span></code>, <code><span class="type">i32</span></code>, <code><span class="type">i64</span></code>, <code><span class="type">i128</span></code>, <code><span class="type">i256</span></code>, <code><span class="type">i512</span></code></td></tr>
+          <tr><td>Float</td><td><code><span class="type">f16</span></code>, <code><span class="type">f32</span></code>, <code><span class="type">f64</span></code></td></tr>
           <tr><td>Untyped pointer</td><td><code><span class="type">ptr</span></code></td></tr>
         </tbody>
       </table>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>There is no compiler <code>bool</code>. It is a stdlib alias <code>def bool: u8;</code>, with <code>true</code> and <code>false</code> as stdlib <code>val</code>s (<code>1</code> and <code>0</code>).</p>
+        <p>There is no compiler <code>bool</code>. It is a stdlib alias <code>def bool: u1;</code>, with <code>true</code> and <code>false</code> as stdlib <code>val</code>s (<code>1</code> and <code>0</code>).</p>
       </div>
+      <p><code>u1</code> is the truth value: one byte holding 0 or 1. Comparisons, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code> and <code>sel</code> produce it, and a condition requires it, so <code>if (flags &amp; 1)</code> is refused and <code>if ((flags &amp; 1) != 0)</code> is the spelling. It has <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>==</code> and <code>&lt;</code> but no arithmetic, so it stays 0 or 1. <code>x::u1</code> asks whether the integer <code>x</code> is non-zero.</p>
+      <p><code>f16</code> is IEEE 754 binary16, and every target computes it, including one with no half-precision hardware. <code>u128</code> and <code>i128</code> are integers like the narrower widths on every target, realized as words of the widest width the target computes at.</p>
+      <p>A <em>type</em> may not take a primitive's name. <code>rec</code>, <code>uni</code>, <code>tag</code>, <code>def</code> and a generic parameter named after one are refused, because every use of the name in type position would resolve to the primitive:</p>
+      <pre class="code"><code><span class="kw">pub</span> <span class="kw">def</span> <span class="type">f16</span>: <span class="type">u16</span>;           <span class="cmt"># error: `f16` is a built-in type and cannot name a declaration</span></code></pre>
 
       <h2 id="vectors">SIMD vectors</h2>
       <p>A vector type is a <strong>form</strong>, not a fixed list: any primitive numeric element followed by <code>x</code> and a lane count.</p>
       <pre class="code"><code><span class="type">f32x4</span>           <span class="cmt"># 4 lanes of f32</span>
 <span class="type">i32x8</span>           <span class="cmt"># 8 lanes of i32</span>
 <span class="type">u8x16</span>          <span class="cmt"># 16 lanes of u8</span></code></pre>
-      <p>The spelling is <code>&lt;u|i|f&gt;&lt;width&gt;x&lt;count&gt;</code> with a <strong>single</strong> <code>x</code>. A name like <code>f32x4x4</code> is not a vector type and resolves as an ordinary identifier: a matrix is an algorithm over vectors and belongs in a library, not in the language. <code>ptr</code> is not a lane element, since its width is target-defined rather than a scalar bit count.</p>
+      <p>The spelling is <code>&lt;u|i|f&gt;&lt;width&gt;x&lt;count&gt;</code> with a <strong>single</strong> <code>x</code>. A name like <code>f32x4x4</code> is not a vector type and resolves as an ordinary identifier: a matrix is an algorithm over vectors and belongs in a library, not in the language. A lane is an integer of 8 to 64 bits, an <code>f16</code>, an <code>f32</code> or an <code>f64</code>. <code>ptr</code> is not a lane element, since its width is target-defined rather than a scalar bit count, and <code>u128x2</code> is not a vector type.</p>
       <p>Two rules bound the form, and <strong>neither depends on the target</strong>: at least 2 lanes (<code>f32x1</code> is refused - a one-lane vector is just its scalar), and at most 65535 (a compiler limit; the lane count rides a 16-bit field through codegen). Everything else is legal at every width. <code>f32x3</code> is 96 bits, <code>f32x8</code> is 256, and both compile on every target - including one with no vector unit at all.</p>
-      <p><strong>Width is a realization question, not a legality one.</strong> How a shape is realized does depend on the target, and there are three answers: one packed instruction where the shape fits a vector register and the operation has a packed form; a value placed in memory and worked one lane at a time where it does not; and per-lane scalar code on a target with no vector unit (riscv64 today). All three compute identical lanes - the expansion is a fixed unroll, never a reassociation - so only performance varies. A target that gains wider vector registers therefore gets <strong>better code</strong>, not new spellings. The <code>simd</code> profile key reports or refuses the scalar cases when a project cannot afford them; see <a href="manifest.html#profiles">Manifest</a>.</p>
+      <p><strong>Width is a realization question, not a legality one.</strong> How a shape is realized does depend on the target, and there are three answers: one packed instruction where the shape fits a vector register and the operation has a packed form, one packed instruction per register-width piece where the shape is wider than the register, and per-lane scalar code where the operation has no packed form for the lane shape or the target has no vector unit (rv64gc today). All three compute identical lanes - the expansion is a fixed unroll, never a reassociation - so only performance varies. A target that gains wider vector registers therefore gets <strong>better code</strong>, not new spellings. The <code>simd</code> profile key reports or refuses the scalar cases when a project cannot afford them; see <a href="manifest.html#profiles">Manifest</a>.</p>
       <p>A vector spelling is recognized only in <strong>type</strong> position, so a <em>value</em> may still be named <code>f32x4</code>. A <em>type</em> may not: <code>rec</code>, <code>uni</code>, <code>tag</code>, and <code>def</code> reject a name spelled as a vector form, because such a type would be silently unreachable - every use in type position resolves to the vector instead.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">f32x4</span>: <span class="type">i64</span> = <span class="num">7</span>;             <span class="cmt"># fine: values are a different position</span>
-<span class="kw">rec</span> <span class="type">f32x3</span> { <span class="param">x</span>: <span class="type">f32</span>; }           <span class="cmt"># error: `f32x3` is spelled as a vector type</span></code></pre>
+<span class="kw">rec</span> <span class="type">f32x3</span> { <span class="param">x</span>: <span class="type">f32</span>; }           <span class="cmt"># error: `f32x3` is spelled as a vector type `&lt;element&gt;x&lt;lanes&gt;`, so it cannot name a declaration</span></code></pre>
 
       <h3 id="vector-layout">Size and alignment</h3>
-      <p><code>$size_of</code> is <strong>lane-derived</strong> - lanes x element size, packed, with no padding at any width.</p>
+      <p><code>$size_of</code> is <strong>lane-derived</strong>: the lanes are packed, lanes x element size bytes, and that extent is rounded up to a multiple of <code>$align_of</code>, as every type's size is. A vector that aligns to a single lane has no padding, so <code>f32x3</code> is 12 bytes. One that aligns to a register width is padded when its lanes are not a multiple of that width, so <code>f32x5</code> is 32 bytes. The table is for a target whose vector register is 128 bits.</p>
       <table>
         <thead><tr><th>Type</th><th><code>$size_of</code></th><th><code>$align_of</code></th></tr></thead>
         <tbody>
@@ -117,10 +122,11 @@
           <tr><td><code>f32x3</code></td><td>12</td><td>4</td></tr>
           <tr><td><code>f32x4</code></td><td>16</td><td>16</td></tr>
           <tr><td><code>i16x4</code></td><td>8</td><td>2</td></tr>
+          <tr><td><code>f32x5</code></td><td>32</td><td>16</td></tr>
           <tr><td><code>f32x8</code></td><td>32</td><td>16</td></tr>
         </tbody>
       </table>
-      <p><code>$align_of</code> has two rungs, each for its own reason. A vector <em>narrower</em> than the vector register is a packed aggregate that loads piecewise, so it aligns to a single lane - which is what makes <code>[N]f32x3</code> a usable packed vertex buffer, since padding <code>f32x3</code> to 16 bytes would make it indistinguishable from <code>f32x4</code> in memory. One that <em>fills</em> the register aligns to its whole size, because the machine's vector load requires it. One <em>wider</em> than the register is placed as several register-width pieces and so aligns to the register width - 16 for <code>f32x8</code>, not 32.</p>
+      <p><code>$align_of</code> has two rungs, each for its own reason. A vector <em>narrower</em> than the vector register is a packed aggregate that loads piecewise, so it aligns to a single lane - which is what makes <code>[N]f32x3</code> a usable packed vertex buffer, since padding <code>f32x3</code> to 16 bytes would make it indistinguishable from <code>f32x4</code> in memory. One that <em>fills</em> the register aligns to its whole size, because the machine's vector load requires it. One <em>wider</em> than the register is placed as several register-width pieces and so aligns to the register width - 16 for <code>f32x8</code>, not 32. On x86-64 with <code>avx</code> the register is the 32-byte <code>ymm</code>, and <code>f32x8</code> aligns to 32 there.</p>
 
       <h3 id="vector-values">Literals and lanes</h3>
       <p><strong>Literals are full-arity</strong>: one initializer per lane, mirroring array literals. Too few or too many lanes is a compile error. An uninitialized vector local default-initializes to all-zero lanes.</p>
@@ -135,7 +141,7 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
       <h2 id="handles">Handles</h2>
       <p>A <strong>handle</strong> is a type whose representation is not the program's: the owning target mints it and the pipeline binds it. A shader reads a texture through one.</p>
       <p>The language knows only the machinery. A handle is a <strong>bodyless <code>def</code></strong> carrying <code>#[handle(target, constructor, operands...)]</code>, and which constructors exist, what operands each takes, and what an operand means all belong to the named target.</p>
-      <pre class="code"><code><span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"image"</span>, TEXEL_F32, DIM_2D, NO_DEPTH, NONARRAYED, SINGLE_SAMPLED, SAMPLED)]</span>
+      <pre class="code"><code><span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"image"</span>, <span class="type">f32</span>, <span class="str">"2D"</span>, <span class="num">0</span>, <span class="num">0</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="str">"Unknown"</span>)]</span>
 <span class="kw">pub</span> <span class="kw">def</span> <span class="type">Texture2D</span>;
 
 <span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"sampled_image"</span>, <span class="type">Texture2D</span>)]</span>
@@ -143,7 +149,7 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
 
 <span class="deco">#[handle(<span class="str">"spirv"</span>, <span class="str">"sampler"</span>)]</span>
 <span class="kw">pub</span> <span class="kw">def</span> <span class="type">Sampler</span>;</code></pre>
-      <p><code>def</code> is the carrier because it already means "this name denotes a type" and promises no fields and no storage, which is exactly what a handle is. There is no body because the target supplies the definition. Operands are ordinary comptime constants, with one exception: a constructor composing over another handle takes a <strong>type name</strong>, so <code>Sampler2D</code> names the image it wraps rather than restating that image's operands and cannot disagree with it.</p>
+      <p><code>def</code> is the carrier because it already means "this name denotes a type" and promises no fields and no storage, which is exactly what a handle is. There is no body because the target supplies the definition. The spirv <code>image</code> constructor takes the operands of <code>OpTypeImage</code> in its order: the texel scalar written as the type itself, then <code>Dim</code>, <code>Depth</code>, <code>Arrayed</code>, <code>MS</code>, <code>Sampled</code> and the <code>Image Format</code>. An operand SPIR-V defines as an enumerant is written as the string SPIR-V's grammar names it by, such as <code>"2D"</code> or <code>"Unknown"</code>, and the rest are numbers. Operands are ordinary comptime constants, except where the constructor takes a <strong>type name</strong>: the texel scalar, and a constructor composing over another handle, so <code>Sampler2D</code> names the image it wraps rather than restating that image's operands and cannot disagree with it.</p>
       <p>Every rule a handle carries follows from the one fact the directive states, and the set is fixed and closed rather than varied per declaration: no fields, no indexing, no construction; it cannot be a local binding, a record or union field, or sit behind a pointer or inside an array; it reaches an operation only by being passed to one, bound as a descriptor; and its extent is declared by the owning target.</p>
       <p><code>$size_of</code> a handle is the target's pointer size - it is a name for a resource, and a pointer is the shape every target already has for that. On a target that mints no such type the declaration is <strong>inert</strong>: it still denotes a type and still sizes, and an operation over it is an undefined symbol at link. A target refuses an operand combination its constructor spells but it cannot emit, naming the operand rather than the declaration.</p>
       <p>See <a href="shaders.html">GPU shaders</a> for binding a handle and sampling through one.</p>
@@ -158,6 +164,13 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
       <p><code>[N]T</code> is an array of exactly <code>N</code> values of type <code>T</code>. Arrays nest as <code>[N][M]T</code>.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">a</span>: [<span class="num">4</span>]<span class="type">i64</span>    = [<span class="num">4</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>};
 <span class="kw">val</span> <span class="param">g</span>: [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span> = [<span class="num">2</span>][<span class="num">2</span>]<span class="type">i64</span>{ [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>}, [<span class="num">2</span>]<span class="type">i64</span>{<span class="num">3</span>, <span class="num">4</span>} };</code></pre>
+      <p>An array of <code>u8</code> is also initialized by a string literal, which holds its bytes and nothing else, so a terminator is stored only when written. The literal's byte count must be the array's length. The same literal bound to <code>*u8</code> stores a terminator after its bytes.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">A</span>: [<span class="num">3</span>]<span class="type">u8</span> = <span class="str">"abc"</span>;              <span class="cmt"># 61 62 63</span>
+<span class="kw">val</span> <span class="param">B</span>: [<span class="num">4</span>]<span class="type">u8</span> = <span class="str">"abc\0"</span>;            <span class="cmt"># 61 62 63 00</span>
+<span class="kw">val</span> <span class="param">C</span>: [<span class="num">4</span>]<span class="type">u8</span> = <span class="str">"abc"</span>;              <span class="cmt"># error: the string literal holds 3 bytes and the array 4</span></code></pre>
+      <p><code>[_]T</code> leaves the length for a literal to give. It is legal on the literal's own type spelling and on the annotation of a <code>val</code> or <code>var</code> an array or string literal initializes, and the length is the literal's element or byte count. Every other <code>[_]</code> is refused: a parameter, a field, a result, a <code>var</code> with no initializer, and a <code>[_]</code> nested in another type.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">K</span>: [_]<span class="type">i64</span> = [_]<span class="type">i64</span>{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>};   <span class="cmt"># [3]i64</span>
+<span class="kw">val</span> <span class="param">D</span>: [_]<span class="type">u8</span>  = <span class="str">"abc"</span>;              <span class="cmt"># [3]u8</span></code></pre>
       <p><strong>Constant indices are bounds-checked at compile time.</strong> <code>N</code> is part of the type, so an index the compiler can fold must land in <code>[0, N)</code>.</p>
       <pre class="code"><code><span class="kw">var</span> <span class="param">xs</span>: [<span class="num">4</span>]<span class="type">i32</span>;
 <span class="kw">val</span> <span class="param">a</span>: <span class="type">i32</span> = xs[<span class="num">3</span>];             <span class="cmt"># ok</span>
@@ -173,7 +186,7 @@ v[<span class="num">3</span>] = <span class="num">9.0</span>;                   
       <h2 id="named-types">Named types and aliases</h2>
       <p><code>rec</code>, <code>uni</code>, and <code>tag</code> declarations produce named types. A <code>def</code> introduces an alias for any type, including the constructed forms above.</p>
       <pre class="code"><code><span class="kw">def</span> <span class="type">Bytes</span>: [<span class="num">16</span>]<span class="type">u8</span>;     <span class="cmt"># Bytes now names an array type</span>
-<span class="kw">def</span> <span class="type">bool</span>: <span class="type">u8</span>;          <span class="cmt"># the stdlib's own bool alias</span></code></pre>
+<span class="kw">def</span> <span class="type">bool</span>: <span class="type">u1</span>;          <span class="cmt"># the stdlib's own bool alias</span></code></pre>
 
       <div class="see-also">
         <h2>See also</h2>

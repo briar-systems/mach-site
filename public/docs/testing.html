@@ -81,80 +81,114 @@
       <p class="lead">A <code>test</code> is a named block of statements the runner can execute on its own. Tests live inline with the code they exercise, and <code>mach test</code> collects every one in the artifact under test, builds it, and runs it.</p>
 
       <h2 id="declaring">Declaring a test</h2>
-      <p>A test is a declaration at module scope - the same level as <code>fun</code>, <code>rec</code>, and <code>val</code>. It takes no parameters and is not callable from ordinary code; it exists only for the runner to invoke.</p>
-      <pre class="code"><code><span class="kw">test</span> <span class="fn">&lt;identifier&gt;</span> { ... }</code></pre>
-      <p>The name is an identifier, following the ordinary identifier rules. A string in its place (<code>test "label" { ... }</code>) is a compile error that names the identifier form. The body is an ordinary block that may use anything in scope in the enclosing module, just like a function body.</p>
-      <pre class="code"><code><span class="kw">test</span> <span class="fn">is_leap_year__centuries</span> {
+      <p>A test is a declaration at module scope, the same level as <code>fun</code>, <code>rec</code>, and <code>val</code>. It takes no parameters and is not callable from ordinary code. It exists only for the runner to invoke.</p>
+      <pre class="code"><code>test &lt;identifier&gt; { ... }</code></pre>
+      <p>The name is an identifier, following the ordinary identifier rules. A string in its place (<code>test "label" { ... }</code>) is refused with <code>a test is named with an identifier, not a string, as in `test name { ... }`</code>. The body is an ordinary block that may use anything in scope in the enclosing module, just like a function body.</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.print</span>;
+<span class="kw">use</span> <span class="mod">std.runtime</span>;
+<span class="kw">use</span> <span class="mod">std.types.bool.bool</span>;
+
+<span class="kw">fun</span> <span class="fn">is_leap_year</span>(<span class="param">y</span>: <span class="type">i64</span>) <span class="type">bool</span> {
+    <span class="kw">if</span> (y % <span class="num">400</span> == <span class="num">0</span>) { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">if</span> (y % <span class="num">100</span> == <span class="num">0</span>) { <span class="kw">ret</span> <span class="num">0</span>; }
+    <span class="kw">ret</span> y % <span class="num">4</span> == <span class="num">0</span>;
+}
+
+<span class="kw">test</span> is_leap_year__centuries {
     <span class="kw">if</span> (!<span class="fn">is_leap_year</span>(<span class="num">2000</span>)) { <span class="kw">ret</span> <span class="num">1</span>; }
-    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">1900</span>))  { <span class="kw">ret</span> <span class="num">1</span>; }
-    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">2023</span>))  { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">1900</span>))  { <span class="kw">ret</span> <span class="num">2</span>; }
     <span class="kw">ret</span> <span class="num">0</span>;
 }
 
-<span class="kw">test</span> <span class="fn">log__nil_message_does_not_crash</span> {
-    <span class="fn">debug</span>(nil);
-    <span class="fn">info</span>(nil);
+<span class="kw">test</span> is_leap_year__fails_on_purpose {
+    print.<span class="fn">println</span>(<span class="str">"checking 2023"</span>);
+    <span class="kw">if</span> (<span class="fn">is_leap_year</span>(<span class="num">2023</span>)) { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">ret</span> <span class="num">3</span>;
+}
+
+<span class="deco">#[symbol(</span><span class="str">"main"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">main</span>(<span class="param">argc</span>: <span class="type">i64</span>, <span class="param">argv</span>: **<span class="type">u8</span>) <span class="type">i64</span> {
     <span class="kw">ret</span> <span class="num">0</span>;
 }</code></pre>
       <p>Tests live in their own namespace in each module. A test's name is never in scope in code, so <code>test str_len { ... }</code> and <code>fun str_len</code> in one module do not conflict, and no code can name, call, or reference a test. Two tests with the same name in one module are a compile error.</p>
-      <p>Related tests group under a common subject as <code>subject__case</code> (<code>str_len__empty</code>, <code>str_len__multibyte</code>), and a regression test is named <code>regression__*</code>. Both are conventions the compiler does not check.</p>
+      <p>Related tests group under a common subject as <code>subject__case</code> (<code>str_len__empty</code>, <code>str_len__multibyte</code>). This is a convention the compiler does not check.</p>
       <p>Every build resolves and type-checks each test body in the modules its artifact reaches, and ordinary builds omit test bodies from IR and object files.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
-        <p>A <code>pub</code> modifier is syntactically accepted before <code>test</code> but carries no meaning - a test is never part of a module's public surface.</p>
+        <p>A <code>pub</code> modifier is syntactically accepted before <code>test</code> but carries no meaning. A test is never part of a module's public surface.</p>
       </div>
 
       <h3 id="qualified-names">Qualified names</h3>
-      <p>A test's <strong>qualified name</strong> is its module path, <code>#</code>, and its name: <code>std.types.string#str_len__empty</code>. <code>#</code> appears in no identifier or module path, so a qualified name never collides with another symbol. It is the test's symbol, and it is the name <code>--list</code>, <code>--filter</code>, the readout, and <code>--format json</code> show. A debugger takes it unquoted: <code>break std.types.string#str_len__empty</code> in gdb.</p>
+      <p>A test's <strong>qualified name</strong> is its module path, <code>#</code>, and its name: <code>app.bin.main#is_leap_year__centuries</code>. <code>#</code> appears in no identifier or module path, so a qualified name never collides with another symbol. It is the test's symbol, and it is the name <code>--list</code>, <code>--filter</code>, the readout and the test records show. A debugger takes it unquoted: <code>break app.bin.main#is_leap_year__centuries</code> in gdb.</p>
 
       <h2 id="helpers">Test-only helpers</h2>
       <p>A helper or fixture that exists only for tests is marked <a href="decorators.html#testing"><code>#[testing]</code></a>. It gets the same treatment as a test body: checked in every build, omitted from ordinary ones, and emitted under <code>mach test</code>. Only a test body or another <code>#[testing]</code> declaration may reference it.</p>
-      <pre class="code"><code><span class="deco">#[testing]</span>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.types.bool.bool</span>;
+
+<span class="kw">fun</span> <span class="fn">is_leap_year</span>(<span class="param">y</span>: <span class="type">i64</span>) <span class="type">bool</span> {
+    <span class="kw">if</span> (y % <span class="num">400</span> == <span class="num">0</span>) { <span class="kw">ret</span> <span class="num">1</span>; }
+    <span class="kw">if</span> (y % <span class="num">100</span> == <span class="num">0</span>) { <span class="kw">ret</span> <span class="num">0</span>; }
+    <span class="kw">ret</span> y % <span class="num">4</span> == <span class="num">0</span>;
+}
+
+<span class="deco">#[testing]</span>
 <span class="kw">fun</span> <span class="fn">sample_year</span>() <span class="type">i64</span> { <span class="kw">ret</span> <span class="num">2000</span>; }
 
-<span class="kw">test</span> <span class="fn">is_leap_year__sample_year</span> {
+<span class="kw">test</span> is_leap_year__sample_year {
     <span class="kw">if</span> (!<span class="fn">is_leap_year</span>(<span class="fn">sample_year</span>())) { <span class="kw">ret</span> <span class="num">1</span>; }
     <span class="kw">ret</span> <span class="num">0</span>;
 }</code></pre>
 
-      <h2 id="result">Reporting pass and fail</h2>
-      <p>A test body is checked against an <code>i32</code> return type, and each <code>test</code> lowers to a zero-parameter function whose result becomes the test process's exit status, in <code>0..255</code>. A return value of <code>0</code> indicates success, while any value in <code>1..255</code> signals failure and is reported as <code>(exit N)</code>.</p>
-      <p>A <code>ret</code> whose value is a literal (or a literal-shaped expression) outside <code>0..255</code> is a compile error. A value computed at run time that lands outside the range is folded to <code>255</code> and always fails, so a result of <code>256</code> can never read as a pass.</p>
-      <pre class="code"><code><span class="kw">ret</span> <span class="num">0</span>;     <span class="cmt"># pass</span>
-<span class="kw">ret</span> <span class="num">1</span>;     <span class="cmt"># fail - any non-zero ordinal indicates failure</span></code></pre>
-      <p>Falling off the end of a body returns <code>0</code>, treating an empty or fallthrough body as a pass. Use positive integers to distinguish which assertion or condition failed in your test.</p>
+      <h2 id="result">Reporting pass, skip and fail</h2>
+      <p>A test body is checked against an <code>i32</code> return type, and its result is the test process's exit status, in <code>0..255</code>. There are three outcomes:</p>
+      <ul>
+        <li><code>ret 0</code>: pass. Falling off the end of the body returns <code>0</code>, so a body that never returns explicitly is a pass.</li>
+        <li><code>ret 77</code>: skip. The test could not check anything on this host, so it neither passes nor fails. It does not fail the run, and the runner counts it apart from the passes. 77 is the skip status automake, meson and TAP use.</li>
+        <li>any other <code>ret N</code> with <code>N</code> in <code>1..255</code>: fail, reported as <code>(exit N)</code>. Use distinct values to tell which check failed.</li>
+      </ul>
+      <p>The range is part of the protocol. A <code>ret</code> whose value is a literal (or a literal-shaped expression) outside <code>0..255</code> is a compile error:</p>
+      <pre class="code"><code>error[test.status_range] test result 256 is outside the status range 0..255
+   @ src/bin/main.mach:36:5
+36 |     ret 256;
+   |     ^^^^^^^^
+   note a test's result is its exit status, where 0 passes, 77 skips and any other value up to 255 fails</code></pre>
+      <p>A value computed at run time that lands outside the range is folded to <code>255</code> and always fails, so a result of <code>256</code> can never read as a pass. std's panic exits with <code>255</code>, so a crash never reads as a skip. The compiler provides no assertion or skip intrinsics.</p>
+      <p>A test that can run only on some hosts sits in a declaration-level <code>$if</code>, so on any other host it is absent rather than reported as a pass. A test whose gate is only known at run time checks it first and returns <code>77</code>:</p>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.types.bool.bool</span>;
+
+<span class="kw">fun</span> <span class="fn">cpu_has_aes</span>() <span class="type">bool</span> { <span class="kw">ret</span> <span class="num">0</span>; }
+
+<span class="kw">test</span> crypto__aes128_matches_fips_197 {
+    <span class="kw">if</span> (!<span class="fn">cpu_has_aes</span>()) { <span class="kw">ret</span> <span class="num">77</span>; }   <span class="cmt"># nothing to check on this host: skip</span>
+    <span class="kw">ret</span> <span class="num">0</span>;
+}
+
+<span class="ct">$if</span> (<span class="ct">$mach</span>.build.sys != <span class="ct">$mach</span>.sys.windows) {
+    <span class="kw">test</span> spawn__a_shell_script_runs {
+        <span class="kw">ret</span> <span class="num">0</span>;
+    }
+}</code></pre>
 
       <h2 id="collection">Where tests live</h2>
-      <p>Tests are not tied to a single file. Write <code>test name { }</code> declarations directly in the relevant <code>src/</code> module, or in modules of their own. <code>mach test</code> builds exactly what <code>mach build</code> builds for the same artifact - the closure its entry reaches through <code>use</code> and <code>fwd</code> - and runs the tests declared there. A module no selected artifact reaches is not loaded under test either, so its tests do not run.</p>
-      <p>A module that exists only for tests, such as a suite that exercises several modules together, is reached by no artifact on its own. Give such modules a <strong>test artifact</strong>: an ordinary library artifact whose entry <code>use</code>s each of them, tested by name.</p>
-      <pre class="code"><code><span class="cmt"># the test-only modules no other artifact reaches</span>
-[artifact.tests]
-kind    = <span class="str">"static"</span>
-entry   = <span class="str">"test/all.mach"</span>
-out     = <span class="str">"lib/tests"</span>
-targets = [<span class="str">"*"</span>]
-link    = []
-need    = []</code></pre>
-      <pre class="code"><code><span class="cmt"># src/test/all.mach</span>
-<span class="kw">use</span> <span class="mod">std.runtime</span>;
-
-<span class="kw">use</span> <span class="mod">app.test.parser</span>;
-<span class="kw">use</span> <span class="mod">app.test.roundtrip</span>;</code></pre>
-      <p><code>mach test .</code> then runs the tests the default artifact reaches, and <code>mach test . -a tests</code> the test-only suites. The entry reaches the runtime's startup (<code>use std.runtime;</code>) because a library artifact's closure is all the test dispatcher links.</p>
+      <p>Tests are not tied to a single file. Write <code>test name { }</code> declarations directly in the relevant <code>src/</code> module. <code>mach test</code> builds exactly what <code>mach build</code> builds for the same artifact, the closure its entry reaches through <code>use</code> and <code>fwd</code>, and runs the tests declared there. A test is found through the import chain from an artifact's entry, never by the manifest, so a module no selected artifact reaches is not loaded under test and its tests do not run. There is no test-only artifact and no module that exists only to gather tests.</p>
       <p>Only the current project's own tests are collected by default, so a dependency's suite never runs (or fails) as part of your <code>mach test</code>. <code>--include-deps</code> collects dependency tests as well, which is useful when working on a dependency in-tree.</p>
 
       <h2 id="running">Running with mach test</h2>
       <pre class="code"><code>mach test &lt;path&gt; [options]</code></pre>
-      <p><code>mach test</code> is <code>mach build</code> with a different goal. It builds the artifact's objects exactly as <code>mach build</code> does, adds a test object beside each module that declares tests, links one test <strong>dispatcher</strong> executable covering the selected tests, then runs each of them as its own process and reports the results. A crashing test reports its signal and the run continues. A test build always links an executable, even for a library artifact.</p>
-      <p>The readout is per module: a module whose tests all pass collapses to one roll-up line, and a module with a failure expands to show the failing test's location, its exit code, signal, or timeout, its captured output, and the exact <code>rerun:</code> command. The run closes with a summary that re-lists every failure:</p>
-      <pre class="code"><code>failures:
-  app.main#fails_on_purpose  src/main.mach:11  (exit 3)
+      <p><code>mach test</code> is <code>mach build</code> with a different goal. It builds the artifact's objects exactly as <code>mach build</code> does, adds a test object beside each module that declares tests, links one test <strong>dispatcher</strong> executable covering the selected tests, then runs each of them as its own process and reports the results. A test build always links an executable, even for a library artifact, whose entry states <code>use std.runtime;</code> as <code>mach init --lib</code> writes it.</p>
+      <p>The readout writes one row per module, once the module's last test finishes: the module, its wall time, and its counts of <code>ok</code>, <code>skip</code> and <code>FAIL</code>. When the run ends, each failure is shown once, in collection order: its qualified name, <code>file:line</code> and its exit code, signal or timeout, the test's captured output indented beneath, and the exact <code>rerun:</code> command. A passing or skipped test stays quiet. The verdict line closes the run. Here is a project with one passing and one failing test:</p>
+      <pre class="code"><code>$ mach test .
+app.bin.main       558us     1 ok                1 FAIL
 
-1 passed, 1 failed, 2 total  (1ms)</code></pre>
+FAIL  app.bin.main#is_leap_year__fails_on_purpose  src/bin/main.mach:17  (exit 3)
+      checking 2023
+      rerun: ./out/linux-x86_64/debug/test/app/app 1
+
+    failed  1 of 2 tests   638us</code></pre>
 
       <h3 id="objects">Test objects and the dispatcher</h3>
       <p>A module that declares tests or <code>#[testing]</code> declarations gets a <strong>test object</strong>, <code>obj/&lt;project&gt;/&lt;module&gt;.test.o</code>, beside its normal object. The test object holds the module's tests under their qualified names and only what the module's object lacks, so the module's object never changes for tests. After <code>mach build</code>, <code>mach test</code> recompiles no module object, and editing a test recompiles only its module's test object and relinks.</p>
-      <p>Each run links a small dispatcher of only the selected tests, <code>test/&lt;artifact&gt;/&lt;artifact&gt;</code> under the output directory, and spawns it once per test. Each test's stdout and stderr are captured to a file under <code>test/&lt;artifact&gt;/log/</code>. A passing test's file is removed on the spot, and a failing test's file stays.</p>
+      <p>Each run links a small dispatcher of only the selected tests, <code>test/&lt;artifact&gt;/&lt;artifact&gt;</code> under the output directory, and spawns it once per test with the test's index. Each test's stdout and stderr are captured to a file under <code>test/&lt;artifact&gt;/log/</code>. A passing or skipped test's file is removed on the spot, and a failing test's file stays.</p>
 
       <h3 id="selecting">Selecting and listing</h3>
       <table>
@@ -163,36 +197,54 @@ need    = []</code></pre>
           <tr><td><code>--filter &lt;substr&gt;</code></td><td>run only tests whose qualified name contains <code>&lt;substr&gt;</code></td></tr>
           <tr><td><code>--include-deps</code></td><td>also run tests declared in dependency modules</td></tr>
           <tr><td><code>--list</code></td><td>list the collected tests and exit, running nothing</td></tr>
-          <tr><td><code>--jobs &lt;n&gt;</code></td><td>run up to <code>n</code> test processes at once (default: host CPUs)</td></tr>
-          <tr><td><code>--timeout &lt;duration&gt;</code></td><td>terminate a test and its process group after the duration (default unbounded)</td></tr>
-          <tr><td><code>--format &lt;kind&gt;</code></td><td><code>human</code> (default), or a <code>json</code> NDJSON event stream</td></tr>
-          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>launch every test through <code>&lt;cmd&gt;</code> instead of exec'ing it directly</td></tr>
+          <tr><td><code>--threads &lt;n&gt;</code></td><td>compile and link on <code>n</code> threads and run up to <code>n</code> test processes at once (default: host CPUs)</td></tr>
+          <tr><td><code>--timeout &lt;duration&gt;</code></td><td>stop each test after the duration (default: <code>60s</code>)</td></tr>
+          <tr><td><code>--runner &lt;cmd&gt;</code></td><td>launch each test through <code>&lt;cmd&gt;</code>, in place of the target's runner</td></tr>
+          <tr><td><code>--allow-unrunnable</code></td><td>succeed when nothing selected can run on this host</td></tr>
+          <tr><td><code>--report &lt;human|json|lines&gt;</code></td><td>also write the run's records to stderr as NDJSON or record lines</td></tr>
         </tbody>
       </table>
-      <pre class="code"><code>mach test .                  <span class="cmt"># build and run every test</span>
-mach test . --filter date    <span class="cmt"># only tests whose qualified name contains date</span>
-mach test . --list           <span class="cmt"># enumerate tests, run nothing</span>
-mach test . --timeout 30s    <span class="cmt"># bound each test to 30 seconds</span></code></pre>
-      <p><code>--filter</code> selects before the dispatcher links, so the dispatcher holds only the selected tests and what they reach, and changing the filter relinks without recompiling. <code>--list</code> prints each selected test's qualified name and the test object that holds it, and exits without linking or running anything:</p>
-      <pre class="code"><code>app.parser#rejects_trailing_comma ./out/linux-x86_64/debug/obj/app/parser.test.o</code></pre>
-      <p>The <code>build</code> and global flags apply too, and <code>-v</code> reports build phase timing as <code>mach build -v</code> does. <code>--runner</code> names a host-side launcher for foreign-target tests the host cannot exec directly, e.g. <code>mach test . -t windows --runner wine</code>, and needs the selection to resolve to one cell. Without it, only a target whose <code>os</code> and <code>isa</code> are the host's runs its tests: any other is built and reported on a <code>skip</code> line, whatever emulation the host has. A run in which nothing was runnable exits <code>1</code>, so a green run always ran something.</p>
+      <p><code>--list</code> prints each selected test's qualified name and the test object that holds it, and exits without linking or running anything:</p>
+      <pre class="code"><code>$ mach test . --list
+app.bin.main#is_leap_year__centuries         ./out/linux-x86_64/debug/obj/app/bin/main.test.o
+app.bin.main#is_leap_year__fails_on_purpose  ./out/linux-x86_64/debug/obj/app/bin/main.test.o</code></pre>
+      <p><code>--filter</code> selects before the dispatcher links, so the dispatcher holds only the selected tests and what they reach, and changing the filter relinks without recompiling:</p>
+      <pre class="code"><code>$ mach test . --filter centuries
+app.bin.main       174us     1 ok
+
+    passed  1 test   255us</code></pre>
+      <p>The selection flags <code>-a</code>, <code>-t</code> and <code>-p</code> and the build flags apply too. Tests run once per selected target and profile. A target whose <code>sys</code> and <code>arch</code> are the host's runs each test directly, a target that declares a <code>runner</code> in the manifest runs its tests through it, and any other target is built and reported on a <code>skipped</code> line. <code>--runner</code> replaces the target's runner for one invocation, launching each test as <code>&lt;cmd&gt; &lt;exe&gt; &lt;index&gt;</code>, and the runner's exit status is judged as a native test's is. A finished-module target such as <code>vulkan-spirv</code> links no executable, so it is built and reported as skipped.</p>
 
       <h3 id="timeouts">Timeouts</h3>
-      <p><code>--timeout &lt;duration&gt;</code> bounds each spawned test process independently, from its own spawn, on its whole process group, so a process the test started dies with it. A test that exceeds the bound is the distinct outcome <strong>timed out</strong>: it renders as <code>(timed out after &lt;duration&gt;)</code>, is counted separately on the summary line, and still fails the run.</p>
-      <pre class="code"><code>failures:
-  app.main#spins  src/main.mach:4  (timed out after 1s)
+      <p>Every test runs under a bound, 60 seconds unless <code>--timeout &lt;duration&gt;</code> gives another. The bound applies to each spawned test process independently, from its own spawn, on its whole process group: the group is asked to stop, given one second, and then killed, so no process the test started outlives it. A test that exceeds the bound is the distinct outcome <strong>timed out</strong>: it is counted separately on the verdict line and still fails the run. With a skipping test and a spinning one added to the project above:</p>
+      <pre class="code"><code><span class="kw">test</span> cpu__needs_a_feature {
+    <span class="kw">ret</span> <span class="num">77</span>;
+}
 
-0 passed, 1 failed (1 timed out), 1 total  (1.0s)</code></pre>
-      <p><code>&lt;duration&gt;</code> is a positive integer followed by a unit: <code>ms</code>, <code>s</code>, <code>m</code>, or <code>h</code> (<code>30ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>). A bare number, a fraction, zero, or any other unit is a usage error naming the accepted forms. There is no default: omitting the flag leaves every test unbounded.</p>
+<span class="kw">test</span> spins {
+    <span class="kw">for</span> {}
+}</code></pre>
+      <pre class="code"><code>$ mach test . --timeout 1s
+app.bin.main        1.0s     1 ok     1 skip     2 FAIL
 
-      <h3 id="json">JSON output</h3>
-      <p><code>--format json</code> replaces the readout with one JSON object per line on stdout: <code>run_start</code>, one <code>test</code> per result, and <code>summary</code>, or one <code>case</code> per test under <code>--list</code>. Build diagnostics stay on stderr. A <code>test</code> or <code>case</code> event names its test by qualified name in <code>name</code>, beside its <code>module</code>, <code>file</code>, <code>line</code>, test <code>object</code>, and dispatcher <code>index</code>. A timed-out test reports <code>"kind":"timeout"</code> with its bound in nanoseconds in <code>timeout_ns</code>. The schema is versioned, <code>"schema":2</code> on every event.</p>
+FAIL  app.bin.main#is_leap_year__fails_on_purpose  src/bin/main.mach:17  (exit 3)
+      checking 2023
+      rerun: ./out/linux-x86_64/debug/test/app/app 1
+FAIL  app.bin.main#spins  src/bin/main.mach:32  (timed out after 1s)
+      rerun: ./out/linux-x86_64/debug/test/app/app 3
+
+    failed  2 of 4 tests (1 timed out), 1 skipped   1.0s</code></pre>
+      <p><code>&lt;duration&gt;</code> is a positive integer followed by a unit: <code>ms</code>, <code>s</code>, <code>m</code>, or <code>h</code> (<code>30ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>). A bare number, a fraction, zero, or any other unit is a usage error naming the accepted forms, so no value removes the bound.</p>
+
+      <h3 id="json">Records</h3>
+      <p><code>--report json</code> or <code>--report lines</code> writes the run as records on stderr beside the build's diagnostics: a <code>run_start</code>, one <code>test</code> per result as it finishes, a <code>run_end</code> for each target and profile that runs, a <code>skip</code> for one built and not run, a <code>case</code> per test under <code>--list</code>, and the closing <code>summary</code>. A <code>test</code> or <code>case</code> record names its test by qualified name in <code>name</code>, beside its <code>module</code>, <code>file</code>, <code>line</code> and dispatcher <code>index</code>, and a <code>test</code> record carries its <code>outcome</code>: <code>pass</code>, <code>fail</code>, <code>skip</code> or <code>timeout</code>. The human readout stays on stdout.</p>
 
       <h3 id="exit">Exit codes</h3>
       <ul>
-        <li><code>0</code> - every test that ran passed.</li>
-        <li><code>1</code> - at least one test failed, was killed by a signal, or timed out; also a user error such as an unknown flag.</li>
-        <li><code>2</code> - a build or internal error before the tests could run, or a test that failed for an infrastructure reason.</li>
+        <li><code>0</code> - every test that ran passed or skipped. A project that declares no test reports <code>passed  0 tests</code>.</li>
+        <li><code>1</code> - at least one test failed, was killed by a signal, or timed out. Also a user error, such as an unknown flag, a rejected manifest or a test body that does not compile, and a run that executed nothing.</li>
+        <li><code>2</code> - an internal error of the compiler before the tests could run, or a test that failed for an infrastructure reason.</li>
+        <li><code>3</code> - an environment failure before the tests could run, such as storage or a file operation the machine refused.</li>
       </ul>
 
       <div class="see-also">
@@ -214,13 +266,13 @@ mach test . --timeout 30s    <span class="cmt"># bound each test to 30 seconds</
       <a href="#declaring">Declaring a test</a>
       <a class="sub" href="#qualified-names">Qualified names</a>
       <a href="#helpers">Test-only helpers</a>
-      <a href="#result">Reporting pass and fail</a>
+      <a href="#result">Reporting pass, skip and fail</a>
       <a href="#collection">Where tests live</a>
       <a href="#running">Running with mach test</a>
       <a class="sub" href="#objects">Test objects and the dispatcher</a>
       <a class="sub" href="#selecting">Selecting and listing</a>
       <a class="sub" href="#timeouts">Timeouts</a>
-      <a class="sub" href="#json">JSON output</a>
+      <a class="sub" href="#json">Records</a>
       <a class="sub" href="#exit">Exit codes</a>
     </nav>
   </div>

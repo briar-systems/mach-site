@@ -79,6 +79,7 @@
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Expressions</div>
       <h1>Expressions</h1>
       <p class="lead">Expressions evaluate to values. They appear on the right of a binding, as conditions, and as call arguments.</p>
+      <p>Reading an aggregate captures its value at that evaluation point, so a later argument, assignment destination or <code>fin</code> body cannot change the captured value by modifying its storage. Call arguments evaluate left to right. Assignment evaluates and captures the right side before evaluating the destination.</p>
 
       <h2 id="names">Names</h2>
       <p>A bare identifier references a name in scope. Module-qualified names use the dot path.</p>
@@ -108,7 +109,8 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <p>A field is read with the dot, an array element with a bracketed index.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">x</span>:     <span class="type">i64</span> = p.x;     <span class="cmt"># record field</span>
 <span class="kw">val</span> <span class="param">first</span>: <span class="type">i64</span> = <span class="param">a</span>[<span class="num">0</span>];    <span class="cmt"># array index</span></code></pre>
-      <p>A tag payload is read with <code>place.case</code> under a dominating guard that proves the case. In comptime reflection over <code>$cases(T)</code>, a tag case can also be accessed dynamically through <code>place.[case]</code>.</p>
+      <p>A constant index is bounds-checked against a statically known length, such as an array's <code>N</code> or a vector's lane count. <code>x[start, count]</code> is a <strong>range</strong> of <code>count</code> consecutive elements from <code>start</code>, as a <code>[count]T</code> value, where <code>count</code> is a comptime constant of at least 1.</p>
+      <p>A tag payload is read with <code>place.case</code>, which is legal only inside a lexical guard for that place and case. <code>TypeName.case</code> alone is a case selector, not a value, and cannot be stored or passed. In comptime reflection over <code>$cases(T)</code>, a tag case can also be accessed through <code>place.[case]</code>.</p>
 
       <h2 id="calls">Function calls</h2>
       <p>A call applies a function to a parenthesized argument list.</p>
@@ -119,20 +121,23 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <pre class="code"><code><span class="fn">identity</span>[<span class="type">i64</span>](<span class="num">42</span>)     <span class="cmt"># generic call: type args in [ ]</span></code></pre>
 
       <h3 id="variadic-calls">Variadic calls</h3>
-      <p>A variadic call passes extra trailing arguments past the fixed parameters.</p>
+      <p>A call to a function with a pack tail (<code>va: ...</code>) passes extra trailing arguments past the fixed parameters. The call is monomorphized per distinct list of trailing types, and <code>g(va...)</code> forwards a whole pack. A suffix types a literal where nothing else does. See <a href="variadics.html">Variadic packs</a>.</p>
       <pre class="code"><code><span class="fn">sum</span>(<span class="num">3</span>, <span class="num">10i64</span>, <span class="num">20i64</span>, <span class="num">30i64</span>)</code></pre>
-      <div class="callout note">
-        <span class="callout-label">Not yet implemented</span>
-        <p>Variadic call sites parse, but the callee-side <code>va_list</code> machinery is not yet implemented. See <a href="functions.html">Functions</a>. For the compile-time alternative, see <a href="variadics.html">Variadic packs</a>.</p>
-      </div>
 
       <h3 id="comptime-args">Comptime arguments</h3>
       <p>A comptime argument is passed positionally, just like a runtime argument. The function signature decides whether a given argument must be comptime-knowable.</p>
       <pre class="code"><code><span class="fn">checked_add</span>(MODE_FAST, <span class="num">1</span>, <span class="num">2</span>)    <span class="cmt"># MODE_FAST is comptime-knowable</span></code></pre>
 
       <h2 id="operators">Operators</h2>
-      <p>Operators combine expressions into larger expressions. Precedence follows the usual C-family conventions.</p>
-      <pre class="code"><code><span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = a + b * c;    <span class="cmt"># * binds tighter than +</span></code></pre>
+      <p>Operators combine expressions into larger expressions. Multiplication binds tighter than addition, and comparison binds tighter than <code>&amp;</code>, <code>^</code> and <code>|</code>, so a bit test is parenthesized.</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">n</span>: <span class="type">i64</span> = a + b * c;    <span class="cmt"># * binds tighter than +</span>
+<span class="kw">if</span> ((x &amp; <span class="num">0x0f</span>) != <span class="num">0</span>) { }     <span class="cmt"># x &amp; 0x0f != 0 would be x &amp; (0x0f != 0)</span></code></pre>
+
+      <h3 id="comparison">Comparison</h3>
+      <p><code>==</code> <code>!=</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code> produce a <code>u1</code>, and they relate mathematical values. Integers of any signedness and width compare by their true values, so a negative <code>i64</code> is never equal to, and always less than, any <code>u64</code>. Floats of any width compare after the narrower widens exactly. An integer against a float is a compile error: cast one operand with <code>::</code>.</p>
+      <p>Pointers compare as addresses. A string is a <code>*u8</code>, so <code>==</code> on two strings compares where they are, never their bytes: use <code>std.types.string.str_equals</code> for the contents. <code>==</code> and <code>!=</code> on a whole <code>rec</code>, <code>uni</code> or <code>tag</code> value are refused, since comparing representations would relate padding bytes and inactive cases:</p>
+      <pre class="code"><code><span class="kw">if</span> (p == q) { }     <span class="cmt"># error: cannot compare `Point` values with `==` or `!=`. compare their fields or elements, or use `std.derive.eq`</span></code></pre>
+      <p>An operator over unsuffixed literals takes the type of its context and wraps there, so <code>val max: u8 = 0 - 1;</code> is <code>255</code>. A suffixed literal is that type and is range-checked against it: <code>256u8</code> and <code>-1u32</code> are refused.</p>
 
       <h3 id="vector-operators">Lane-wise operators</h3>
       <p>Vector types carry lane-wise operators at <strong>every</strong> lane count, not only the 128-bit shapes, and <strong>which operators are legal is target-independent</strong>: an <code>f32x8</code> add is as legal as an <code>f32x4</code> one, and the two differ only in how they are realized.</p>
@@ -140,17 +145,17 @@ nil        <span class="cmt"># the nil value</span></code></pre>
         <thead><tr><th>Lane family</th><th><code>+</code> <code>-</code></th><th><code>*</code></th><th><code>/</code></th><th><code>%</code></th><th><code>&amp; | ^ ~</code></th><th><code>&lt;&lt; &gt;&gt;</code></th><th>comparisons</th></tr></thead>
         <tbody>
           <tr><td>float</td><td>yes</td><td>yes</td><td>yes</td><td>no</td><td>-</td><td>no</td><td>same-shape unsigned mask</td></tr>
-          <tr><td>integer</td><td>yes</td><td>yes</td><td>no</td><td>no</td><td>yes</td><td>no</td><td>same-shape unsigned mask</td></tr>
+          <tr><td>integer</td><td>yes</td><td>yes</td><td>yes</td><td>no</td><td>yes</td><td>yes, by a same-shape count</td><td>same-shape unsigned mask</td></tr>
         </tbody>
       </table>
-      <p>Both operands must be the <strong>same</strong> vector shape: there is no implicit scalar-to-vector mixing and no cross-shape widening. Anything the table marks <code>no</code> is a compile error, not a silent fallback.</p>
+      <p>Both operands must be the <strong>same</strong> vector shape: there is no implicit scalar-to-vector mixing and no cross-shape widening. Anything the table marks <code>no</code> is a compile error, not a silent fallback. A shift's count is a vector of the shifted type, so <code>v &lt;&lt; 3</code> is an error and <code>v &lt;&lt; u32x4{3, 3, 3, 3}</code> is the spelling. An operation the target computes lane by lane, such as an integer vector divide, warns at its site under <code>vector.scalarize</code> in a build with debug information.</p>
       <p>A comparison produces the same-shape <strong>unsigned mask</strong> vector - one lane per input lane, all-ones bits for true and all-zeros for false, exactly what the hardware compare yields. There is no vector-bool type, and select is not an operator: it is the library idiom <code>(mask &amp; a) | (~mask &amp; b)</code> over matching integer lanes.</p>
       <pre class="code"><code><span class="kw">val</span> <span class="param">a</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">1.0</span>, <span class="num">2.0</span>, <span class="num">3.0</span>, <span class="num">4.0</span>};
 <span class="kw">val</span> <span class="param">b</span>: <span class="type">f32x4</span> = <span class="type">f32x4</span>{<span class="num">4.0</span>, <span class="num">3.0</span>, <span class="num">2.0</span>, <span class="num">1.0</span>};
 <span class="kw">val</span> <span class="param">sum</span>:  <span class="type">f32x4</span> = a + b;       <span class="cmt"># lane-wise -> {5.0, 5.0, 5.0, 5.0}</span>
 <span class="kw">val</span> <span class="param">mask</span>: <span class="type">u32x4</span> = a &lt; b;       <span class="cmt"># -> {0xFFFFFFFF, 0xFFFFFFFF, 0, 0}</span></code></pre>
       <h3 id="sel-operator">Case selection: sel</h3>
-      <p>The <code>sel place.case</code> expression tests the active case of a tag, returning a <code>bool</code>. In comptime reflection over <code>$cases(T)</code>, <code>sel place.[case]</code> tests the reflected case.</p>
+      <p>The <code>sel place.case</code> expression tests the active case of a tag. It reads only the discriminator and is an ordinary <code>u1</code>, so it can be stored, negated, or combined with <code>&amp;&amp;</code> and <code>||</code>. In comptime reflection over <code>$cases(T)</code>, <code>sel place.[case]</code> tests the reflected case.</p>
       <pre class="code"><code><span class="kw">if</span> (<span class="kw">sel</span> <span class="param">r</span>.<span class="param">ok</span>) {
     <span class="kw">val</span> <span class="param">value</span>: <span class="type">i64</span> = <span class="param">r</span>.<span class="param">ok</span>;
 }</code></pre>
@@ -186,6 +191,7 @@ nil        <span class="cmt"># the nil value</span></code></pre>
       <a class="sub" href="#variadic-calls">Variadic calls</a>
       <a class="sub" href="#comptime-args">Comptime arguments</a>
       <a href="#operators">Operators</a>
+      <a class="sub" href="#comparison">Comparison</a>
       <a class="sub" href="#vector-operators">Lane-wise operators</a>
       <a class="sub" href="#sel-operator">Case selection: sel</a>
       <a class="sub" href="#declassify-operator">Declassification: :&gt;T</a>

@@ -1,5 +1,5 @@
-use std.runtime;
 use std.print.printf;
+use std.runtime;
 
 rec Point {
     x: i64;
@@ -21,7 +21,7 @@ fun tally(args: ...) i64 {
 
 #[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {
-    val p: Point = Point { x: 3, y: 4 };
+    val p: Point = Point{x: 3, y: 4};
 
     # one call site, one monomorphized instance for exactly these types
     printf("tally = {}\n", tally(10, p));
