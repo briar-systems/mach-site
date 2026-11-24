@@ -18,12 +18,14 @@ use hedge.service;
 use hedge_task: hedge.task;
 use http.core.field;
 use http.core.method;
+use json.error;
+use json.parse;
+use json_value:    json.value;
 use laurel_secret: laurel.secret;
 use site.llms.markdown;
 use site.text;
 use A: std.allocator;
 use std.allocator.fixed;
-use std.data.json;
 use std.filesystem;
 use io_error: std.io.error;
 use std.print;
@@ -368,24 +370,24 @@ fun body_of(refresher: *Refresher) view.View {
     ret outbound.response(?refresher.exchange).body;
 }
 
-fun parse_body(refresher: *Refresher, output: *json.Value) bool {
+fun parse_body(refresher: *Refresher, output: *json_value.Value) bool {
     fixed.reset(?refresher.heap_state);
-    val body:   view.View                       = body_of(refresher);
-    val parsed: res[json.Value, json.JsonError] = json.parse(body.data::*u8, body.len,
+    val body:   view.View                              = body_of(refresher);
+    val parsed: res[json_value.Value, error.JsonError] = parse.parse(body.data::*u8, body.len,
         ?refresher.heap);
     if (sel parsed.err) { ret false; }
     @output = parsed.ok;
     ret true;
 }
 
-fun find(value: *json.Value, name: str) *json.Value {
-    if (value == nil || value.kind != json.OBJECT) { ret nil; }
-    val found: opt[*json.Value] = json.value_find(value, name);
+fun find(value: *json_value.Value, name: str) *json_value.Value {
+    if (value == nil || value.kind != json_value.OBJECT) { ret nil; }
+    val found: opt[*json_value.Value] = json_value.value_find(value, name);
     if (sel found.none) { ret nil; }
     ret found.some;
 }
 
-fun raw(value: *json.Value) view.View {
+fun raw(value: *json_value.Value) view.View {
     ret view.view(value.str_val::*char, value.str_len);
 }
 
@@ -422,15 +424,15 @@ fun newer(a: *u64, b: *u64) bool {
 
 # the newest vX.Y.Z tag in github's list of matching refs, into `version`
 # without its v
-fun newest(refresher: *Refresher, refs: *json.Value) bool {
-    if (refs.kind != json.ARRAY) { ret false; }
+fun newest(refresher: *Refresher, refs: *json_value.Value) bool {
+    if (refs.kind != json_value.ARRAY) { ret false; }
     val prefix: view.View = text.text("refs/tags/v");
     var best:   [3]u64;
     var found:  bool      = false;
     var i:      usize     = 0;
     for (i < refs.count) {
-        val name: *json.Value = find(?refs.children[i], "ref");
-        if (name != nil && name.kind == json.STRING) {
+        val name: *json_value.Value = find(?refs.children[i], "ref");
+        if (name != nil && name.kind == json_value.STRING) {
             val full:  view.View = raw(name);
             var parts: [3]u64;
             if (full.len > prefix.len && full.len - prefix.len < VERSION_BYTES
@@ -484,7 +486,7 @@ fun start_run(refresher: *Refresher, run: *hedge_task.Run) service.Step {
 fun take_tags(refresher: *Refresher, run: *hedge_task.Run) service.Step {
     var step: service.Step;
     if (!answered(refresher, "mach's tags could not be fetched", ?step)) { ret step; }
-    var refs:   json.Value;
+    var refs:   json_value.Value;
     val parsed: bool = parse_body(refresher, ?refs);
     val found:  bool = parsed && newest(refresher, ?refs);
     outbound.finish(?refresher.exchange);
@@ -524,15 +526,15 @@ fun markdown_name(name: view.View) bool {
 }
 
 # the markdown files of github's directory listing
-fun gather(refresher: *Refresher, listing: *json.Value) bool {
-    if (listing.kind != json.ARRAY) { ret false; }
+fun gather(refresher: *Refresher, listing: *json_value.Value) bool {
+    if (listing.kind != json_value.ARRAY) { ret false; }
     refresher.file_len = 0;
     var i: usize = 0;
     for (i < listing.count) {
-        val entry: *json.Value = ?listing.children[i];
-        val kind:  *json.Value = find(entry, "type");
-        val name:  *json.Value = find(entry, "name");
-        if (kind != nil && kind.kind == json.STRING && name != nil && name.kind == json.STRING
+        val entry: *json_value.Value = ?listing.children[i];
+        val kind:  *json_value.Value = find(entry, "type");
+        val name:  *json_value.Value = find(entry, "name");
+        if (kind != nil && kind.kind == json_value.STRING && name != nil && name.kind == json_value.STRING
             && text.same(raw(kind), text.text("file")) && markdown_name(raw(name))) {
             if (refresher.file_len == MAX_FILES) { ret false; }
             val source: *Source = ?refresher.files[refresher.file_len];
@@ -553,7 +555,7 @@ fun source_name(source: *Source) view.View {
 fun take_listing(refresher: *Refresher) service.Step {
     var step: service.Step;
     if (!answered(refresher, "doc/language could not be listed", ?step)) { ret step; }
-    var listing:  json.Value;
+    var listing:  json_value.Value;
     val parsed:   bool = parse_body(refresher, ?listing);
     val gathered: bool = parsed && gather(refresher, ?listing);
     outbound.finish(?refresher.exchange);

@@ -242,7 +242,7 @@ pub fun now() i64 {
 pub fun put_timestamp(b: *Buf, seconds: i64) {
     var scratch: [40]u8;
     val length:  usize = format.rfc3339(date.datetime_from_time(time.unix(seconds, 0)),
-        ?scratch[0], 40);
+        format.Fraction.digits{0}, ?scratch[0], 40);
     put(b, view.view((?scratch[0])::*char, length));
 }
 
