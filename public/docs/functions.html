@@ -118,6 +118,22 @@
 <span class="kw">val</span> <span class="param">ap</span>: *<span class="kw">fun</span>(<span class="type">i64</span>) <span class="type">i64</span> = ?<span class="fn">identity</span>[<span class="type">i64</span>];   <span class="cmt"># its address</span></code></pre>
       <p>The instance is reached through the same path a call site uses, so the two spellings name one instance under one linkage name. A <strong>bare</strong> <code>f</code> is still not a value and has no address: a generic is a template, not code, and only an instance denotes a function.</p>
 
+      <h3 id="instance-checked">A body is checked at each instantiation</h3>
+      <p>There are no constraints on <code>T</code>, so an operator, a cast, or a literal beside a <code>T</code>-typed operand is resolved against the instance's concrete type. An ordered or numeric algorithm needs no comparator parameter:</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">maxof</span>[<span class="type">T</span>](<span class="param">a</span>: <span class="type">T</span>, <span class="param">b</span>: <span class="type">T</span>) <span class="type">T</span> {
+    <span class="kw">if</span> (a &gt; b) { <span class="kw">ret</span> a; }
+    <span class="kw">ret</span> b;
+}</code></pre>
+      <p>A type that does not support the operator is refused at the instantiation that asked for it, naming that type and pointing into the body:</p>
+      <pre class="code"><code>error[operator.operand_type] `Point` has no ordering. `&lt;`, `&lt;=`, `&gt;` and `&gt;=` order integers and floats
+  @ main.mach:6:29
+6 | fun f(p: Point, q: Point) { maxof[Point](p, q); }
+  |                             ^^^^^^^^^^^^^^^^^^
+  @ main.mach:3:9 in this generic body, checked against this instance's type arguments
+3 |     if (a &gt; b) { ret a; }
+  |         -----</code></pre>
+      <p>A generic nothing instantiates is not checked past name resolution, so a library instantiates its own generics in its own tests.</p>
+
       <h2 id="comptime-params">Comptime value parameters</h2>
       <p>A parameter marked <code>$name: T</code> must be supplied with a value the compiler can resolve at compile time. The body can branch on it with <code>$if</code>, producing different code per call-site instantiation.</p>
       <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">pick_op</span>(<span class="ct">$mode</span>: <span class="type">Mode</span>, <span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> {
@@ -129,6 +145,7 @@
         <span class="kw">ret</span> a + b;
     }
 }</code></pre>
+      <p>The argument is held to the parameter's type, never truncated: <code>narrow(300)</code> against <code>fun narrow($n: u8)</code> reports <code>comptime argument 300 is out of range for u8 (0..255)</code>. A comptime parameter sizes types in the body of its function, so <code>var xs: [N]i64;</code> in <code>fun h($N: i64)</code> is three elements long in <code>h(3)</code>. It never sizes a type in the function's own signature: a parameter or return type spelled with it is refused.</p>
       <div class="callout note">
         <span class="callout-label">Restriction</span>
         <p>Comptime value parameters apply to function parameters only - not record fields, and not other contexts.</p>
@@ -152,6 +169,9 @@
 }</code></pre>
       <p><code>va.len</code> folds to the element count, and <code>g(va...)</code> forwards the whole pack to another pack-tailed callee. See the variadic packs reference for the full rules.</p>
 
+      <h2 id="tail-calls">Tail calls</h2>
+      <p>A call is always a call. <code>ret f(a, b);</code> compiles as an ordinary call followed by a return in every profile, <code>optimize = true</code> included, so each level of recursion takes a frame of its own and a debugger sees every call in a backtrace. An algorithm that must run at any depth is written as a <code>for</code> loop.</p>
+
       <div class="see-also">
         <h2>See also</h2>
         <ul>
@@ -170,8 +190,10 @@
       <a href="#declaring">Declaring a function</a>
       <a href="#generics">Generic type parameters</a>
       <a class="sub" href="#instance-as-value">An instance is a value</a>
+      <a class="sub" href="#instance-checked">Checked at each instantiation</a>
       <a href="#comptime-params">Comptime value parameters</a>
       <a href="#variadics">Variadic packs</a>
+      <a href="#tail-calls">Tail calls</a>
     </nav>
   </div>
 

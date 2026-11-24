@@ -78,27 +78,31 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Visibility</div>
       <h1>Visibility</h1>
-      <p class="lead">Two declaration modifiers control how a symbol is seen: <code>pub</code> decides what crosses a module boundary, and <code>ext</code> declares a body-less function resolved at link time.</p>
+      <p class="lead">Two declaration modifiers control how a symbol is seen: <code>pub</code> decides what crosses a module boundary, and <code>ext</code> declares a function or data binding resolved at link time. What a shared library exports is a third question, answered by <code>#[export]</code>.</p>
 
       <h2 id="pub">The <code>pub</code> modifier</h2>
       <p><code>pub</code> marks a declaration as part of its module's public surface. Other modules that <code>use</code> this module can reference <code>pub</code>-marked symbols by name. A declaration without <code>pub</code> is file-private: only code in the same file can see it.</p>
       <pre class="code"><code><span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">add</span>(<span class="param">a</span>: <span class="type">i64</span>, <span class="param">b</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> a + b; }
 <span class="kw">fun</span> <span class="fn">helper</span>() { ... }            <span class="cmt"># private: only callable inside this file</span>
 <span class="kw">pub</span> <span class="kw">rec</span> <span class="type">Point</span> { <span class="param">x</span>: <span class="type">i64</span>; <span class="param">y</span>: <span class="type">i64</span>; }
-<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Status</span> { <span class="fn">Ready</span>, <span class="fn">Failed</span>(<span class="type">u32</span>) }
+<span class="kw">pub</span> <span class="kw">tag</span> <span class="type">Status</span>: <span class="type">u8</span> { <span class="param">ready</span>; <span class="param">failed</span>: <span class="type">u32</span>; }
 <span class="kw">pub</span> <span class="kw">val</span> <span class="param">MAX</span>: <span class="type">i64</span> = <span class="num">100</span>;</code></pre>
-      <p>The modifier applies to declarations: <code>fun</code>, <code>tag</code>, <code>rec</code>, <code>uni</code>, <code>def</code>, <code>val</code>, <code>var</code>, and <code>ext fun</code>.</p>
+      <p>The modifier applies to declarations: <code>fun</code>, <code>tag</code>, <code>rec</code>, <code>uni</code>, <code>def</code>, <code>val</code>, <code>var</code>, <code>ext fun</code>, <code>ext val</code> and <code>ext var</code>. <code>pub</code> before <code>use</code> or <code>test</code> is accepted and has no effect: a <code>use</code> stays a private import, and a test is never part of a module's public surface.</p>
+      <p>Naming a private symbol from another module is refused:</p>
+      <pre class="code"><code><span class="kw">ret</span> lib.<span class="fn">helper</span>();               <span class="cmt"># error: no symbol `helper` exported by `example.lib`</span></code></pre>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p><code>fwd</code> always publishes and does not take an explicit <code>pub</code> modifier.</p>
       </div>
 
       <h2 id="ext">External functions with <code>ext</code></h2>
-      <p><code>ext</code> declares a function with the C ABI as a forward reference: it has no body, and the linker resolves the symbol at link time. Only functions can be <code>ext</code>.</p>
+      <p><code>ext</code> declares a function or a data binding whose definition lives in another object, as a forward reference the linker resolves. An <code>ext fun</code> has no body and follows the C ABI. An <code>ext val</code> or <code>ext var</code> has no initializer and no storage of its own.</p>
       <pre class="code"><code><span class="deco">#[<span class="fn">symbol</span>(<span class="str">"write"</span>)]</span>
-<span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;</code></pre>
+<span class="kw">pub</span> <span class="kw">ext</span> <span class="kw">fun</span> <span class="fn">libc_write</span>(<span class="param">fd</span>: <span class="type">i64</span>, <span class="param">buf</span>: *<span class="type">u8</span>, <span class="param">n</span>: <span class="type">i64</span>) <span class="type">i64</span>;
+
+<span class="kw">ext</span> <span class="kw">var</span> <span class="param">errno</span>: <span class="type">i32</span>;</code></pre>
       <ul>
-        <li><code>ext fun</code> declarations have no body.</li>
+        <li><code>ext fun</code> declarations have no body, and one with a body is refused.</li>
         <li>The C ABI is the contract: argument and return types must be representable in C.</li>
       </ul>
 
@@ -107,8 +111,15 @@
 
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
-        <p>There are no body-less functions outside of <code>ext fun</code>. Regular forward declarations do not exist.</p>
+        <p>There are no body-less functions outside of <code>ext fun</code> and <code>#[intrinsic]</code>. Regular forward declarations do not exist, and a body-less <code>fun</code> of any other kind is refused with <code>a `fun` needs a body unless it is an `ext fun` or an `intrinsic`</code>.</p>
       </div>
+
+      <h2 id="export">What a shared library exports</h2>
+      <p>A <code>kind = "shared"</code> artifact exports exactly the declarations marked <code>#[export]</code>, in any project of the build, and nothing else. <code>pub</code> states a module's interface to other Mach modules and never exports, so a <code>pub fun</code> is absent from the library's export table. Every other definition, and every instance the compiler makes of a generic or pack function, is hidden. <code>#[export]</code> builds on <code>pub</code> and never replaces it:</p>
+      <pre class="code"><code><span class="deco">#[export]</span>
+<span class="deco">#[<span class="fn">symbol</span>(<span class="str">"area"</span>)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">area</span>(<span class="param">w</span>: <span class="type">i64</span>, <span class="param">h</span>: <span class="type">i64</span>) <span class="type">i64</span> { <span class="kw">ret</span> w * h; }</code></pre>
+      <p><code>#[export]</code> on a declaration without <code>pub</code> is refused with <code>`export` needs `pub`, because a library exports only its public interface</code>. <code>#[symbol]</code> chooses the linker name, not the visibility: without it the export carries the module-qualified name, and a <code>#[symbol]</code> name with no <code>#[export]</code> is still hidden. To export one instantiation of a generic, export a non-generic wrapper around it. An executable exports nothing at all.</p>
 
       <div class="see-also">
         <h2>See also</h2>
@@ -127,6 +138,7 @@
       <a href="#pub">The pub modifier</a>
       <a href="#ext">External functions with ext</a>
       <a class="sub" href="#symbol">Overriding the linker name</a>
+      <a href="#export">What a shared library exports</a>
     </nav>
   </div>
 

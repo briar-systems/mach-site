@@ -91,20 +91,43 @@
 <span class="kw">or</span> {
     ...                     <span class="cmt"># final else (no condition)</span>
 }</code></pre>
+      <p>A condition has type <code>u1</code>, which comparisons, logical operators and <code>sel</code> produce. Any other type is refused, so an integer is compared explicitly: <code>if (n != 0)</code>, never <code>if (n)</code>.</p>
 
       <h3 id="payload-guards">Lexical payload guards</h3>
-      <p>An <code>if (sel p.c)</code> condition opens a compile-time payload guard for the case <code>p.c</code> inside its block. Reading <code>p.c</code> is only permitted within such a dominating guard.</p>
-      <p>Guards also propagate across logical <code>&&</code>: the right side of <code>sel p.c && expr</code> is guarded by the check on the left. In addition, when an <code>if</code> branch exits the enclosing block using <code>ret</code>, <code>brk</code>, or <code>cnt</code>, the compiler knows the exited case cannot reach subsequent statements.</p>
+      <p>An arm whose condition is exactly <code>sel p.c</code> opens a payload guard for <code>p.c</code> inside its block. Reading, writing or taking the address of <code>p.c</code> is legal only inside a guard. A guard is a lexical region, not a flow fact, and there are three ways to open one:</p>
+      <ul>
+        <li>the block of an arm whose condition is <code>sel p.c</code></li>
+        <li>the right operand of <code>&amp;&amp;</code> inside a condition, when <code>sel p.c</code> is its left operand, as in <code>if (sel r.value &amp;&amp; r.value &gt; 0)</code></li>
+        <li>the rest of the enclosing block after a chain whose every arm exits with <code>ret</code>, <code>brk</code> or <code>cnt</code>, for the one case the chain left untested, and likewise a chain's final bare <code>or</code></li>
+      </ul>
+      <pre class="code"><code><span class="kw">tag</span> <span class="type">Shape</span>: <span class="type">u8</span> { <span class="param">dot</span>; <span class="param">line</span>: <span class="type">i64</span>; <span class="param">square</span>: <span class="type">i64</span>; }
+
+<span class="kw">fun</span> <span class="fn">size</span>(<span class="param">s</span>: <span class="type">Shape</span>) <span class="type">i64</span> {
+    <span class="kw">if</span> (<span class="kw">sel</span> s.dot) {
+        <span class="kw">ret</span> <span class="num">0</span>;
+    }
+    <span class="kw">or</span> (<span class="kw">sel</span> s.line) {
+        <span class="kw">ret</span> s.line;                <span class="cmt"># guarded by the arm condition</span>
+    }
+    <span class="kw">or</span> {
+        <span class="kw">ret</span> s.square * s.square;   <span class="cmt"># the one case the arms left untested</span>
+    }
+}</code></pre>
       <div class="callout warn">
         <span class="callout-label">Guard limits</span>
-        <p>An <code>or</code> branch is not guarded because the tested condition failed. Logical <code>||</code> and <code>!</code> do not establish guards. Keep tests to one condition per check when unwrapping payloads.</p>
+        <p>The body of an <code>if (sel p.c &amp;&amp; expr)</code> arm is not guarded: only the right operand is. <code>||</code>, <code>!</code> and every other operator open no guard. Assigning a name the guarded place is spelled with, such as the <code>i</code> of <code>sel items[i].value</code>, ends the guard from that point on, for the whole of a loop that holds the assignment, so read the payload or bind it to a name first. A read after the assignment reports <code>the guard for this payload ended at an assignment to a name in its place that runs before this point</code>.</p>
       </div>
 
       <h2 id="for">Loops: <code>for</code></h2>
-      <p>mach has a single condition-driven loop. The body repeats while the condition holds. There is no for-each form.</p>
+      <p>The one loop is <code>for</code>. The body repeats while the condition holds. There is no for-each form.</p>
       <pre class="code"><code><span class="kw">var</span> <span class="param">i</span>: <span class="type">i64</span> = <span class="num">0</span>;
 <span class="kw">for</span> (i &lt; <span class="num">10</span>) {
     i = i + <span class="num">1</span>;
+}</code></pre>
+      <p>A <code>for</code> with no condition loops until a <code>brk</code> or a <code>ret</code> leaves it.</p>
+      <pre class="code"><code><span class="kw">for</span> {
+    i = i + <span class="num">1</span>;
+    <span class="kw">if</span> (i == <span class="num">3</span>) { <span class="kw">brk</span>; }
 }</code></pre>
 
       <h2 id="ret">Returning: <code>ret</code></h2>
@@ -113,11 +136,11 @@
 <span class="kw">ret</span>;                        <span class="cmt"># return from a void function</span></code></pre>
 
       <h2 id="brk-cnt">Loop control: <code>brk</code> / <code>cnt</code></h2>
-      <p><code>brk</code> exits the enclosing <code>for</code>; <code>cnt</code> skips to the next iteration.</p>
+      <p><code>brk</code> exits the enclosing <code>for</code>; <code>cnt</code> skips to the next iteration. Either one outside any <code>for</code> in its function is refused.</p>
       <pre class="code"><code><span class="kw">for</span> (i &lt; <span class="num">10</span>) {
+    i = i + <span class="num">1</span>;
     <span class="kw">if</span> (i == <span class="num">3</span>) { <span class="kw">cnt</span>; }
     <span class="kw">if</span> (i == <span class="num">8</span>) { <span class="kw">brk</span>; }
-    i = i + <span class="num">1</span>;
 }</code></pre>
       <div class="callout note">
         <span class="callout-label">Note</span>
@@ -125,15 +148,16 @@
       </div>
 
       <h2 id="fin">Deferred cleanup: <code>fin</code></h2>
-      <p><code>fin</code> schedules a statement or block to run when the enclosing scope exits, in reverse order of declaration. It is for cleanup that should happen regardless of how the scope is left.</p>
+      <p><code>fin</code> schedules a block to run when its enclosing block exits, in reverse order of declaration. It is for cleanup that should happen regardless of how the block is left.</p>
       <pre class="code"><code>{
-    <span class="kw">fin</span> counter = counter - <span class="num">1</span>;
+    <span class="kw">fin</span> { counter = counter - <span class="num">1</span>; }
     <span class="kw">fin</span> { counter = counter * <span class="num">2</span>; }
 
-    <span class="cmt"># ... code ...</span>
+    counter = <span class="num">5</span>;
 }
-<span class="cmt"># at scope exit: fin block runs first, then fin counter = counter - 1</span></code></pre>
-      <p><code>fin</code> takes either a single statement (<code>fin stmt;</code>) or a block (<code>fin { ... }</code>). There is no bare-expression form.</p>
+<span class="cmt"># at block exit, in reverse order: counter * 2 runs first, then counter - 1, leaving 9</span></code></pre>
+      <p><code>fin</code> requires a block body. The single-statement form <code>fin stmt;</code> is refused with <code>expected '{' to open 'fin' body</code>.</p>
+      <p>A <code>fin</code> covers only the statements after it in its block. A loop body's fins replay at the end of every iteration. <code>brk</code> and <code>cnt</code> replay the fins of every block they leave, innermost first. <code>ret expr;</code> evaluates its expression first, then replays the fins of every open block, so a fin never changes the returned value. Control cannot leave a <code>fin</code> body outward: a <code>ret</code> inside one is refused, and so is a <code>brk</code> or <code>cnt</code> whose loop encloses the <code>fin</code>.</p>
 
       <h2 id="blocks">Blocks</h2>
       <p><code>{ ... }</code> introduces a new lexical scope. Statements inside run in order, and a block can stand alone to bound the lifetime of locals.</p>

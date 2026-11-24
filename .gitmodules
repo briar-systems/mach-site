@@ -25,3 +25,15 @@
 [submodule "dep/http"]
 	path = dep/http
 	url = https://github.com/briar-systems/mach-http
+[submodule "dep/pki"]
+	path = dep/pki
+	url = https://github.com/briar-systems/mach-pki
+[submodule "dep/encoding"]
+	path = dep/encoding
+	url = https://github.com/briar-systems/mach-encoding
+[submodule "dep/json"]
+	path = dep/json
+	url = https://github.com/briar-systems/mach-json
+[submodule "dep/toml"]
+	path = dep/toml
+	url = https://github.com/briar-systems/mach-toml

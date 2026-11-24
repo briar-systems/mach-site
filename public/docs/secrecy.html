@@ -78,205 +78,243 @@
     <main class="content">
       <div class="breadcrumb"><a href="index.html">Docs</a><span class="sep">/</span>Language<span class="sep">/</span>Secrecy</div>
       <h1>Secrecy</h1>
-      <p class="lead">A program can give away a password it never prints. Writing <code>^</code> in front of a type marks a value as secret, and the compiler then refuses to build code that would leak it - and keeps refusing all the way through optimization.</p>
+      <p class="lead">Writing <code>^</code> in front of a type marks a value as data that must be processed in constant time. The compiler keeps such a value away from branches, memory addresses and variable-time instructions, and in a function marked <code>#[constant_time]</code> it proves the same of the machine code it emits.</p>
 
       <div class="callout warn">
-        <span class="callout-label">Experimental preview</span>
-        <p>The constant-time support is incomplete and unaudited. Read <a href="#assurance">Assurance</a> before relying on any of this. <strong>Do not build production cryptography on it at this version.</strong></p>
+        <span class="callout-label">Scope</span>
+        <p>Constant time is a working feature on linux x86-64 and linux aarch64. Every other target is experimental: the same checks run there, but the targets have not been cross-checked to the same standard. Cache and power side channels are not covered. A secret is a marker for constant time, not a promise of confidentiality: see <a href="#memory">What is promised about memory</a> and <a href="#assurance">Assurance</a>.</p>
       </div>
 
       <h2 id="why">What this is for</h2>
-      <p>Say you check a password by comparing it one character at a time, and stop at the first character that does not match. That is the obvious way to write it, and it is correct - it never prints the password, never logs it, and returns nothing but yes or no.</p>
-      <p>It still gives the password away. An attacker who can <em>time</em> the check learns something from every attempt: a guess starting with the right character takes a hair longer to reject than one starting with the wrong character, because the comparison got one step further before giving up. Guess the first character - only one of them is measurably slower. Keep it, and guess the second. A password that would take longer than the universe to brute-force all at once falls in a few thousand tries, one character at a time.</p>
+      <p>Say you check a password by comparing it one character at a time, and stop at the first character that does not match. That is the obvious way to write it, and it is correct: it never prints the password, never logs it, and returns nothing but yes or no.</p>
+      <p>It still gives the password away. An attacker who can <em>time</em> the check learns something from every attempt: a guess starting with the right character takes a hair longer to reject than one starting with the wrong character, because the comparison got one step further before giving up. Guess the first character, keep the one that is measurably slower, and guess the second. A password that would take longer than the universe to brute-force all at once falls in a few thousand tries, one character at a time.</p>
       <p>Timing is not the only such channel. Three things about a running program are observable without reading its memory:</p>
       <ul>
         <li><strong>Which way it branched.</strong> Taking one path rather than another takes a different amount of time, and leaves different traces in the processor.</li>
         <li><strong>Which memory it touched.</strong> Reading <code>table[secret]</code> pulls exactly that entry into the cache. An attacker sharing the machine can often work out which one.</li>
-        <li><strong>How long an instruction took.</strong> Some instructions - division especially - finish faster or slower depending on the values fed to them.</li>
+        <li><strong>How long an instruction took.</strong> Some instructions, division especially, finish faster or slower depending on the values fed to them.</li>
       </ul>
       <p>The standard defence is to write the code so none of those depend on the secret: compare every character whether or not an earlier one already failed, and combine the results arithmetically instead of branching. This is called <strong>constant-time</strong> code, and it is notoriously easy to get wrong.</p>
 
       <h3 id="why-compiler">Why the compiler has to be involved</h3>
-      <p>Even when you get it right by hand, the compiler can undo it. An optimizer's whole job is to notice that work is unnecessary and remove it - and branch-free code that carefully does the same work every time looks exactly like work worth eliminating. A shortcut you deliberately avoided writing gets helpfully added back, and nothing warns you. The source is still constant-time; the binary is not.</p>
+      <p>Even when you get it right by hand, the compiler can undo it. An optimizer's whole job is to notice that work is unnecessary and remove it, and branch-free code that carefully does the same work every time looks exactly like work worth eliminating. The source is still constant-time and the binary is not.</p>
       <p>So the guarantee cannot live in a coding convention or a library. It has to be something the compiler itself knows about and is obliged to preserve. That is what <code>^</code> is.</p>
-      <pre class="code"><code><span class="cmt"># `^u64` is a secret. the compiler tracks where it flows.</span>
-<span class="deco">#[oblivious]</span>
+      <pre class="code"><code><span class="kw">use</span> <span class="mod">std.types.bool.bool</span>;
+<span class="kw">use</span> <span class="mod">std.types.bool.true</span>;
+
+<span class="cmt"># `^u64` is data the compiler keeps away from branches, addresses and variable-time instructions</span>
+<span class="deco">#[constant_time(</span><span class="str">"hard"</span><span class="deco">)]</span>
 <span class="kw">fun</span> <span class="fn">ct_diff</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> {
     <span class="kw">ret</span> a ^ b;                 <span class="cmt"># one xor, always the same work</span>
 }
 
 <span class="kw">fun</span> <span class="fn">verify</span>(<span class="param">given</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">secret</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="type">bool</span> {
-    <span class="kw">if</span> (given == secret) { <span class="kw">ret</span> <span class="kw">true</span>; }   <span class="cmt"># refused - see below</span>
+    <span class="kw">if</span> (given == secret) { <span class="kw">ret</span> true; }   <span class="cmt"># refused, see below</span>
     <span class="kw">ret</span> (<span class="fn">ct_diff</span>(given, secret)<span class="ct">:&gt;</span><span class="type">u64</span>) == <span class="num">0</span>;
 }</code></pre>
       <p>That branch does not compile:</p>
-      <pre class="code"><code>error: secret value used as a branch condition
-  --&gt; ./src/root.mach:16:5
-   |
-16 |     if (given == secret) { ret true; }
+      <pre class="code"><code>error[secret.branch] secret value used as a branch condition
+   @ src/auth.mach:11:5
+11 |     if (given == secret) { ret true; }   # refused, see below
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: a secret may not steer control flow; branching on it leaks
-     through timing. compute branch-free, or `:>T` to a public value when
-     disclosure is intended</code></pre>
-      <p>Three things are worth drawing out of that. The mistake is caught <strong>when you compile</strong>, not by an audit or a timing measurement after the fact. Secrecy is <strong>part of the type</strong>, so it travels with the value through every function it is passed to - you cannot lose track of which variable holds the sensitive one. And disclosure is possible but never accidental: <code>:&gt;T</code> is the one way to turn a secret back into an ordinary value, so every deliberate release is a visible mark in the source that a reviewer can search for.</p>
-      <p>The rest of this page is the precise version of all that.</p>
+   note compute without branching on it, or declassify with `:&gt;T` when disclosure is intended</code></pre>
+      <p>The mistake is caught <strong>when you compile</strong>, not by an audit or a timing measurement after the fact. Secrecy is <strong>part of the type</strong>, so it travels with the value through every function it is passed to. And disclosure is possible but never accidental: <code>:&gt;T</code> is the one way to turn a secret back into an ordinary value, so every deliberate release is a visible mark in the source that a reviewer can search for.</p>
 
       <h2 id="lattice">The secrecy lattice</h2>
       <p>There are two secrecy levels in a two-point lattice: public is the bottom, secret the top. <code>^</code> lifts a type to secret and binds to the type immediately to its right, so it nests with <code>*</code> and <code>[N]</code> in any order: <code>^u32</code>, <code>*^u8</code>, <code>^*u8</code>, <code>[N]^u8</code>, <code>^MyRec</code>. Doubling collapses: <code>^^T</code> is <code>^T</code>.</p>
       <p>A public value coerces <em>up</em> to secret wherever a secret is expected, with no syntax. The reverse never happens implicitly.</p>
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">up</span>(<span class="param">p</span>: <span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> p; }      <span class="cmt"># public u32 flows into a secret slot</span></code></pre>
-      <p>A <strong>literal is public by construction</strong> and stays public through that coercion: its value sits in the instruction stream, so classifying it as secret would protect nothing. That does not weaken the join below - a value <em>computed</em> with a secret is secret however its other operand is spelled - so <code>v &lt;&lt; 3</code> on a secret <code>v</code> still yields a secret, while the constant <code>3</code> is not mistaken for a secret shift count.</p>
+      <p>A <strong>literal is public by construction</strong> and stays public through that coercion: its value sits in the instruction stream, so classifying it as secret would protect nothing. A value <em>computed</em> with a secret is secret however its other operand is spelled, so <code>v &lt;&lt; 3</code> on a secret <code>v</code> still yields a secret, while the constant <code>3</code> is not mistaken for a secret shift count.</p>
 
       <h2 id="join">Join</h2>
       <p>Any operation with a secret operand yields a secret result. Taint joins across arithmetic, bitwise, shift, and comparison operators, and through a value read out of a secret container.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">mix</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> a + b; }    <span class="cmt"># ^u32 + u32 -> ^u32</span>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">mix</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> a + b; }    <span class="cmt"># ^u32 + u32 -&gt; ^u32</span>
 
 <span class="kw">rec</span> <span class="type">Key</span> { <span class="param">d</span>: <span class="ct">^</span>[<span class="num">32</span>]<span class="type">u8</span>; }
-<span class="kw">fun</span> <span class="fn">first</span>(<span class="param">k</span>: <span class="type">Key</span>) <span class="ct">^</span><span class="type">u8</span> { <span class="kw">ret</span> k.d[<span class="num">0</span>]; }            <span class="cmt"># element of a secret array is ^u8</span></code></pre>
-      <p>Taking the address of a <code>^T</code> value with <code>?</code> gives the public pointer <code>*^T</code> - the address is public, the pointee secret - and dereferencing it with <code>@</code> recovers the secret <code>^T</code>.</p>
+<span class="kw">fun</span> <span class="fn">first</span>(<span class="param">k</span>: <span class="type">Key</span>) <span class="ct">^</span><span class="type">u8</span> { <span class="kw">ret</span> k.<span class="fn">d</span>[<span class="num">0</span>]; }            <span class="cmt"># element of a secret array is ^u8</span></code></pre>
+      <p>A secret array <code>^[N]T</code> coerces to the array of secrets <code>[N]^T</code> with no syntax, and a window <code>x[start, n]</code> over a secret array is the secret array <code>^[n]T</code>. Taking the address of a <code>^T</code> value with <code>?</code> gives the public pointer <code>*^T</code> (the address is public, the pointee secret), and dereferencing it with <code>@</code> recovers the secret <code>^T</code>.</p>
 
       <h2 id="gates">Gates</h2>
-      <p>A secret may not reach a position the leakage model observes. Each is a compile error decided by operand type:</p>
+      <p>A secret may not reach a position the leakage model observes. Each is a compile error decided by operand type, in <strong>every</strong> function, whether or not it carries <code>#[constant_time]</code>:</p>
       <ul>
         <li>a secret branch or loop condition (<code>if</code>, <code>for</code>)</li>
-        <li>a secret left operand of a short-circuiting <code>&amp;&amp;</code> / <code>||</code> - it is the branch the operator keys on; a secret right operand only taints the result</li>
+        <li>a secret left operand of a short-circuiting <code>&amp;&amp;</code> / <code>||</code>, which is the branch the operator keys on. A secret right operand only taints the result</li>
         <li>a secret memory index (<code>table[i]</code> with <code>i</code> secret)</li>
-        <li>a secret memory address - an access through a secret <em>pointer</em>, whether by <code>@p</code>, <code>p[i]</code>, or the auto-deref in <code>p.x</code></li>
-        <li>a secret operand of the always-variable-latency <code>/</code> or <code>%</code></li>
+        <li>a secret memory address: an access through a secret <em>pointer</em>, whether by <code>@p</code>, <code>p[i]</code>, or the auto-deref in <code>p.x</code></li>
+        <li>a secret operand of <code>/</code> or <code>%</code>, whose timing depends on its operands</li>
+        <li>a secret operand of a floating-point operation, whose latency is variable on every target</li>
       </ul>
       <pre class="code"><code><span class="kw">fun</span> <span class="fn">leak</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">t</span>: *<span class="type">u8</span>, <span class="param">p</span>: <span class="ct">^</span>*<span class="type">u8</span>) <span class="type">u8</span> {
     <span class="kw">if</span> (a) { <span class="kw">ret</span> <span class="num">1</span>; }       <span class="cmt"># error: secret value used as a branch condition</span>
-    <span class="kw">ret</span> t[a];               <span class="cmt"># error: secret value used as a memory index</span>
+    <span class="kw">ret</span> <span class="fn">t</span>[a];               <span class="cmt"># error: secret value used as a memory index</span>
     <span class="kw">ret</span> @p;                 <span class="cmt"># error: secret value used as a memory address</span>
 }</code></pre>
       <p>The index and the address are the two halves of one effective address, so both are gated. Only a secret <em>pointer</em> is an address: a <code>^[N]T</code> or <code>^Rec</code> is a secret value living at a public address, and a <code>*^T</code> is a public address to secret storage.</p>
-      <p>Three more gates decide against the target's constant-time capabilities rather than the source alone, so they are reported at lowering: a secret operand of a <strong>floating-point</strong> operation (always variable-latency, gated on every target); a secret operand of an <strong>integer multiply</strong> on a target without a trusted data-independent-timing mode, conservatively every ISA today; and a secret <strong>variable shift count</strong> on a target without a barrel shifter. A secret passed to a variadic pack is also rejected, including one wrapped inside an aggregate.</p>
+      <p>Everything else is free everywhere: a secret moves through storage, arithmetic and calls in any function. Whether an integer <strong>multiply</strong> or a <strong>variable shift</strong> runs in time independent of a secret operand is the target's question, and it is asked inside a <code>#[constant_time]</code> function (see <a href="#soft-and-hard">Soft and hard</a>). A secret value passed to a variadic pack is rejected, including one wrapped inside an aggregate, while a pointer to secret storage (<code>*^u8</code>) is accepted.</p>
       <div class="callout note">
         <span class="callout-label">Note</span>
         <p>The gates are checked against the types of the <strong>instance</strong>, not of the template. A generic's body is re-checked per instantiation under its concrete type arguments, so a <code>T</code> that instantiates to a secret is gated exactly as the secret spelled out in full would be.</p>
       </div>
 
       <h2 id="ask-comptime">Asking about secrecy at comptime</h2>
-      <p><code>$is_secret(T)</code> folds true when <code>T</code> is <code>^</code>-qualified <strong>at the outermost level</strong>. It is a type predicate like <code>$is_record</code> / <code>$is_union</code> / <code>$is_pointer</code>: comptime-only, valid as a <code>$if</code> / <code>$or</code> gate condition, and answered per instantiation inside a generic. The full reference is in <a href="intrinsics.html#is-secret">Intrinsics</a>.</p>
-      <p>It exists because secrecy was otherwise invisible to a library. Every other predicate asks about the shape <em>under</em> the <code>^</code> and so answers false for every secret, which makes <code>$is_record(^u64)</code> and <code>$is_record(u64)</code> the same answer - a reflection walk could only ever meet a secret field as a fallthrough it had to refuse. <code>$is_secret</code> is the positive question, and it is what lets a derive <strong>decide</strong> rather than refuse: a formatter redacts a secret field, a hash refuses one (a data-dependent fold is a leak in the shape of a digest), and an equality picks the constant-time comparison instead of the early-out whose timing <em>is</em> the secret.</p>
-      <pre class="code"><code><span class="kw">rec</span> <span class="type">Session</span> { <span class="param">id</span>: <span class="type">u64</span>; <span class="param">key</span>: <span class="ct">^</span>[<span class="num">32</span>]<span class="type">u8</span>; }
+      <p>A library has two different questions about secrecy, and each has its own predicate. Both are comptime-only, valid as a <code>$if</code> / <code>$or</code> gate condition, and answered per instantiation inside a generic. The full reference is in <a href="intrinsics.html#is-secret">Intrinsics</a>.</p>
+      <ul>
+        <li><code>$is_secret(T)</code> is the per-field question a reflection walk asks: is this type <code>^</code>-qualified at the outermost level? <code>^*u8</code> is, <code>*^u8</code> and <code>[N]^u8</code> are not, and neither is a record with a secret field: the <strong>field</strong> is.</li>
+        <li><code>$holds_secret(T)</code> is the byte-class question a memory primitive asks: is any byte of this type secret, following typed pointers?</li>
+      </ul>
+      <p><code>$is_secret</code> is what lets a derive <strong>decide</strong> rather than refuse: a formatter redacts a secret field, a hash refuses one, and an equality picks the constant-time comparison instead of the early-out whose timing <em>is</em> the secret.</p>
+      <pre class="code"><code>rec Session { id: u64; key: ^[32]u8; }
 
-<span class="ct">$each</span> f <span class="kw">in</span> <span class="ct">$fields</span>(<span class="type">Session</span>) {
-    <span class="ct">$if</span> (<span class="ct">$is_secret</span>(f.type)) { }            <span class="cmt"># redact: no read of `key` is emitted</span>
-    <span class="ct">$or</span> { <span class="fn">render</span>(s.[f]); }
+$each f in $fields(Session) {
+    $if ($is_secret(f.type)) { }            # redact: no read of `key` is emitted
+    $or { render(s.[f]); }
 }</code></pre>
-      <p><strong>Outermost only</strong>, the same line the rest of the family draws. <code>^*u8</code> is secret - the pointer <em>is</em> the secret, which is the shape the welded-storage rules exist for. <code>*^u8</code> is not: it is a public address to secret storage, and <code>$is_secret($pointee_of(f.type))</code> asks about the pointee. <code>[N]^u8</code> is not, and neither is a record with a secret field - the <strong>field</strong> is, and that is where a walk meets the question.</p>
-      <p>There is deliberately no transitive "contains a secret anywhere" query: the per-field question is the one a walk actually has, and answering the transitive one in its place would make the common case wrong.</p>
-      <div class="callout note">
-        <span class="callout-label">Note</span>
-        <p>A walk that skips a secret field is pinned by the flow rules rather than by convention - reading one into a public accumulator does not compile, so a walk that gates wrongly is a compile error, not a silent disclosure.</p>
-      </div>
+      <p>A walk must not gate on <code>$holds_secret</code>: it would redact a whole record over one field and still could not say which field was the secret. A walk that skips a secret field is pinned by the flow rules rather than by convention, since reading one into a public accumulator does not compile.</p>
 
       <h2 id="downgrade">Downgrade with <code>:&gt;T</code></h2>
-      <p><code>:&gt;T</code> is the only way to remove <code>^</code>. It produces a new public value of type <code>T</code> and never reinterprets storage in place. The destination type <code>T</code> must always be named explicitly.</p>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> a<span class="ct">:&gt;</span><span class="type">u32</span>; }</code></pre>
-      <p><code>:&gt;T</code> peels exactly the outer qualifier, so it can never launder a welded pointee - <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may neither add nor drop <code>^</code>.</p>
+      <p><code>:&gt;T</code> is the only way to remove <code>^</code>, in every function. It produces a new public value and never reinterprets storage in place, and it always names the public type it lands on, which must be the operand's type without <code>^</code>.</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">publish</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="type">u32</span> { <span class="kw">ret</span> <span class="param">a</span><span class="ct">:&gt;</span><span class="type">u32</span>; }
+<span class="kw">fun</span> <span class="fn">publish2</span>(<span class="param">a</span>: <span class="ct">^</span>*<span class="type">u8</span>) *<span class="type">u8</span> { <span class="kw">ret</span> <span class="param">a</span><span class="ct">:&gt;</span>*<span class="type">u8</span>; }</code></pre>
+      <p><code>:&gt;T</code> peels exactly the outer qualifier, so it never reaches a welded pointee: <code>*^T</code> stays <code>*^T</code>. <code>::</code> and <code>:~</code> may add <code>^</code> at a value position but never drop it. There is no untyped form: <code>:^</code> is not an operator.</p>
+      <p>A module constant whose type holds a secret has no compile-time value, so it cannot size an array, gate a <code>$if</code> or feed a comptime parameter. An author who means the value writes the declassification where it is used:</p>
+      <pre class="code"><code><span class="kw">val</span> <span class="param">K</span>: <span class="ct">^</span><span class="type">u64</span> = <span class="num">7</span>;
+
+<span class="kw">fun</span> <span class="fn">take</span>(<span class="ct">$c</span>: <span class="type">u64</span>) <span class="type">u64</span> { <span class="kw">ret</span> c; }
+
+<span class="kw">fun</span> <span class="fn">main_value</span>() <span class="type">u64</span> {
+    <span class="kw">ret</span> <span class="fn">take</span>(<span class="param">K</span><span class="ct">:&gt;</span><span class="type">u64</span>);   <span class="cmt"># a compile-time 7, declassified here</span>
+}</code></pre>
 
       <h2 id="welded">Welded-storage pointers</h2>
-      <p>Secrecy is fixed at declaration and is non-launderable, which makes the public/secret aliasing leak unconstructable with no alias analysis at all:</p>
+      <p>Secrecy is fixed at declaration and cannot be changed by aliasing, which makes the public/secret aliasing leak unconstructable with no alias analysis at all:</p>
       <ul>
         <li>a <code>^T</code> is stored only through a <code>*^T</code>, never a <code>*T</code></li>
         <li>a secret-welded pointer cannot be erased to the untyped <code>ptr</code></li>
-        <li>a <code>uni</code>'s overlapping variants must agree on secrecy</li>
+        <li>a <code>uni</code>'s overlapping variants must agree on secrecy, and a <code>tag</code>'s cases share a byte only where they agree on its class</li>
       </ul>
-      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: cannot erase a secret pointer to ptr</span>
-<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: variants disagree on secrecy</span></code></pre>
-      <p>The union rule is a property of the union <strong>type</strong>, not of the syntax that declared it, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
-      <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>] { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">erase</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>) <span class="type">ptr</span> { <span class="kw">ret</span> p; }     <span class="cmt"># error: expected ptr, found *^u8</span>
+<span class="kw">uni</span> <span class="type">Bad</span> { <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>; <span class="param">b</span>: <span class="type">u32</span>; }          <span class="cmt"># error: overlapping fields are part secret</span></code></pre>
+      <p>The union rule is a property of the union <strong>type</strong>, so it holds for an inline <code>uni { ... }</code> and at every <em>instance</em> of a generic union. At the declaration a variant typed by a generic parameter says nothing about secrecy, so the check happens where each instance is formed.</p>
+      <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span>[<span class="type">T</span>]   { <span class="param">a</span>: <span class="type">T</span>; <span class="param">b</span>: <span class="type">u32</span>; }
 <span class="kw">rec</span> <span class="type">Box</span>[<span class="type">T</span>] { <span class="param">u</span>: <span class="type">U</span>[<span class="type">T</span>]; }
 
 <span class="kw">var</span> <span class="param">s</span>: <span class="type">U</span>[<span class="ct">^</span><span class="type">u32</span>];                       <span class="cmt"># error: this instantiation makes the variants disagree</span>
-<span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u32</span>];                     <span class="cmt"># same error: the instance need not be spelled</span></code></pre>
-      <p>Welding extends to <strong>nested aggregates</strong>: a <code>*Pair</code> whose <code>x</code> field is <code>^u64</code> has a welded field, so <code>?p.x</code> yields a <code>*^u64</code> and inherits the refusal.</p>
+<span class="kw">var</span> <span class="param">b</span>: <span class="type">Box</span>[<span class="ct">^</span><span class="type">u64</span>];                     <span class="cmt"># same error: the instance need not be spelled</span>
+<span class="kw">var</span> <span class="param">p</span>: <span class="type">U</span>[<span class="type">u32</span>];                        <span class="cmt"># fine, and so is an all-secret instantiation</span></code></pre>
+      <p>The check is deep and fails closed: a secret nested anywhere inside an aggregate counts as secret at these boundaries. A pointer cast between two record types is compared byte by byte, so a narrowing that keeps the class of every byte it covers is accepted, and a widening past a secret is refused. Comparing and ordering two pointers is allowed whatever their pointees' secrecy, since a <code>*^T</code> is a public address.</p>
 
-      <h2 id="oblivious"><code>#[oblivious]</code> - the codegen contract</h2>
-      <p>The flow typing constrains the <em>source</em>; <code>#[oblivious]</code> carries the obligation through <em>codegen</em>. Inside a function carrying it, the backend must not introduce a secret-dependent branch or select a variable-latency instruction on a secret operand.</p>
-      <pre class="code"><code><span class="deco">#[oblivious]</span>
-<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> { <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask); }</code></pre>
-      <p>A function instance that <strong>computes</strong> on a secret must carry it; one that only moves, stores, or declassifies secrets is transparent and stays annotation-free. The check runs per monomorphized instance.</p>
-      <p>A secret-taint bit is threaded from sema's flow typing through IR and MIR to the emitted instruction stream, preserved across every value replacement, inline clone, instruction selection, and register-allocator copy. The one place taint stops is the declassify barrier a <code>:&gt;T</code> cast lowers to. Secret-free code carries no taint and compiles byte-identically. A <strong>translation validator</strong> then re-derives the taint over the lowered MIR as a monotone dataflow fixpoint and independently re-checks the leakage conditions. The stages after that MIR are trusted, not re-checked: see <a href="#assurance-scope">Where the check runs</a>.</p>
-
-      <h3 id="oblivious-asm">Inline assembly inside an oblivious function</h3>
-      <p>Inline <code>asm</code> inside such a function is <strong>validated</strong>, not rejected. The block is parsed into instructions and walked for the same three leaks the compiler checks everywhere else. Taint enters through the block's <code>{name}</code> bindings, whose secrecy is stamped from the local's declared type. What the walk cannot model, it refuses:</p>
-      <table>
-        <thead><tr><th>Construct</th><th>Why it is refused</th></tr></thead>
-        <tbody>
-          <tr><td>a body that does not parse</td><td>nothing to analyze</td></tr>
-          <tr><td>a data directive (<code>.byte</code>, <code>.word</code>, <code>.long</code>, <code>.quad</code>)</td><td>its payload can encode any instruction</td></tr>
-          <tr><td>a mnemonic the target has not classified</td><td>its timing behaviour is unknown</td></tr>
-          <tr><td>a flags-conditioned branch (x86-64 <code>jcc</code>, aarch64 <code>b.&lt;cond&gt;</code>)</td><td>its condition rides the flags register, which the inline-asm effect model does not represent</td></tr>
-        </tbody>
-      </table>
-      <p>That last row is a per-target asymmetry worth stating precisely. A branch whose condition is a <strong>register operand</strong> is visible to the walk and is checked: aarch64's <code>cbz</code> / <code>cbnz</code>, and every riscv64 branch, which compares two registers - RISC-V has no flags register at all. A branch whose condition rides the <strong>flags register</strong> cannot be checked, because a <code>cmp</code> of a secret before it would be invisible, so those are refused.</p>
-      <p><code>#[oblivious]</code> remains a <strong>per-function</strong> contract. A call out to a non-oblivious function is not validated - that is the boundary the decorator draws, not a hole in it.</p>
-
-      <h2 id="zeroize">The zeroizing-write guarantee</h2>
-      <p>Wiping a secret is only useful if the wipe survives to run. That guarantee exists, but it is <strong>not</strong> provided by <code>#[oblivious]</code>, and it is scoped more broadly than the decorator is. A store into secret storage is tainted at lowering, keyed on the storage rather than on any decorator:</p>
-      <pre class="code"><code><span class="cmt"># no decorator: the wipe is protected anyway</span>
-<span class="kw">fun</span> <span class="fn">clear</span>(<span class="param">p</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">usize</span>) {
-    <span class="kw">var</span> <span class="param">i</span>: <span class="type">usize</span> = <span class="num">0</span>;
-    <span class="kw">for</span> (i &lt; n) { p[i] = <span class="num">0</span>; i = i + <span class="num">1</span>; }
+      <h2 id="constant-time"><code>#[constant_time]</code> - the codegen contract</h2>
+      <p>The flow typing constrains the <em>source</em>. <code>#[constant_time(mode)]</code> carries the obligation through <em>codegen</em>, and its mode, <code>"soft"</code> or <code>"hard"</code>, is required. Inside a function carrying it, in either mode, the emitted machine code holds to three conditions:</p>
+      <ul>
+        <li>no branch depends on a secret,</li>
+        <li>no memory address depends on a secret,</li>
+        <li>no instruction whose timing depends on its operands receives a secret, by the target's own list: Intel's data operand independent timing instructions on x86-64, the instructions Arm marks data-independent under DIT on aarch64, Zkt's on riscv64.</li>
+      </ul>
+      <pre class="code"><code><span class="deco">#[constant_time(</span><span class="str">"hard"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">ct_select</span>(<span class="param">mask</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">a</span>: <span class="ct">^</span><span class="type">u32</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u32</span>) <span class="ct">^</span><span class="type">u32</span> {
+    <span class="kw">ret</span> (a &amp; mask) | (b &amp; ~mask);
 }</code></pre>
-      <p><strong>What it covers.</strong> Memory reached through a pointer that escapes the function - the shape a <code>zeroize</code> helper has. Such a store cannot be promoted out of memory, and the taint is present for any future pass to read.</p>
-      <p><strong>What it does not cover.</strong> A value the compiler keeps in a <strong>register</strong>. Writing to a promoted local is not a memory write, so wiping one is not preserved:</p>
-      <pre class="code"><code><span class="kw">var</span> <span class="param">x</span>: <span class="ct">^</span><span class="type">u8</span> = k;
-x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x` may never have been in memory</span></code></pre>
-      <p>Adding <code>#[oblivious]</code> does not change this. To wipe reliably, write through a pointer whose target is memory the compiler cannot promote away.</p>
+      <p>The check walks the encoded code of each such function, after instruction selection, register allocation, spilling and frame layout, so a secret the compiler's own passes route to a branch, an address or a variable-time instruction is refused, never emitted. Secret-free code compiles byte-identically. No function is required to carry the mark: a function that computes on a secret without it compiles, held to the gates above and to nothing more, with no promise about the timing of its code.</p>
+
+      <h3 id="calls">The signature is the call contract</h3>
+      <p>A call trusts the callee's declaration and never reads its body: the callee's mode and which bytes of each parameter and of its result are secret are all the caller's check knows of it. The callee's own build holds its body to that declaration, so a definition that breaks it fails its own module. A constant-time function may pass a secret only to a callee that is declared <code>#[constant_time]</code> in a mode it may rely on, that it names directly or reaches through a function type marked constant time, and that is not <code>#[weak]</code>:</p>
+      <pre class="code"><code><span class="kw">fun</span> <span class="fn">helper</span>(<span class="param">k</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> { <span class="kw">ret</span> k + <span class="num">1</span>; }
+
+<span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">derive</span>(<span class="param">k</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> {
+    <span class="kw">ret</span> <span class="fn">helper</span>(k);          <span class="cmt"># error: helper is not declared constant time</span>
+}</code></pre>
+      <p>A soft caller may call either mode. A hard caller may call a hard callee, or a soft one where the build guarantees every timing mode a soft function's code may be held under: every x86-64 build, an aarch64 build with <code>dit</code> and a riscv64 build with <code>zkt</code>. A trusted callee's result is what its declaration says it is, so a constant-time caller may branch on a public status a trusted callee returns. A call that passes no secret and reaches none needs nothing of its callee.</p>
+      <p>A function type carries a constant-time mode as part of its identity. The only spelling is an alias marked with the decorator, and a value of it holds only a function declared constant time in that mode or a stronger one:</p>
+      <pre class="code"><code><span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">def</span> <span class="param">Seal</span>: <span class="kw">fun</span>(*<span class="ct">^</span><span class="type">u8</span>, <span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span>;
+
+<span class="kw">rec</span> <span class="type">Cipher</span> { <span class="param">id</span>: <span class="type">u64</span>; <span class="param">seal</span>: <span class="type">Seal</span>; }
+
+<span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">sum</span>(<span class="param">data</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> {
+    <span class="kw">var</span> <span class="param">acc</span>: <span class="ct">^</span><span class="type">u64</span> = <span class="num">0</span>;
+    <span class="kw">var</span> <span class="param">i</span>:   <span class="type">u64</span>  = <span class="num">0</span>;
+    <span class="kw">for</span> (i &lt; n) {
+        acc = acc + <span class="fn">data</span>[i]::<span class="ct">^</span><span class="type">u64</span>;
+        i   = i + <span class="num">1</span>;
+    }
+    <span class="kw">ret</span> acc;
+}
+
+<span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">seal_with</span>(<span class="param">table</span>: *<span class="type">Cipher</span>, <span class="param">which</span>: <span class="type">u64</span>, <span class="param">data</span>: *<span class="ct">^</span><span class="type">u8</span>, <span class="param">n</span>: <span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> {
+    <span class="kw">ret</span> <span class="fn">table</span>[which].<span class="fn">seal</span>(data, n);   <span class="cmt"># trusted as a direct call of a soft function</span>
+}</code></pre>
+      <p>A value converts with no cast from a stronger mode to a weaker one, hard to soft and any marked type to the plain one, and nothing converts the other way. A marked function type is passed, returned and called as the plain one in every calling convention.</p>
+
+      <h3 id="declassification">Declassification</h3>
+      <p><code>:&gt;T</code> is the declassification inside a constant-time function too. A value that went through <code>:&gt;T</code> is public for every purpose there: it may decide a branch, form an index or an address, be stored into public memory and be returned as a public result. The promise of <code>#[constant_time]</code> is that nothing secret that was not explicitly declassified decides timing or reaches public storage or a public result. A value declassified in part is public only in that part.</p>
+      <p>The checker cannot judge what the author declared public. Each <code>:&gt;T</code> is a claim the author makes and a reviewer checks, and <code>mach check --declassified</code> lists those claims, one a line, as <code>file:line:column: function: type</code>:</p>
+      <pre class="code"><code><span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">pub</span> <span class="kw">fun</span> <span class="fn">is_zero</span>(<span class="param">x</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="type">u64</span> {
+    <span class="kw">val</span> <span class="param">d</span>: <span class="type">u64</span> = ((x | (<span class="num">0</span> - x)) &gt;&gt; <span class="num">63</span>)<span class="ct">:&gt;</span><span class="type">u64</span>;   <span class="cmt"># a claim: whether x is zero is public</span>
+    <span class="kw">ret</span> <span class="num">1</span> - d;
+}</code></pre>
+      <pre class="code"><code>$ mach check . --declassified
+   checked  scratch  linux-x86_64  debug   229ms
+src/tag.mach:3:18: is_zero: ^u64</code></pre>
+
+      <h3 id="ct-asm">Inline assembly inside a constant-time function</h3>
+      <p>Inline <code>asm</code> inside such a function is <strong>validated</strong>, not rejected. The block is encoded with the rest of the function and the walk reads its bytes as it reads every other instruction, so nothing about a block is taken on trust from its text. Every register is seeded at the function's entry from the declaration, flags are tracked bit by bit, and a store of a secret is admitted only into memory something states may hold one. What the walk cannot read, it refuses: bytes that decode to no instruction, an instruction whose effects are undecided, and control that leaves the block where the walk cannot follow it. A data directive is refused outright. A block may not turn the processor's timing mode off. See <a href="asm.html#vector-secrecy">Inline assembly</a> for the binding rules.</p>
+      <p>The mark is refused on a SPIR-V target, whose module a downstream compiler translates, and warned on wasm, whose runtime decides the instructions that run.</p>
+
+      <h2 id="soft-and-hard">Soft and hard</h2>
+      <p>Some instructions have data-independent timing only under a processor mode. An aarch64 multiply is data-independent only while the DIT mode is on, which user code turns on with <code>msr dit, 1</code> and which a processor without FEAT_DIT does not have. On riscv the same promise is the Zkt extension, and on x86-64 Intel's DOITM, which the kernel owns. A constant-time function's mode says what happens when the build cannot be sure the promise holds.</p>
+      <ul>
+        <li><strong><code>soft</code></strong> holds the mode where it can and runs anyway where it cannot. The function saves, sets and restores the DIT bit around itself where the processor has it, guarded by a byte the standard library's start sets from what the system reports. Without DIT the function still runs, with the code-level rules held and the instruction timing left to the processor.</li>
+        <li><strong><code>hard</code></strong> is decided when the program is compiled, never at run time. The target must guarantee data-independent timing for every operation the function uses: aarch64 needs DIT in the target's baseline, as darwin-arm64 has it, riscv needs Zkt in the selection, and x86-64's scalar instructions pass. Otherwise the build is refused naming the missing feature.</li>
+      </ul>
+      <pre class="code"><code><span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">mul_soft</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> { <span class="kw">ret</span> a * b; }
+
+<span class="deco">#[constant_time(</span><span class="str">"hard"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">mul_hard</span>(<span class="param">a</span>: <span class="ct">^</span><span class="type">u64</span>, <span class="param">b</span>: <span class="ct">^</span><span class="type">u64</span>) <span class="ct">^</span><span class="type">u64</span> { <span class="kw">ret</span> a * b; }</code></pre>
+      <pre class="code"><code>$ mach build . -t linux-aarch64
+error[secret.target_unguaranteed] 'scratch.mul.mul_hard' of 'scratch.mul' requires hard constant time, and its code runs in constant time only under FEAT_DIT, which the target does not guarantee. select it in the target's `isa` or `ext`, or mark the function soft
+  @ src/mul.mach:5:5
+5 | fun mul_hard(a: ^u64, b: ^u64) ^u64 { ret a * b; }
+  |     ^</code></pre>
+      <p>Selecting <code>dit</code> in the target's <code>isa</code> or <code>ext</code>, or marking the function soft, builds it. <code>$mach.build.ct_mul(op, width)</code> answers at comptime whether a multiply runs in constant time on the target, so a library can choose a hardware or a bit-serial path (see <a href="comptime.html#build">The comptime channel</a>). In a constant-time function a secret multiply the check does not clear is a compile error: the compiler never substitutes a slower loop for it.</p>
+      <p>For code that holds the mode by hand, the standard library keeps <code>std.system.dit.enable</code>, <code>disable</code> and <code>read</code> on aarch64, and <code>std.crypto.ct.begin</code>.</p>
+
+      <h2 id="memory">What is promised about memory</h2>
+      <p>The compiler promises two things of secret data: a constant-time function processes it in constant time, and no value typed secret reaches a public one without a <code>:&gt;</code>. It does not promise memory hygiene. A function's stack slots, spills and registers are not wiped when it returns, so a secret's bytes can remain in dead stack memory. Bytes nothing wrote, such as a public record's padding or the unused bytes of a union, are unspecified and may hold whatever was there before. A long-lived buffer holding a secret is wiped by its author with the standard library's helpers, such as <code>std.crypto.ct.zeroize</code>.</p>
+      <p>The check takes such bytes as their type states them. Reading bytes nothing wrote is the program's to avoid, in marked code as in any other:</p>
+      <pre class="code"><code><span class="kw">uni</span> <span class="type">U</span> { <span class="param">a</span>: <span class="type">u8</span>; <span class="param">b</span>: [<span class="num">6</span>]<span class="type">u64</span>; }
+
+<span class="kw">fun</span> <span class="fn">make</span>() <span class="type">U</span> { <span class="kw">ret</span> <span class="type">U</span>{<span class="param">a</span>: <span class="num">1</span>}; }       <span class="cmt"># writes one byte of the 48</span>
+
+<span class="deco">#[constant_time(</span><span class="str">"soft"</span><span class="deco">)]</span>
+<span class="kw">fun</span> <span class="fn">look</span>(<span class="param">u</span>: *<span class="type">U</span>) <span class="type">u64</span> {
+    <span class="kw">if</span> (u.<span class="fn">b</span>[<span class="num">1</span>] != <span class="num">0</span>) { <span class="kw">ret</span> <span class="num">1</span>; }     <span class="cmt"># reads bytes nothing wrote</span>
+    <span class="kw">ret</span> <span class="num">0</span>;
+}</code></pre>
+      <p><code>look</code> builds, and what it branches on is what the stack held when <code>make</code> ran. Read the member that was written, and write or send a record member by member.</p>
 
       <h2 id="trusted-base">Trusted base</h2>
-      <p>The only secret-to-public crossings are the explicit <code>:&gt;T</code> cast and inline <code>asm</code> blocks. Everything else is enforced. A proof is always relative to a leakage model, and its fidelity to real silicon is empirical.</p>
-      <p>The contract is only offered where mach emits the instructions that execute. A target whose back half hands a module to a downstream compiler instead - the SPIR-V backend - <strong>rejects <code>#[oblivious]</code></strong>: neither that translation nor the device's timing behaviour is covered by the leakage model. Compile constant-time code for a machine target, and pass such a target only public data.</p>
+      <p>The guarantee rests on four parts: the secrecy check of the source, the lowering that carries each secret through selection, allocation, spilling and framing to the emitted instructions, the walk of each constant-time function's encoded code against the timing class of every instruction it executes, and the hardware timing mode where an instruction needs one.</p>
+      <p>The checker verifies the functions marked <code>#[constant_time]</code>, their <code>asm</code> included. Code that is not marked is trusted to follow the type system and its declared signatures, and <code>asm</code> outside a constant-time function is not checked. A proof is always relative to a leakage model, and its fidelity to real silicon is empirical.</p>
 
       <h2 id="assurance">Assurance</h2>
-      <div class="callout warn">
-        <span class="callout-label">Read this first</span>
-        <p>The constant-time guarantee is incomplete. This support is an experimental preview and has not been audited. <strong>Do not build production cryptography on it at this version.</strong></p>
-      </div>
-      <p>What holds today: the type system checks that the source respects the leakage model, <code>#[oblivious]</code> carries the obligation through codegen, and the translation validator independently re-checks the lowered MIR. All three are static. Two host-executed measurements sit under them, and each only means anything on the machine it runs on, which is why both are unit tests rather than build checks.</p>
-
-      <h3 id="assurance-harness">The timing harness is a tool, not a gate</h3>
-      <p><code>mach.lang.ct.probe</code> is a dudect-style harness in the compiler's tree. <code>mach test</code> runs it at deliberately tiny sample counts and prints its table. It asserts <strong>nothing about the numbers</strong>, not a threshold and not positivity, because even "a mean is positive" proved to be a property of the host's clock resolution rather than of the harness (<a href="https://github.com/briar-systems/mach/issues/3092" target="_blank">mach#3092</a>). The run can only fail if the harness itself crashes. <strong>No property of a measured time gates anything</strong>, here or anywhere else in the suite.</p>
-      <p>That is deliberate and it is not a gap. A dudect score is a statistic over wall-clock time on hardware nobody controls, so any threshold over it has a false-failure rate that belongs to the machine rather than to the code. A required check that can fail nondeterministically is worse than no check: it teaches a reader to re-run a red constant-time result until it turns green. An earlier form of this harness did assert on such thresholds, and failed a release gate on <code>x86_64-darwin</code> and then passed a re-run of the identical commit (<a href="https://github.com/briar-systems/mach/issues/3070" target="_blank">mach#3070</a>).</p>
-      <p>So the claims below are <strong>measurements, taken deliberately</strong>, not properties the test suite enforces. They are re-taken by raising the counts in <code>mach.lang.ct.probe</code> and reading the printed table, on a quiet machine, by a person who then reads the numbers. Performance and timing work belongs in <a href="https://github.com/briar-systems/mach-bench" target="_blank">mach-bench</a>, which is built for it, rather than in a correctness suite that must be deterministic.</p>
-      <p>What such a measurement can establish is bounded. It works by refutation, because that is all a timing measurement can do: a clean score is consistent with a leak the instrument cannot see. So each mode carries a <em>planted</em> leak that must be detected, and a constant-time reference that must not separate the way the planted one does. Read the separation between the two class means, never <code>|t|</code>. Welch's statistic divides by the sample variance, and concurrent load inflates the variance without moving the means, so <code>|t|</code> collapses under load while the leak is plainly still there. Measured at load average 27, six consecutive runs of one binary gave <code>|t|</code> between 7.51 and 11.24 against a threshold of 10, while the mean ratio never fell below 3.4.</p>
-      <p>A third probe leaks nothing at all and says whether a run counts. Any separation <em>it</em> shows is the machine rather than the code, so a run in which it is not flat has no discriminating power, and its verdict means nothing in either direction. A flat null is necessary and not sufficient: it must also be sampled at a comparable cost to the probe it is bounding, or a quiet control at one magnitude certifies nothing about noise at another.</p>
-
-      <h3 id="assurance-flags">The x86-64 flags table is measured, not inferred</h3>
-      <p>The inline-asm model <code>#[oblivious]</code> rests on classifies eighteen x86-64 instructions by which ones <em>define</em> ZF and CF, which merely write them, and which read them. That table is re-derived on x86-64 hosts by <code>mach.lang.target.isa.x64.probe</code>, which runs each instruction twice with RFLAGS preset all-set and all-clear and compares what the CPU did against the transcription. Defining the flags is the only fact that clears a taint, so a row that drifts from the silicon is a permission rather than a refusal.</p>
-      <p>Three rows are exempt and classified by reasoning instead. <code>popfq</code>, <code>iretq</code> and <code>syscall</code> pass the writer probe cleanly and are still not definers, because their flags come from the stack, the interrupt frame, or an existing value masked through <code>IA32_FMASK</code>. Where a value came <em>from</em> is structural rather than measurable. A host that is not x86-64 declines the probe by name.</p>
-
-      <h3 id="assurance-channels">What a timing harness can and cannot assure</h3>
-      <p>The leakage model has three channels, and no single sampling regime covers them (<a href="https://github.com/briar-systems/mach/issues/2363" target="_blank">mach#2363</a>):</p>
-      <table>
-        <thead><tr><th>Channel</th><th>Assured by</th></tr></thead>
-        <tbody>
-          <tr><td>control-flow trace</td><td>the source-level branch gate. A latency-mode measurement can corroborate.</td></tr>
-          <tr><td>variable-latency operands</td><td>the sema and lowering gates. A latency-mode measurement can corroborate.</td></tr>
-          <tr><td>memory-address trace</td><td>the source-level <strong>secret-index and secret-address gates</strong>. Only an address-mode measurement can corroborate.</td></tr>
-        </tbody>
-      </table>
-      <p>The two harness modes need opposite sampling and neither substitutes for the other. Latency mode times a large batch of calls per sample, which is what lifts a running-time difference above clock resolution. That same batching <em>hides</em> an address-trace leak: every call in a batch is handed the same input, so after the first call both input classes are reading a warm cache line and the single cache miss carrying the signal is averaged away. Measured on one function, a secret-indexed read over a table larger than the last-level cache, latency mode scored <code>|t|</code> of about 1 to 15 across runs, straddling its own threshold so it neither confirmed nor denied, while address mode, at one call per sample, scored in the hundreds. Two consequences worth stating plainly:</p>
-      <ul>
-        <li>A clean latency-mode number for a table lookup is <strong>not</strong> evidence of address-trace safety. It is the wrong instrument for that channel.</li>
-        <li>An address-trace leak is only <em>measurable</em> when the table exceeds the last-level cache. A cache-resident table leaks its index just as truly and no timing harness will see it. For small tables the property rests entirely on the secret-index gate and on reading the emitted code.</li>
-      </ul>
-
-      <h3 id="assurance-scope">Where the check runs</h3>
-      <p>The constant-time contract is checked at the <strong>IR level</strong>. The validator runs over the lowered, target-independent MIR before width legalization, instruction selection, register allocation, spilling, frame insertion, and encoding, and trusts those stages to be timing-preserving. What it refuses, it refuses closed: an operation it does not know, an out-of-range register reference, and inline assembly without a complete effect declaration are rejected, never defaulted to public.</p>
-      <p>A proof over the final allocated machine program, after selection, allocation, spills and frame insertion, over physical registers and flags, is planned additive work (<a href="https://github.com/briar-systems/mach/issues/3591" target="_blank">mach#3591</a>) and not something this version claims. Where mach does not own the later stages at all, as with a whole-module emitter such as SPIR-V, the contract is refused rather than assumed.</p>
+      <p><strong>The guarantee.</strong> For code marked <code>#[constant_time]</code> and compiled for a covered target, the emitted machine code's branches and memory addresses never depend on secret values, and no instruction whose timing depends on its operands receives a secret. A build that cannot prove it is refused.</p>
+      <p><strong>Covered targets.</strong> Linux x86-64 and linux aarch64. Every other target is experimental: linux riscv64 and riscv32, darwin, windows, uefi and every freestanding target run the same checks but have not been cross-checked to the same standard. wasm compiles a constant-time function with a warning, and SPIR-V refuses one.</p>
+      <p><strong>Out of scope.</strong> Cache and power side channels. An access past the object a pointer addresses, including past a narrowed pointer cast: secrecy holds for in-bounds accesses only. Confidentiality of memory, as stated above.</p>
+      <p><strong>The x86-64 caveat.</strong> The x86-64 timing rows come from Intel's "Data Operand Independent Timing Instructions" list, which holds while DOITM is on. Intel states that a processor which does not enumerate DOITM behaves as if it were on for the listed instructions. AMD publishes no equivalent list, so on AMD processors the guarantee rests on Intel's list with no statement from AMD behind it.</p>
+      <p><strong>Independent checking.</strong> Two independent analyzers cross-check the emitted binaries: BINSEC's checkct, and valgrind's memcheck with the secret marked undefined (ctgrind). On linux x86-64 both have run, and checkct on linux aarch64, without and with optimization: neither reported anything on the constant-time functions, and both flagged the planted control and memory leaks wherever they ran. ctgrind on linux aarch64 waits for aarch64 hardware.</p>
 
       <div class="see-also">
         <h2>See also</h2>
         <ul>
           <li><a href="types.html">Types</a> - the compound type grammar <code>^</code> qualifies</li>
-          <li><a href="decorators.html#oblivious">Decorators</a> - the <code>#[oblivious]</code> reference</li>
-          <li><a href="asm.html">Inline assembly</a> - the blocks an oblivious function may contain</li>
+          <li><a href="decorators.html#constant-time">Decorators</a> - the <code>#[constant_time]</code> reference</li>
+          <li><a href="asm.html">Inline assembly</a> - the blocks a constant-time function may contain</li>
+          <li><a href="intrinsics.html#is-secret">Intrinsics</a> - <code>$is_secret</code> and <code>$holds_secret</code></li>
           <li><a href="expressions.html">Expressions</a> - the <code>::</code> / <code>:~</code> casts that preserve secrecy</li>
         </ul>
       </div>
@@ -287,22 +325,21 @@ x = <span class="num">0</span>;          <span class="cmt"># NOT guaranteed: `x`
     <nav class="toc" aria-label="On this page">
       <div class="toc-title">On this page</div>
       <a href="#why">What this is for</a>
-      <a class="sub" href="#why-compiler">Why the compiler is involved</a>
+      <a class="sub" href="#why-compiler">Why the compiler has to be involved</a>
       <a href="#lattice">The secrecy lattice</a>
       <a href="#join">Join</a>
       <a href="#gates">Gates</a>
       <a href="#ask-comptime">Asking about secrecy at comptime</a>
       <a href="#downgrade">Downgrade with :&gt;T</a>
       <a href="#welded">Welded-storage pointers</a>
-      <a href="#oblivious">#[oblivious]</a>
-      <a class="sub" href="#oblivious-asm">Inline assembly inside it</a>
-      <a href="#zeroize">The zeroizing-write guarantee</a>
+      <a href="#constant-time">#[constant_time]</a>
+      <a class="sub" href="#calls">The signature is the call contract</a>
+      <a class="sub" href="#declassification">Declassification</a>
+      <a class="sub" href="#ct-asm">Inline assembly inside a constant-time function</a>
+      <a href="#soft-and-hard">Soft and hard</a>
+      <a href="#memory">What is promised about memory</a>
       <a href="#trusted-base">Trusted base</a>
       <a href="#assurance">Assurance</a>
-      <a class="sub" href="#assurance-harness">The timing harness</a>
-      <a class="sub" href="#assurance-flags">The x86-64 flags table</a>
-      <a class="sub" href="#assurance-channels">What a harness can assure</a>
-      <a class="sub" href="#assurance-scope">Where the check runs</a>
     </nav>
   </div>
 

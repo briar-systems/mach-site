@@ -3,8 +3,8 @@ use std.types.error.err;
 use std.types.result.res;
 use std.types.size.usize;
 
-use A:    std.allocator;
-use page: std.allocator.page;
+use A: std.allocator;
+use std.allocator.page;
 
 #[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {

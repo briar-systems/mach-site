@@ -108,9 +108,9 @@
       <p>Mach builds itself, so compiling from source needs an existing <code>mach</code> installation. Install a release first, then clone, pull dependencies, and build.</p>
       <pre class="code"><code>git clone https://github.com/briar-systems/mach
 cd mach
-mach dep pull
+mach dep pull .
 mach build .</code></pre>
-      <p>The compiler is written to <code>out/&lt;target&gt;/bin/mach</code>, where <code>&lt;target&gt;</code> is the selected target name.</p>
+      <p>The compiler is written to <code>out/&lt;target&gt;/&lt;profile&gt;/bin/mach</code>, for example <code>out/linux-x86_64/debug/bin/mach</code>. <code>mach build</code> never fetches, so <code>mach dep pull .</code> comes first.</p>
       <div class="callout warn">
         <span class="callout-label">Restriction</span>
         <p>Because mach is self-hosted, there is no bootstrap path without a working <code>mach</code> binary. Use the quick installer or a precompiled binary to get the first compiler, then build from source.</p>

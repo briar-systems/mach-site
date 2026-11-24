@@ -19,12 +19,14 @@ use hedge.service;
 use hedge_task: hedge.task;
 use http.core.field;
 use http.core.method;
+use json.error;
+use json.parse;
+use json_value:    json.value;
 use laurel_secret: laurel.secret;
 use site.catalog.snapshot;
 use site.text;
 use A: std.allocator;
 use std.allocator.fixed;
-use std.data.json;
 use std.filesystem;
 use io_error: std.io.error;
 use std.print;
@@ -112,9 +114,9 @@ pub rec Refresher {
     body:       [REQUEST_BYTES]u8;
     body_len:   usize;
     listing:    [LISTING_BYTES]u8;
-    listed:     json.Value;
-    entries:    *json.Value;
-    categories: *json.Value;
+    listed:     json_value.Value;
+    entries:    *json_value.Value;
+    categories: *json_value.Value;
     targets:    [MAX_ENTRIES]Target;
     target_len: usize;
     batch_at:   usize;
@@ -380,18 +382,18 @@ fun answered_ok(refresher: *Refresher) bool {
     ret outbound.response(?refresher.exchange).status == 200;
 }
 
-fun find(value: *json.Value, name: str) *json.Value {
-    if (value == nil || value.kind != json.OBJECT) { ret nil; }
-    val found: opt[*json.Value] = json.value_find(value, name);
+fun find(value: *json_value.Value, name: str) *json_value.Value {
+    if (value == nil || value.kind != json_value.OBJECT) { ret nil; }
+    val found: opt[*json_value.Value] = json_value.value_find(value, name);
     if (sel found.none) { ret nil; }
     ret found.some;
 }
 
-fun is_string(value: *json.Value) bool {
-    ret value != nil && value.kind == json.STRING;
+fun is_string(value: *json_value.Value) bool {
+    ret value != nil && value.kind == json_value.STRING;
 }
 
-fun raw(value: *json.Value) view.View {
+fun raw(value: *json_value.Value) view.View {
     ret view.view(value.str_val::*char, value.str_len);
 }
 
@@ -433,15 +435,15 @@ fun github_repo(address: view.View, owner: *view.View, name: *view.View) bool {
 
 # checks the listing and gathers the github repositories it points at
 fun gather(refresher: *Refresher) bool {
-    val root: *json.Value = ?refresher.listed;
+    val root: *json_value.Value = ?refresher.listed;
     refresher.entries    = find(root, "entries");
     refresher.categories = find(root, "categories");
-    if (refresher.entries == nil || refresher.entries.kind != json.ARRAY
-        || refresher.categories == nil || refresher.categories.kind != json.ARRAY
+    if (refresher.entries == nil || refresher.entries.kind != json_value.ARRAY
+        || refresher.categories == nil || refresher.categories.kind != json_value.ARRAY
         || refresher.entries.count > MAX_ENTRIES) { ret false; }
     var i: usize = 0;
     for (i < refresher.categories.count) {
-        val item: *json.Value = ?refresher.categories.children[i];
+        val item: *json_value.Value = ?refresher.categories.children[i];
         if (!is_string(find(item, "id")) || !is_string(find(item, "title"))
             || !is_string(find(item, "description"))) { ret false; }
         i = i + 1;
@@ -449,7 +451,7 @@ fun gather(refresher: *Refresher) bool {
     refresher.target_len = 0;
     i                    = 0;
     for (i < refresher.entries.count) {
-        val item: *json.Value = ?refresher.entries.children[i];
+        val item: *json_value.Value = ?refresher.entries.children[i];
         if (!is_string(find(item, "id")) || !is_string(find(item, "name"))
             || !is_string(find(item, "url")) || !is_string(find(item, "description"))
             || !is_string(find(item, "category"))) { ret false; }
@@ -490,7 +492,7 @@ fun write_query(refresher: *Refresher) bool {
     ret text.fits(?b);
 }
 
-fun put_quoted(b: *text.Buf, value: *json.Value) {
+fun put_quoted(b: *text.Buf, value: *json_value.Value) {
     text.put_byte(b, '"');
     text.put(b, raw(value));
     text.put_byte(b, '"');
@@ -503,14 +505,14 @@ fun owner_official(login: view.View) bool {
 }
 
 # the github object of one entry from one repository of the answer
-fun write_meta(refresher: *Refresher, index: usize, repo: *json.Value) bool {
-    val name:   *json.Value = find(repo, "nameWithOwner");
-    val owner:  *json.Value = find(find(repo, "owner"), "login");
-    val stars:  *json.Value = find(repo, "stargazerCount");
-    val forks:  *json.Value = find(repo, "forkCount");
-    val pushed: *json.Value = find(repo, "pushedAt");
+fun write_meta(refresher: *Refresher, index: usize, repo: *json_value.Value) bool {
+    val name:   *json_value.Value = find(repo, "nameWithOwner");
+    val owner:  *json_value.Value = find(find(repo, "owner"), "login");
+    val stars:  *json_value.Value = find(repo, "stargazerCount");
+    val forks:  *json_value.Value = find(repo, "forkCount");
+    val pushed: *json_value.Value = find(repo, "pushedAt");
     if (!is_string(name) || !is_string(owner) || !is_string(pushed) || stars == nil
-        || stars.kind != json.NUMBER || forks == nil || forks.kind != json.NUMBER) {
+        || stars.kind != json_value.NUMBER || forks == nil || forks.kind != json_value.NUMBER) {
         ret false;
     }
     val start: usize    = refresher.meta_len;
@@ -527,18 +529,18 @@ fun write_meta(refresher: *Refresher, index: usize, repo: *json.Value) bool {
     put_quoted(?b, pushed);
     text.put_str(?b, ",\"license\":");
     # github reports NOASSERTION for a license file it cannot classify
-    val license: *json.Value = find(repo, "licenseInfo");
-    val spdx:    *json.Value = find(license, "spdxId");
-    val called:  *json.Value = find(license, "name");
+    val license: *json_value.Value = find(repo, "licenseInfo");
+    val spdx:    *json_value.Value = find(license, "spdxId");
+    val called:  *json_value.Value = find(license, "name");
     if (is_string(spdx) && !text.same(raw(spdx), text.text("NOASSERTION"))) {
         put_quoted(?b, spdx);
     }
     or (is_string(called)) { put_quoted(?b, called); }
     or                     { text.put_str(?b, "null"); }
     text.put_str(?b, ",\"release\":");
-    val release:   *json.Value = find(repo, "latestRelease");
-    val tag:       *json.Value = find(release, "tagName");
-    val published: *json.Value = find(release, "publishedAt");
+    val release:   *json_value.Value = find(repo, "latestRelease");
+    val tag:       *json_value.Value = find(release, "tagName");
+    val published: *json_value.Value = find(release, "publishedAt");
     if (is_string(tag) && is_string(published)) {
         text.put_str(?b, "{\"tag\":");
         put_quoted(?b, tag);
@@ -559,13 +561,13 @@ fun write_meta(refresher: *Refresher, index: usize, repo: *json.Value) bool {
 # longer resolves comes back null and its entry is kept without metadata
 fun take_answer(refresher: *Refresher) bool {
     fixed.reset(?refresher.query_state);
-    val body:   view.View                       = body_of(refresher);
-    val parsed: res[json.Value, json.JsonError] = json.parse(body.data::*u8, body.len,
+    val body:   view.View                              = body_of(refresher);
+    val parsed: res[json_value.Value, error.JsonError] = parse.parse(body.data::*u8, body.len,
         ?refresher.query_heap);
     if (sel parsed.err) { ret false; }
-    var root: json.Value  = parsed.ok;
-    val data: *json.Value = find(?root, "data");
-    if (data == nil || data.kind != json.OBJECT) { ret false; }
+    var root: json_value.Value  = parsed.ok;
+    val data: *json_value.Value = find(?root, "data");
+    if (data == nil || data.kind != json_value.OBJECT) { ret false; }
     var i: usize = 0;
     for (i < refresher.batch_len) {
         var alias: [24]u8;
@@ -573,9 +575,9 @@ fun take_answer(refresher: *Refresher) bool {
         text.put_byte(?b, 'r');
         text.put_u64(?b, i::u64);
         alias[b.len] = 0;
-        val target: *Target     = ?refresher.targets[refresher.batch_at + i];
-        val repo:   *json.Value = find(data, (?alias[0])::str);
-        if (repo != nil && repo.kind == json.OBJECT) {
+        val target: *Target           = ?refresher.targets[refresher.batch_at + i];
+        val repo:   *json_value.Value = find(data, (?alias[0])::str);
+        if (repo != nil && repo.kind == json_value.OBJECT) {
             if (!write_meta(refresher, target.entry, repo)) { ret false; }
         }
         or {
@@ -618,7 +620,7 @@ fun write_document(refresher: *Refresher) bool {
     var first: bool  = true;
     var i:     usize = 0;
     for (i < refresher.categories.count) {
-        val item: *json.Value = ?refresher.categories.children[i];
+        val item: *json_value.Value = ?refresher.categories.children[i];
         if (category_used(refresher, raw(find(item, "id")))) {
             if (!first) { text.put_byte(?b, ','); }
             first = false;
@@ -635,8 +637,8 @@ fun write_document(refresher: *Refresher) bool {
     text.put_str(?b, "],\"entries\":[");
     i = 0;
     for (i < refresher.entries.count) {
-        val item:  *json.Value = ?refresher.entries.children[i];
-        val found: *Found      = ?refresher.found[i];
+        val item:  *json_value.Value = ?refresher.entries.children[i];
+        val found: *Found            = ?refresher.found[i];
         if (i != 0) { text.put_byte(?b, ','); }
         text.put_str(?b, "{\"id\":");
         put_quoted(?b, find(item, "id"));
@@ -650,8 +652,8 @@ fun write_document(refresher: *Refresher) bool {
         put_quoted(?b, find(item, "category"));
         if (found.present && found.official) { text.put_str(?b, ",\"official\":true"); }
         or                                   { text.put_str(?b, ",\"official\":false"); }
-        val archived: *json.Value = find(item, "archived");
-        if (archived != nil && archived.kind == json.BOOL && archived.bool_val != 0) {
+        val archived: *json_value.Value = find(item, "archived");
+        if (archived != nil && archived.kind == json_value.BOOL && archived.bool_val != 0) {
             text.put_str(?b, ",\"archived\":true");
         }
         or { text.put_str(?b, ",\"archived\":false"); }
@@ -701,7 +703,7 @@ fun take_entries(refresher: *Refresher) service.Step {
     }
     outbound.finish(?refresher.exchange);
     fixed.reset(?refresher.listing_state);
-    val parsed: res[json.Value, json.JsonError] = json.parse(?refresher.listing[0], body.len,
+    val parsed: res[json_value.Value, error.JsonError] = parse.parse(?refresher.listing[0], body.len,
         ?refresher.listing_heap);
     if (sel parsed.err) { ret failed(refresher, "entries.json is not json", 0); }
     refresher.listed = parsed.ok;

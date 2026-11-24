@@ -14,9 +14,12 @@
 # and the document itself, all in one position-independent block. every
 # record sits at an 8-byte boundary, so the block must start at one.
 
+use json.decode;
+use json.error;
+use json.parse;
+use json_value: json.value;
 use site.text;
 use A: std.allocator;
-use std.data.json;
 use std.types.bool.bool;
 use std.types.bool.false;
 use std.types.bool.true;
@@ -125,19 +128,19 @@ fun reserve(builder: *Builder, length: usize) usize {
 }
 
 # the decoded text of a json string, stored in the block
-fun put_string(builder: *Builder, value: *json.Value) Ref {
-    if (value == nil || value.kind != json.STRING) {
+fun put_string(builder: *Builder, value: *json_value.Value) Ref {
+    if (value == nil || value.kind != json_value.STRING) {
         builder.ok = false;
         ret empty_ref();
     }
-    val measured: res[usize, json.JsonError] = json.value_string_decode(value, nil, 0);
+    val measured: res[usize, error.JsonError] = decode.value_string_decode(value, nil, 0);
     if (sel measured.err) {
         builder.ok = false;
         ret empty_ref();
     }
     val start: usize = reserve(builder, measured.ok);
     if (!builder.ok) { ret empty_ref(); }
-    val decoded: res[usize, json.JsonError] = json.value_string_decode(value,
+    val decoded: res[usize, error.JsonError] = decode.value_string_decode(value,
         ?builder.base[start], measured.ok);
     if (sel decoded.err) {
         builder.ok = false;
@@ -146,15 +149,15 @@ fun put_string(builder: *Builder, value: *json.Value) Ref {
     ret Ref{off: start::u32, len: measured.ok::u32};
 }
 
-fun field(value: *json.Value, name: str) *json.Value {
-    if (value == nil || value.kind != json.OBJECT) { ret nil; }
-    val found: opt[*json.Value] = json.value_find(value, name);
+fun field(value: *json_value.Value, name: str) *json_value.Value {
+    if (value == nil || value.kind != json_value.OBJECT) { ret nil; }
+    val found: opt[*json_value.Value] = json_value.value_find(value, name);
     if (sel found.none) { ret nil; }
     ret found.some;
 }
 
-fun number(value: *json.Value, output: *i64) bool {
-    if (value == nil || value.kind != json.NUMBER || value.is_float != 0) { ret false; }
+fun number(value: *json_value.Value, output: *i64) bool {
+    if (value == nil || value.kind != json_value.NUMBER || value.is_float != 0) { ret false; }
     @output = value.num_val;
     ret true;
 }
@@ -166,10 +169,10 @@ fun timestamp(data: *u8, value: Ref, output: *i64) bool {
     ret true;
 }
 
-fun fill_github(builder: *Builder, item: *Entry, value: *json.Value) {
+fun fill_github(builder: *Builder, item: *Entry, value: *json_value.Value) {
     item.github      = false;
     item.has_release = false;
-    if (value == nil || value.kind == json.NULL) { ret; }
+    if (value == nil || value.kind == json_value.NULL) { ret; }
     item.github      = true;
     item.repo        = put_string(builder, field(value, "repo"));
     item.pushed_text = put_string(builder, field(value, "pushed"));
@@ -178,10 +181,10 @@ fun fill_github(builder: *Builder, item: *Entry, value: *json.Value) {
         builder.ok = false;
         ret;
     }
-    val license: *json.Value = field(value, "license");
-    if (license != nil && license.kind != json.NULL) { item.license = put_string(builder, license); }
-    val release: *json.Value = field(value, "release");
-    if (release != nil && release.kind != json.NULL) {
+    val license: *json_value.Value = field(value, "license");
+    if (license != nil && license.kind != json_value.NULL) { item.license = put_string(builder, license); }
+    val release: *json_value.Value = field(value, "release");
+    if (release != nil && release.kind != json_value.NULL) {
         item.has_release = true;
         item.release     = put_string(builder, field(release, "tag"));
         val published: Ref = put_string(builder, field(release, "published"));
@@ -209,14 +212,14 @@ fun category_index(data: *u8, count: usize, id: Ref) u32 {
 # ret:      the block's length, or 0 when the document is not a catalog or
 #           the block does not fit
 pub fun build(doc: view.View, output: *u8, capacity: usize, arena: *A.Allocator) usize {
-    val parsed: res[json.Value, json.JsonError] = json.parse(doc.data::*u8, doc.len, arena);
+    val parsed: res[json_value.Value, error.JsonError] = parse.parse(doc.data::*u8, doc.len, arena);
     if (sel parsed.err) { ret 0; }
-    var root:       json.Value  = parsed.ok;
-    val categories: *json.Value = field(?root, "categories");
-    val entries:    *json.Value = field(?root, "entries");
-    val generated:  *json.Value = field(?root, "generated");
-    if (categories == nil || categories.kind != json.ARRAY || entries == nil
-        || entries.kind != json.ARRAY || generated == nil || generated.kind != json.STRING) {
+    var root:       json_value.Value  = parsed.ok;
+    val categories: *json_value.Value = field(?root, "categories");
+    val entries:    *json_value.Value = field(?root, "entries");
+    val generated:  *json_value.Value = field(?root, "generated");
+    if (categories == nil || categories.kind != json_value.ARRAY || entries == nil
+        || entries.kind != json_value.ARRAY || generated == nil || generated.kind != json_value.STRING) {
         ret 0;
     }
     val category_bytes: usize   = categories.count * $size_of(Category);
@@ -234,16 +237,16 @@ pub fun build(doc: view.View, output: *u8, capacity: usize, arena: *A.Allocator)
 
     var i: usize = 0;
     for (i < categories.count) {
-        val item:  *Category   = category(output, i);
-        val value: *json.Value = ?categories.children[i];
+        val item:  *Category         = category(output, i);
+        val value: *json_value.Value = ?categories.children[i];
         item.id    = put_string(?builder, field(value, "id"));
         item.title = put_string(?builder, field(value, "title"));
         i          = i + 1;
     }
     i = 0;
     for (i < entries.count && builder.ok) {
-        val item:  *Entry      = entry(output, i);
-        val value: *json.Value = ?entries.children[i];
+        val item:  *Entry            = entry(output, i);
+        val value: *json_value.Value = ?entries.children[i];
         item.id          = put_string(?builder, field(value, "id"));
         item.name        = put_string(?builder, field(value, "name"));
         item.url         = put_string(?builder, field(value, "url"));
@@ -257,10 +260,10 @@ pub fun build(doc: view.View, output: *u8, capacity: usize, arena: *A.Allocator)
         item.forks       = 0;
         item.pushed      = 0;
         item.released    = 0;
-        val official: *json.Value = field(value, "official");
-        item.official = official != nil && official.kind == json.BOOL && official.bool_val != 0;
-        val archived: *json.Value = field(value, "archived");
-        item.archived = archived != nil && archived.kind == json.BOOL && archived.bool_val != 0;
+        val official: *json_value.Value = field(value, "official");
+        item.official = official != nil && official.kind == json_value.BOOL && official.bool_val != 0;
+        val archived: *json_value.Value = field(value, "archived");
+        item.archived = archived != nil && archived.kind == json_value.BOOL && archived.bool_val != 0;
         fill_github(?builder, item, field(value, "github"));
         if (builder.ok) {
             item.index = category_index(output, categories.count, item.category);

@@ -8,8 +8,8 @@
 # llms templates and the CA bundle, and nothing else.
 
 # the compiler, and the sha256 its release lists in SHA256SUMS
-ARG MACH_VERSION=6.5.0
-ARG MACH_SHA256=d08913e34e379d4a0e34f96d7e62d797b87a0e64de3759a34ea6d1812585f2e9
+ARG MACH_VERSION=7.0.0
+ARG MACH_SHA256=3d83d8e90f2adace3b21a6cfb0c3db16a4b541a58d1fe647a9904ad16f0c38ff
 
 FROM debian:bookworm-slim AS build
 ARG MACH_VERSION

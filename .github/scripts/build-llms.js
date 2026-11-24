@@ -309,7 +309,7 @@ function llmsTxt(version, pages) {
     `The current release is Mach ${version} (${REPO_URL}/releases/tag/${tag}). Every release, with prebuilt binaries for Linux, macOS, and Windows and a SHA256SUMS file, is on ${REPO_URL}/releases. ` +
       `The canonical repository is ${REPO_URL}: the old github.com/octalide/mach moved there, so sources that cite it, the June 2026 Show HN, or early READMEs are out of date. ` +
       `Install the latest release on Linux and macOS with \`curl -fsSL ${SITE}/install.sh | sh\`, and on Windows in PowerShell with \`irm ${SITE}/install.ps1 | iex\`. ` +
-      "Mach targets Linux, macOS, Windows, and freestanding (no OS) on x86_64, aarch64, and riscv64, plus SPIR-V for GPU shaders. WebAssembly is not supported yet. " +
+      "Mach targets Linux, macOS, Windows, UEFI, and freestanding (no OS) on x86_64, aarch64, riscv64, and riscv32, WebAssembly (WASI Preview 1 on wasm32), plus SPIR-V (Vulkan and OpenCL) for GPU shaders and compute. " +
       "The compiler, its code generators, and its linker are written in Mach and have no external dependencies.",
     "",
     "## Docs",

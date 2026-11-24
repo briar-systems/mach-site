@@ -254,15 +254,17 @@
                             <div class="panel">
                                 <div class="panel-head">mach.toml</div>
 <pre class="code"><code data-toml>[target.boot]
-isa = "x86_64"
-os  = "freestanding"
-abi = "sysv64"
-of  = "elf"         # loadable by limine or grub</code></pre>
+arch = "x86_64"
+sys  = "freestanding"
+abi  = "sysv64"
+isa  = "x86-64"
+of   = "elf"         # loadable by limine or grub
+stack_reserve = 65536</code></pre>
                             </div>
                             <div class="panel">
                                 <div class="panel-head">src/cpu.mach</div>
 <pre class="code"><code data-mach>pub fun halt() {
-    asm x86_64 {
+    asm x86-64 {
         cli
         hlt
     }
@@ -282,16 +284,16 @@ of  = "elf"         # loadable by limine or grub</code></pre>
                         <div class="use-evidence">
                             <div class="panel">
                                 <div class="panel-head">src/mac.mach</div>
-<pre class="code"><code data-mach>#[oblivious]
-fun check(mac: ^u64, want: ^u64) bool {
+<pre class="code"><code data-mach>#[constant_time("soft")]
+fun check(mac: ^u64, want: ^u64) u8 {
     if (mac == want) {
-        ret true;
+        ret 1;
     }
-    ret false;
+    ret 0;
 }</code></pre>
                             </div>
-<pre class="diagnostic"><b>error: secret value used as a branch condition</b>
-  --&gt; ./src/mac.mach:3:5</pre>
+<pre class="diagnostic"><b>error[secret.branch] secret value used as a branch condition</b>
+  @ src/mac.mach:3:5</pre>
                         </div>
                     </div>
 
@@ -310,14 +312,14 @@ fun check(mac: ^u64, want: ^u64) bool {
     velocity: [64]f32x4;
 }
 
-#[storage(0, 0)]
+#[gpu.storage(0, 0)]
 var particles: Particles;
 
-#[builtin("global_invocation")]
+#[gpu.builtin("global_invocation")]
 var global_id: u32x3;
 
-#[stage("compute")]
-#[workgroup(64, 1, 1)]
+#[gpu.stage("compute")]
+#[gpu.workgroup(64, 1, 1)]
 fun step() {
     val i: u32 = global_id[0];
     particles.position[i] = particles.position[i] + particles.velocity[i];
@@ -326,10 +328,10 @@ fun step() {
                             <div class="panel">
                                 <div class="panel-head">mach.toml</div>
 <pre class="code"><code data-toml>[target.gpu]
-isa = "spirv"
-os  = "freestanding"
-abi = "spirv"
-env = "vulkan1.3"</code></pre>
+arch = "spirv"
+sys  = "vulkan"
+abi  = "shader"
+env  = "vulkan1.3"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -343,8 +345,9 @@ env = "vulkan1.3"</code></pre>
                         <h2 id="targets-title">One source, every target.</h2>
                     </div>
                     <p class="prose">
-                        A target is a fully spelled tuple of isa, os and abi, plus
-                        the extensions every host it runs on is promised to have.
+                        A target is a fully spelled tuple of arch, sys and abi, plus
+                        the instruction set and extensions every host it runs on is
+                        promised to have.
                         Declare them once in <code>mach.toml</code> and one command
                         builds every cell, from a desktop binary to a bare-metal
                         image to a GPU module.
@@ -354,31 +357,34 @@ env = "vulkan1.3"</code></pre>
                     <div class="panel">
                         <div class="panel-head">mach.toml</div>
 <pre class="code"><code data-toml>[target.linux]
-isa = "x86_64"
-os  = "linux"
-abi = "sysv64"
-extensions = ["x86-64-v3", "sha"]
+arch = "x86_64"
+sys  = "linux"
+abi  = "sysv64"
+isa  = "x86-64-v3"
+ext  = ["sha"]
 
 [target.mac]
-isa = "aarch64"
-os  = "darwin"
-abi = "aapcs64"
+arch = "aarch64"
+sys  = "darwin"
+abi  = "darwinpcs"
 
 [target.win]
-isa = "x86_64"
-os  = "windows"
-abi = "win64"
+arch = "x86_64"
+sys  = "windows"
+abi  = "win64"
 
 [target.board]
-isa = "rv32imc"
-os  = "freestanding"
-abi = "ilp32"
+arch = "riscv32"
+sys  = "freestanding"
+abi  = "ilp32"
+isa  = "rv32imc"
+stack_reserve = 4096
 
 [target.gpu]
-isa = "spirv"
-os  = "freestanding"
-abi = "spirv"
-env = "vulkan1.3"</code></pre>
+arch = "spirv"
+sys  = "vulkan"
+abi  = "shader"
+env  = "vulkan1.3"</code></pre>
                     </div>
                     <div class="fanout">
                         <div class="cmd cmd-static"><span class="prompt">&gt;</span><code>mach build . --all</code></div>
@@ -419,7 +425,7 @@ env = "vulkan1.3"</code></pre>
                             </g>
                             <g class="fan-cell">
                                 <rect x="380" y="366" width="252" height="60"></rect>
-                                <text x="394" y="390" class="fan-name">board</text><text x="618" y="390" text-anchor="end" class="fan-sub">.raw</text>
+                                <text x="394" y="390" class="fan-name">board</text><text x="618" y="390" text-anchor="end" class="fan-sub">.elf</text>
                                 <text x="394" y="412" class="fan-sub">rv32imc · bare metal</text>
                             </g>
                             <g class="fan-cell">
@@ -430,8 +436,13 @@ env = "vulkan1.3"</code></pre>
                         </svg>
                         <div class="panel">
                             <div class="panel-head">src/sha.mach · the target's extensions are comptime facts</div>
-<pre class="code"><code data-mach>$if ($mach.build.extensions.sha) {
-    use impl: app.sha.hw;
+<pre class="code"><code data-mach>$if ($mach.build.arch == $mach.arch.x86_64) {
+    $if ($mach.build.ext.sha == 1) {
+        use impl: app.sha.hw;
+    }
+    $or {
+        use impl: app.sha.portable;
+    }
 }
 $or {
     use impl: app.sha.portable;
@@ -446,25 +457,25 @@ $or {
                     </div>
                 </div>
                 <dl class="panel axes">
-                    <dt>isa</dt>
-                    <dd><span>x86_64</span><span>aarch64</span><span>riscv64</span><span>riscv32</span><span>rv32imc, rv64imafd, …</span><span>spirv</span><span class="is-soon">wasm32</span></dd>
-                    <dt>os</dt>
-                    <dd><span>linux</span><span>darwin</span><span>windows</span><span>freestanding</span><span class="is-soon">wasi</span></dd>
+                    <dt>arch</dt>
+                    <dd><span>x86_64</span><span>aarch64</span><span>riscv64</span><span>riscv32</span><span>spirv</span><span>wasm32</span></dd>
+                    <dt>sys</dt>
+                    <dd><span>linux</span><span>darwin</span><span>windows</span><span>freestanding</span><span>uefi</span><span>wasi</span><span>vulkan</span><span>opencl</span></dd>
                     <dt>abi</dt>
-                    <dd><span>sysv64</span><span>win64</span><span>aapcs64</span><span>lp64</span><span>lp64f</span><span>lp64d</span><span>ilp32</span><span>ilp32f</span><span>ilp32d</span><span>spirv</span></dd>
+                    <dd><span>sysv64</span><span>win64</span><span>aapcs64</span><span>darwinpcs</span><span>aapcs64win</span><span>arm64ec</span><span>lp64</span><span>lp64f</span><span>lp64d</span><span>ilp32</span><span>ilp32f</span><span>ilp32d</span><span>ilp32e</span><span>shader</span><span>kernel</span><span>basic</span></dd>
                     <dt>format</dt>
-                    <dd><span>elf</span><span>coff</span><span>macho</span><span>raw</span><span>spv</span><span class="is-soon">wasm</span></dd>
-                    <dt>extensions</dt>
+                    <dd><span>elf</span><span>coff</span><span>macho</span><span>flat</span><span>spirv</span><span>wasm</span></dd>
+                    <dt>isa and ext</dt>
                     <dd><span>x86-64-v2</span><span>x86-64-v3</span><span>x86-64-v4</span><span>sha</span><span>avx2</span><span>avx512f</span><span>…</span><span>sha2</span><span>m a f d c</span><span>zicsr</span><span>zifencei</span><span>zkt</span></dd>
-                    <dt>spir-v env</dt>
-                    <dd><span>vulkan1.0</span><span>vulkan1.1</span><span>vulkan1.2</span><span>vulkan1.3</span></dd>
+                    <dt>env</dt>
+                    <dd><span>gnu</span><span>macos</span><span>msvc</span><span>vulkan1.0</span><span>vulkan1.1</span><span>vulkan1.2</span><span>vulkan1.3</span><span>preview1</span></dd>
                 </dl>
                 <p class="note">
                     x86_64 linux is the primary host. aarch64 linux runs natively in
                     CI, riscv64 linux self-hosts under qemu, darwin self-hosts on both
                     architectures, and windows is a cross-compilation target.
-                    <code>mach info targets</code> lists every tuple your binary can
-                    build. Dashed values are in progress.
+                    <code>mach info targets</code> lists every target your binary can
+                    build.
                 </p>
             </section>
 
@@ -531,7 +542,7 @@ $or {
                     </div>
                     <div class="start-code">
                         <div class="panel">
-                            <div class="panel-head">hello/src/main.mach</div>
+                            <div class="panel-head">hello/src/bin/main.mach</div>
                             <pre class="code"><code data-src="examples/hello.mach"></code></pre>
                             <noscript><a class="note" href="examples/hello.mach">view hello.mach</a></noscript>
                         </div>

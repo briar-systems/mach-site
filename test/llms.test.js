@@ -70,7 +70,7 @@ test("llms.txt carries the facts and the llmstxt.org shape", () => {
   const lines = txt.split("\n");
   assert.equal(lines[0], "# Mach");
   assert.match(lines[2], /^> .*no type inference/);
-  for (const fact of ["Mach 9.8.7", "releases/tag/v9.8.7", "github.com/briar-systems/mach", "octalide/mach", "install.sh | sh", "install.ps1 | iex", "riscv64", "SPIR-V", "WebAssembly is not supported"]) {
+  for (const fact of ["Mach 9.8.7", "releases/tag/v9.8.7", "github.com/briar-systems/mach", "octalide/mach", "install.sh | sh", "install.ps1 | iex", "riscv64", "riscv32", "WebAssembly", "SPIR-V"]) {
     assert.ok(txt.includes(fact), fact);
   }
   assert.ok(txt.includes("- [Types](https://machlang.org/docs/types.html): The types."));

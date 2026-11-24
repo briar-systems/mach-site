@@ -13,8 +13,9 @@
   };
 
   var PRIMITIVES = {
-    i8: 1, i16: 1, i32: 1, i64: 1, u8: 1, u16: 1, u32: 1, u64: 1,
-    usize: 1, isize: 1, f32: 1, f64: 1, bool: 1, str: 1, ptr: 1, void: 1
+    i8: 1, i16: 1, i32: 1, i64: 1, i128: 1, i256: 1, i512: 1,
+    u1: 1, u8: 1, u16: 1, u32: 1, u64: 1, u128: 1, u256: 1, u512: 1,
+    usize: 1, isize: 1, f16: 1, f32: 1, f64: 1, bool: 1, str: 1, ptr: 1, void: 1
   };
 
   // escapes a raw source fragment for safe insertion as HTML text.
