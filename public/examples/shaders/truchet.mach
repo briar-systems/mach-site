@@ -1,0 +1,52 @@
+# truchet tiles: every cell draws the same two arcs, turned or not by a hash
+# of the cell
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+val CELLS: f32 = 9.0;
+
+# a repeatable pseudo-random number in [0, 1) for a cell
+fun hash(cell: f32x2) f32 {
+    ret sh.fract(sh.sin(sh.dot_2(cell, f32x2{127.1, 311.7})) * 43758.547);
+}
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res:   f32x2 = frame.resolution;
+    val p:     f32x2 = sh.scale_2(f32x2{frag_coord[0], frag_coord[1]}, CELLS / res[1]);
+    val cell:  f32x2 = sh.floor_2(p);
+    var local: f32x2 = p - cell;
+
+    # each cell turns over on a beat of its own
+    val seed: f32 = hash(cell);
+    val beat: f32 = sh.floor(frame.time * 0.35 + seed);
+    if (hash(cell + f32x2{beat, seed}) > 0.5) {
+        local = f32x2{1.0 - local[0], local[1]};
+    }
+
+    # two quarter circles about opposite corners, each meeting the cell's edges
+    # at their middles
+    val near: f32 = sh.abs(sh.length_2(local) - 0.5);
+    val far:  f32 = sh.abs(sh.length_2(local - f32x2{1.0, 1.0}) - 0.5);
+    val px:   f32 = CELLS / res[1];
+    val line: f32 = 1.0 - sh.smooth_step(1.0 * px, 2.0 * px, sh.min(near, far));
+
+    # one cell in five is drawn in the accent
+    val accent: f32 = sh.step(0.8, seed);
+    out_colour = f32x4{line, line * (1.0 - accent), line, 1.0};
+}

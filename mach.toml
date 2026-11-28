@@ -84,3 +84,9 @@ ref = "tag/v0.1.0"
 [dep.toml]
 git = "https://github.com/briar-systems/mach-toml"
 ref = "tag/v0.1.0"
+
+# the server imports none of this one: the playground bundles its sources
+# beside std's, so a shader written there can use it
+[dep.shader]
+git = "https://github.com/briar-systems/mach-shader"
+ref = "tag/v0.7.0"

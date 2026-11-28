@@ -1,0 +1,16 @@
+use play.vec;
+use std.print.printf;
+use std.runtime;
+
+# a file under src/ is a module, named by the project and its path: this one
+# is play.main, and vec.mach beside it is play.vec
+#[symbol("main")]
+fun main(argc: i64, argv: **u8) i64 {
+    val a: vec.Vec3 = vec.Vec3{x: 3, y: 4, z: 0};
+    val b: vec.Vec3 = vec.Vec3{x: 1, y: 2, z: 5};
+    val c: vec.Vec3 = vec.add(a, b);
+
+    printf("a + b = ({}, {}, {})\n", c.x, c.y, c.z);
+    printf("a . b = {}\n", vec.dot(a, b));
+    ret 0;
+}

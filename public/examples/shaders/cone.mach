@@ -1,0 +1,59 @@
+# a mach cone: a source moving at twice the speed of the waves it makes
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+val MACH:   f32 = 2.0;
+val FRONTS: i32 = 9;
+
+# how much of a pixel a line `width` pixels wide covers, `d` from its centre
+fun stroke(d: f32, width: f32, px: f32) f32 {
+    ret 1.0 - sh.smooth_step((width * 0.5 - 0.5) * px, (width * 0.5 + 0.5) * px, sh.abs(d));
+}
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res: f32x2 = frame.resolution;
+    val px:  f32   = 1.0 / res[1];
+    val p:   f32x2 = f32x2{(frag_coord[0] - res[0] * 0.8) * px, (frag_coord[1] - res[1] * 0.5) * px};
+
+    # the cone's half angle: sin(angle) = 1 / mach
+    val sine:   f32 = 1.0 / MACH;
+    val cosine: f32 = sh.sqrt(1.0 - sine * sine);
+
+    # each front left the source `age` ago, and has grown at the wave speed since
+    var fronts: f32 = 0.0;
+    var i:      i32 = 0;
+    for (i < FRONTS) {
+        val age:    f32   = sh.fract(frame.time * 0.2 + i::f32 / FRONTS::f32);
+        val centre: f32x2 = f32x2{-age * 1.2, 0.0};
+        val ring:   f32   = stroke(sh.distance_2(p, centre) - age * 1.2 * sine, 1.5, px);
+        fronts = sh.max(fronts, ring * (1.0 - age));
+        i      = i + 1;
+    }
+
+    # the shock is the envelope of the fronts: two lines trailing the source
+    var shock: f32 = 0.0;
+    if (p[0] < 0.0) {
+        shock = stroke(p[0] * sine + sh.abs(p[1]) * cosine, 2.5, px);
+    }
+    val source: f32 = 1.0 - sh.smooth_step(5.0 * px, 6.0 * px, sh.length_2(p));
+    val pink:   f32 = sh.max(shock, source);
+    val white:  f32 = fronts * (1.0 - pink);
+
+    out_colour = f32x4{sh.max(white, pink), white, sh.max(white, pink), 1.0};
+}

@@ -1,2 +1,5 @@
 out/
 node_modules/
+# the playground's compiler and its libraries are built, never committed
+public/playground/mach.wasm
+public/playground/libs.json

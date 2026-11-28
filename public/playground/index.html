@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Mach Playground</title>
+        <meta
+            name="description"
+            content="Write Mach in the browser: the compiler itself runs on the page, builds for any target it knows, runs programs and draws shaders."
+        />
+        <meta name="theme-color" content="#000000" />
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+        <link rel="alternate" type="text/plain" href="/llms-full.txt" title="llms-full.txt" />
+        <link rel="icon" type="image/svg+xml" href="/assets/mach-tile.svg" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/assets/mach_32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/assets/mach_16.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap"
+        />
+        <link rel="stylesheet" href="/style.css" />
+        <link rel="stylesheet" href="/assets/playground/playground.css" />
+        <link rel="canonical" href="https://machlang.org/playground/" />
+    </head>
+    <body class="pg-page">
+        <svg style="display: none" aria-hidden="true">
+            <symbol id="mark" viewBox="0 0 64 64">
+                <path
+                    d="M48.27 23.49 L6.00 0.32 L6.00 8.88 L44.66 30.06 A11.5 11.5 0 0 1 48.27 23.49 Z M48.27 40.51 L6.00 63.68 L6.00 55.12 L44.66 33.94 A11.5 11.5 0 0 0 48.27 40.51 Z"
+                />
+                <circle cx="56" cy="32" r="5.5" />
+            </symbol>
+            <symbol id="icon-github" viewBox="0 0 16 16">
+                <path
+                    d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                />
+            </symbol>
+            <symbol id="icon-play" viewBox="0 0 24 24">
+                <path d="M7 5l12 7-12 7V5z" fill="currentColor"></path>
+            </symbol>
+            <symbol id="icon-stop" viewBox="0 0 24 24">
+                <path d="M6 6h12v12H6z" fill="currentColor"></path>
+            </symbol>
+            <symbol id="icon-caret" viewBox="0 0 24 24">
+                <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2"></path>
+            </symbol>
+            <symbol id="icon-discord" viewBox="0 0 24 24">
+                <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
+            </symbol>
+        </svg>
+
+        <nav class="nav">
+            <div class="wrap nav-inner">
+                <a href="/" class="brand">
+                    <svg class="mark" aria-hidden="true"><use href="#mark" /></svg>
+                    <span>mach</span>
+                </a>
+                <div class="nav-links">
+                    <a href="/docs/">docs</a>
+                    <a href="/playground/" aria-current="page">playground</a>
+                    <a href="/ecosystem/">ecosystem</a>
+                    <a href="https://github.com/briar-systems/mach/blob/main/CHANGELOG.md" target="_blank" rel="noopener" class="nav-extra">changelog</a>
+                    <div class="nav-icons">
+                        <a href="https://discord.com/invite/dfWG9NhGj7" target="_blank" rel="noopener" class="nav-icon" aria-label="Mach on Discord" title="Discord">
+                            <svg aria-hidden="true"><use href="#icon-discord" /></svg>
+                        </a>
+                        <a href="https://github.com/briar-systems/mach" target="_blank" rel="noopener" class="nav-icon" aria-label="Mach on GitHub" title="GitHub">
+                            <svg aria-hidden="true"><use href="#icon-github" /></svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="pg" id="pg">
+            <header class="pg-bar">
+                <div class="pg-bar-side">
+                    <div class="pg-menu">
+                        <button type="button" id="pg-examples-btn" class="pg-btn" aria-haspopup="true" aria-expanded="false" aria-controls="pg-examples">
+                            <span>examples</span>
+                            <svg class="pg-caret" aria-hidden="true"><use href="#icon-caret" /></svg>
+                        </button>
+                        <div id="pg-examples" class="pg-pop pg-examples" hidden></div>
+                    </div>
+                    <button type="button" id="pg-share" class="pg-btn" title="Copy a link to this code and target">share</button>
+                </div>
+                <div class="pg-bar-side">
+                    <div class="pg-menu">
+                        <button type="button" id="pg-target-btn" class="pg-btn" aria-haspopup="true" aria-expanded="false" aria-controls="pg-target">
+                            <span class="pg-btn-key">target</span>
+                            <span id="pg-target-name"></span>
+                            <svg class="pg-caret" aria-hidden="true"><use href="#icon-caret" /></svg>
+                        </button>
+                        <div id="pg-target" class="pg-pop pg-target" hidden></div>
+                    </div>
+                    <button type="button" id="pg-optimize" class="pg-btn pg-toggle" aria-pressed="true" title="Build with the release profile, which optimizes">
+                        <span class="pg-check" aria-hidden="true"></span>
+                        <span>optimize</span>
+                    </button>
+                    <button type="button" id="pg-run" class="pg-btn pg-primary" title="Ctrl+Enter">
+                        <svg aria-hidden="true"><use id="pg-run-icon" href="#icon-play" /></svg>
+                        <span id="pg-run-label">run</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="pg-work" id="pg-work">
+                <aside class="panel pg-libs" id="pg-libs" aria-label="Library sources" hidden>
+                    <div class="pg-head">
+                        <span>libraries</span>
+                        <button type="button" id="pg-libs-close" class="pg-tool" aria-label="Close the library browser">close</button>
+                    </div>
+                    <input id="pg-libs-filter" class="pg-libs-filter" type="search" placeholder="filter files" autocomplete="off" spellcheck="false" aria-label="Filter library files" />
+                    <div id="pg-libs-tree" class="pg-libs-tree"></div>
+                </aside>
+
+                <section class="panel pg-pane" aria-label="Source">
+                    <div class="pg-head">
+                        <div class="pg-tabs" id="pg-files" role="tablist" aria-label="Project files"></div>
+                        <div class="pg-tools">
+                            <button type="button" id="pg-libs-btn" class="pg-tool" aria-pressed="false" title="Browse the std and shader sources">libraries</button>
+                            <button type="button" id="pg-format" class="pg-tool" title="Format with mach fmt (Ctrl+S)">format</button>
+                        </div>
+                    </div>
+                    <div class="pg-editor">
+                        <div class="pg-gutter" aria-hidden="true"><div id="pg-gutter"></div></div>
+                        <div class="pg-stage">
+                            <pre id="pg-backdrop" class="pg-code pg-backdrop" aria-hidden="true"><code id="pg-highlight"></code></pre>
+                            <textarea id="pg-source" class="pg-code pg-source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Mach source"></textarea>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="pg-split" id="pg-split" role="separator" aria-orientation="vertical" aria-label="Resize the panes" tabindex="0"></div>
+
+                <section class="panel pg-pane" aria-label="Result">
+                    <div class="pg-head">
+                        <div class="pg-tabs" id="pg-tabs" role="tablist" aria-label="Result views"></div>
+                        <div class="pg-tools">
+                            <span id="pg-stale" class="pg-chip" hidden title="The source or target changed since this was built">edited</span>
+                            <span id="pg-outcome" class="pg-chip"></span>
+                        </div>
+                    </div>
+
+                    <div class="pg-view" id="pg-view-output" hidden>
+                        <label class="pg-args">
+                            <span class="pg-args-key">args</span>
+                            <input id="pg-args" type="text" placeholder="arguments passed to main" autocomplete="off" spellcheck="false" />
+                        </label>
+                        <pre id="pg-stdout" class="pg-code pg-scroll" tabindex="0"></pre>
+                    </div>
+
+                    <div class="pg-view" id="pg-view-preview" hidden>
+                        <div class="pg-canvas-wrap">
+                            <canvas id="pg-canvas" class="pg-canvas" aria-label="Shader preview"></canvas>
+                            <p id="pg-preview-note" class="pg-note" hidden></p>
+                        </div>
+                        <div class="pg-subbar">
+                            <span class="pg-subbar-group">
+                                <button type="button" id="pg-pause" class="pg-tool">pause</button>
+                                <button type="button" id="pg-restart" class="pg-tool" title="Start the shader's time again from zero">restart</button>
+                            </span>
+                            <span id="pg-preview-stats" class="pg-dim"></span>
+                        </div>
+                    </div>
+
+                    <div class="pg-view" id="pg-view-listing" hidden>
+                        <div class="pg-subbar" id="pg-listing-bar">
+                            <span id="pg-listing-meta" class="pg-dim"></span>
+                            <span class="pg-subbar-group">
+                                <button type="button" id="pg-directives" class="pg-tool" aria-pressed="false" title="Show the assembler directives around the code" hidden>directives</button>
+                                <button type="button" id="pg-download" class="pg-tool" hidden>download .spv</button>
+                                <button type="button" id="pg-copy" class="pg-tool">copy</button>
+                            </span>
+                        </div>
+                        <pre id="pg-listing" class="pg-code pg-scroll" tabindex="0"></pre>
+                    </div>
+
+                    <div class="pg-view pg-scroll" id="pg-view-build" hidden>
+                        <pre id="pg-command" class="pg-command"></pre>
+                        <div id="pg-problems" class="pg-problems"></div>
+                        <table id="pg-phases" class="pg-phases" hidden></table>
+                        <details class="pg-manifest">
+                            <summary>mach.toml, written from the target</summary>
+                            <pre id="pg-manifest" class="pg-code"></pre>
+                        </details>
+                    </div>
+
+                    <p id="pg-empty" class="pg-note" hidden></p>
+                </section>
+            </div>
+
+            <footer class="pg-status">
+                <span id="pg-status-state" class="pg-status-state" role="status" aria-live="polite">starting</span>
+                <span class="pg-status-side">
+                    <button type="button" id="pg-status-problems" class="pg-status-btn" hidden></button>
+                    <span id="pg-status-cursor"></span>
+                    <span id="pg-status-toolchain"></span>
+                </span>
+            </footer>
+        </main>
+
+        <script src="/assets/highlight.js" defer></script>
+        <script src="/assets/playground/project.js" defer></script>
+        <script src="/assets/playground/examples.js" defer></script>
+        <script src="/assets/playground/spirv-grammar.js" defer></script>
+        <script src="/assets/playground/spirv.js" defer></script>
+        <script src="/assets/playground/preview.js" defer></script>
+        <script src="/assets/playground/playground.js" defer></script>
+    </body>
+</html>
