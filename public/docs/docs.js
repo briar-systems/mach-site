@@ -1,33 +1,26 @@
-// docs shell: mobile nav, on-this-page scroll-spy, and a command-palette search.
+// docs shell: mobile nav, on-this-page scroll-spy, and a command-palette search
+// over every page and heading.
 (function () {
-  // the doc map the palette searches (prototype: Overview + Variadics resolve)
-  var PAGES = [
-    { title: "Overview", group: "Start", url: "index.html" },
-    { title: "Install", group: "Start", url: "install.html" },
-    { title: "Hello world", group: "Start", url: "hello-world.html" },
-    { title: "Project layout", group: "Start", url: "project-layout.html" },
-    { title: "Types", group: "Language", url: "types.html" },
-    { title: "Values and variables", group: "Language", url: "values.html" },
-    { title: "Functions", group: "Language", url: "functions.html" },
-    { title: "Expressions", group: "Language", url: "expressions.html" },
-    { title: "Statements", group: "Language", url: "statements.html" },
-    { title: "Records and unions", group: "Language", url: "records-unions.html" },
-    { title: "Modules", group: "Language", url: "modules.html" },
-    { title: "Visibility", group: "Language", url: "visibility.html" },
-    { title: "External functions", group: "Language", url: "ext-fun.html" },
-    { title: "Secrecy", group: "Language", url: "secrecy.html" },
-    { title: "Inline assembly", group: "Language", url: "asm.html" },
-    { title: "GPU shaders", group: "Language", url: "shaders.html" },
-    { title: "The comptime channel", group: "Comptime", url: "comptime.html" },
-    { title: "Intrinsics", group: "Comptime", url: "intrinsics.html" },
-    { title: "Control flow", group: "Comptime", url: "comptime-control.html" },
-    { title: "Variadic packs", group: "Comptime", url: "variadics.html" },
-    { title: "Decorators", group: "Comptime", url: "decorators.html" },
-    { title: "CLI", group: "Tooling", url: "cli.html" },
-    { title: "Manifest", group: "Tooling", url: "manifest.html" },
-    { title: "Dependencies", group: "Tooling", url: "dependencies.html" },
-    { title: "Testing", group: "Tooling", url: "testing.html" }
-  ];
+  // what the palette searches: every page and every heading on it, as
+  // search.js lists them (built with the pages by .github/scripts/build-docs.js)
+  var ENTRIES = [];
+  (window.machDocs || []).forEach(function (p) {
+    ENTRIES.push({ title: p.title, where: p.group, url: p.url, page: true });
+    p.sections.forEach(function (s) {
+      ENTRIES.push({ title: s.title, where: p.title, url: p.url + "#" + s.id, page: false });
+    });
+  });
+
+  // --- version menu: a click elsewhere or Escape closes it ---
+  var versions = document.querySelector(".version-menu");
+  if (versions) {
+    document.addEventListener("click", function (e) {
+      if (versions.open && !versions.contains(e.target)) { versions.open = false; }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { versions.open = false; }
+    });
+  }
 
   // --- mobile sidebar ---
   var toggle = document.querySelector(".menu-toggle");
@@ -64,20 +57,37 @@
     var input = palette.querySelector(".palette-input");
     var list = palette.querySelector(".palette-list");
     var sel = 0;
-    var shown = PAGES.slice();
+    var shown = [];
+
+    function esc(t) {
+      return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // pages first when nothing is typed. a query ranks a title that starts
+    // with it over one that holds it, and a page over a heading
+    function matches(q) {
+      if (!q) { return ENTRIES.filter(function (e) { return e.page; }); }
+      var hits = [];
+      ENTRIES.forEach(function (e) {
+        var at = e.title.toLowerCase().indexOf(q);
+        var near = at === -1 ? (e.where.toLowerCase().indexOf(q) === -1 ? -1 : 2) : (at === 0 ? 0 : 1);
+        if (near !== -1) { hits.push({ e: e, rank: near * 2 + (e.page ? 0 : 1) }); }
+      });
+      hits.sort(function (a, b) { return a.rank - b.rank; });
+      return hits.slice(0, 40).map(function (h) { return h.e; });
+    }
 
     function render() {
-      var q = input.value.trim().toLowerCase();
-      shown = PAGES.filter(function (p) {
-        return !q || (p.title + " " + p.group).toLowerCase().indexOf(q) !== -1;
-      });
+      shown = matches(input.value.trim().toLowerCase());
       if (sel >= shown.length) sel = Math.max(0, shown.length - 1);
       if (!shown.length) { list.innerHTML = '<div class="palette-empty">No matches.</div>'; return; }
       list.innerHTML = shown.map(function (p, i) {
         return '<div class="palette-item' + (i === sel ? " active" : "") + '" data-i="' + i + '">' +
-          '<span class="pi-title">' + p.title + '</span>' +
-          '<span class="pi-group">' + p.group + '</span></div>';
+          '<span class="pi-title">' + esc(p.title) + '</span>' +
+          '<span class="pi-group">' + esc(p.where) + '</span></div>';
       }).join("");
+      var active = list.querySelector(".palette-item.active");
+      if (active) { active.scrollIntoView({ block: "nearest" }); }
     }
     function open() {
       palette.classList.add("open");
@@ -85,7 +95,11 @@
       input.focus();
     }
     function close() { palette.classList.remove("open"); }
-    function go(i) { var p = shown[i]; if (p && p.url !== "#") window.location.href = p.url; else close(); }
+    function go(i) {
+      var p = shown[i];
+      close();
+      if (p) { window.location.href = p.url; }
+    }
 
     trigger.addEventListener("click", open);
     document.addEventListener("keydown", function (e) {
