@@ -67,8 +67,8 @@ media_types = { ps1 = "text/plain; charset=utf-8" }
 kind = "application"
 application = "site"
 
-# both secrets come from the environment, and a process without either refuses
-# to start
+# every secret comes from the environment, and a process without one of them
+# refuses to start
 [secret.github-token]
 provider = "env"
 key = "GITHUB_TOKEN"
@@ -77,9 +77,15 @@ key = "GITHUB_TOKEN"
 provider = "env"
 key = "ECOSYSTEM_WEBHOOK_SECRET"
 
+# a railway project token, which may deploy the one environment it is for
+[secret.railway-token]
+provider = "env"
+key = "RAILWAY_REDEPLOY_TOKEN"
+
 [application.site.secrets]
 github = "github-token"
 webhook = "ecosystem-webhook"
+railway = "railway-token"
 
 # where the catalog comes from. the environment's ECOSYSTEM_SNAPSHOT_PATH, when
 # set, names a file that keeps the last good catalog across restarts
@@ -89,11 +95,23 @@ graphql_url = "https://api.github.com/graphql"
 
 # where llms.txt and llms-full.txt come from: the templates the image builds
 # from public/docs/ (.github/scripts/build-llms.js), relative to the working
-# directory, completed with mach's doc/language at its newest release
+# directory, completed with mach's doc/language at its newest release. mach's
+# tags are read once a period, so a release shows up within one of its tag
 [application.site.settings.llms]
 templates = "llms"
+period_seconds = 900
 api_url = "https://api.github.com/repos/briar-systems/mach"
 raw_url = "https://raw.githubusercontent.com/briar-systems/mach"
+
+# where a rebuild is asked for when a mach release newer than the docs the
+# image holds appears while the server runs: railway's api, and the list of
+# releases the docs were built for (.github/scripts/build-docs.js). railway
+# names the service and the environment in RAILWAY_SERVICE_ID and
+# RAILWAY_ENVIRONMENT_ID, and off the platform, where both are unset, nothing
+# is asked
+[application.site.settings.deploy]
+api_url = "https://backboard.railway.com/graphql/v2"
+built = "public/docs/versions.json"
 
 # a literal path outranks the catch-all, so these reach the application and
 # everything else is a file

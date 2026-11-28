@@ -31,6 +31,9 @@ export default defineRailway(() => {
       LISTEN: "0.0.0.0:8080",
       GITHUB_TOKEN: preserve(),
       ECOSYSTEM_WEBHOOK_SECRET: preserve(),
+      // a project token for this environment, which lets the server ask for a
+      // rebuild when mach tags a release newer than the docs it holds
+      RAILWAY_REDEPLOY_TOKEN: preserve(),
     },
   });
 

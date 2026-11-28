@@ -24,6 +24,7 @@ use laurel.router;
 use laurel_secret: laurel.secret;
 use laurel.security;
 use site.catalog.refresh;
+use site.deploy;
 use llms_refresh: site.llms.refresh;
 use site.text;
 use site.web.handlers;
@@ -51,6 +52,10 @@ val SETTING_BYTES:  usize = 512;
 # the file the catalog is kept in across restarts, a path on a volume. unset
 # keeps none
 val SNAPSHOT_VARIABLE: str = "ECOSYSTEM_SNAPSHOT_PATH";
+# the service and the environment railway runs the process as. unset off the
+# platform, where no rebuild is asked for
+val SERVICE_VARIABLE:     str = "RAILWAY_SERVICE_ID";
+val ENVIRONMENT_VARIABLE: str = "RAILWAY_ENVIRONMENT_ID";
 
 pub rec Site {
     routes:         [ROUTE_COUNT]router.Route;
@@ -78,10 +83,16 @@ pub rec Site {
     templates: [SETTING_BYTES]u8;
     api_url:   [SETTING_BYTES]u8;
     raw_url:   [SETTING_BYTES]u8;
-    state:     handlers.State;
-    refresher: refresh.Refresher;
-    llms:      llms_refresh.Refresher;
-    app:       app.App;
+    # what the deploy settings read into
+    deploy_url:  [SETTING_BYTES]u8;
+    built:       [SETTING_BYTES]u8;
+    service:     [SETTING_BYTES]u8;
+    environment: [SETTING_BYTES]u8;
+    state:       handlers.State;
+    refresher:   refresh.Refresher;
+    llms:        llms_refresh.Refresher;
+    deployer:    deploy.Deployer;
+    app:         app.App;
 }
 
 fun ignore_start(ctx: ptr, event: *observability.RequestEvent) {}
@@ -150,11 +161,59 @@ fun catalog_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
     ret done();
 }
 
+# a setting written in decimal digits alone, into `output`
+fun number(value: view.View, output: *u64) bool {
+    if (value.len == 0 || value.len > 9) { ret false; }
+    var total: u64   = 0;
+    var i:     usize = 0;
+    for (i < value.len) {
+        val c: u8 = value.data[i]::u8;
+        if (c < '0' || c > '9') { ret false; }
+        total = total * 10 + (c - '0')::u64;
+        i     = i + 1;
+    }
+    @output = total;
+    ret true;
+}
+
+# one variable of the environment, or an empty view when it is unset
+fun variable(name: str, output: *u8, found: *view.View) bool {
+    val read: res[opt[usize], env.EnvError] = env.get(name, output, SETTING_BYTES);
+    if (sel read.err) { ret false; }
+    @found = view.view(nil, 0);
+    if (sel read.ok.some) { @found = view.view(output::*char, read.ok.some); }
+    ret true;
+}
+
+# reads what the image's docs hold and where a rebuild is asked for
+fun deploy_start(site: *Site) res[lifecycle.CallbackStatus, view.View] {
+    var settings: deploy.Settings;
+    if (!setting(site, "deploy.api_url", ?site.deploy_url[0], ?settings.api_url)
+        || !setting(site, "deploy.built", ?site.built[0], ?settings.built)) {
+        ret failed("the deploy settings could not be read");
+    }
+    if (settings.api_url.len == 0 || settings.built.len == 0) {
+        ret failed("deploy.api_url and deploy.built must be set");
+    }
+    if (!variable(SERVICE_VARIABLE, ?site.service[0], ?settings.service)
+        || !variable(ENVIRONMENT_VARIABLE, ?site.environment[0], ?settings.environment)) {
+        ret failed("railway's variables could not be read");
+    }
+    if (!deploy.start(?site.deployer, settings, site.state.secrets)) {
+        ret failed("the rebuild request could not be prepared");
+    }
+    ret done();
+}
+
 # registers the llms refresh once hedge has started the application, reading
-# its templates, and before any worker serves
+# its templates, and before any worker serves. the refresh is what notices a
+# release newer than the image's docs, so the deployer is ready first
 fun llms_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
-    val site:     *Site = ctx::*Site;
+    val site:     *Site                                    = ctx::*Site;
+    val prepared: res[lifecycle.CallbackStatus, view.View] = deploy_start(site);
+    if (sel prepared.err) { ret prepared; }
     var settings: llms_refresh.Settings;
+    settings.deployer = ?site.deployer;
     if (!setting(site, "llms.templates", ?site.templates[0], ?settings.templates)
         || !setting(site, "llms.api_url", ?site.api_url[0], ?settings.api_url)
         || !setting(site, "llms.raw_url", ?site.raw_url[0], ?settings.raw_url)) {
@@ -162,6 +221,12 @@ fun llms_start(ctx: ptr) res[lifecycle.CallbackStatus, view.View] {
     }
     if (settings.templates.len == 0 || settings.api_url.len == 0 || settings.raw_url.len == 0) {
         ret failed("llms.templates, llms.api_url and llms.raw_url must be set");
+    }
+    var period: [SETTING_BYTES]u8;
+    var digits: view.View;
+    if (!setting(site, "llms.period_seconds", ?period[0], ?digits)
+        || !number(digits, ?settings.period_seconds)) {
+        ret failed("llms.period_seconds must be a whole number of seconds");
     }
     if (!llms_refresh.start(?site.llms, site.facility, settings, site.state.secrets)) {
         ret failed("the llms refresh could not be registered");
@@ -217,6 +282,7 @@ pub fun assemble(site: *Site, setup: *host.Setup, facility: *hedge_task.Tasks) b
     site.facility        = facility;
     site.state.refresher = ?site.refresher;
     site.state.llms      = ?site.llms;
+    site.state.deployer  = ?site.deployer;
 
     val ctx: ptr = (?site.state)::ptr;
     site.routes[0] = route(method.GET, "/ecosystem", "ecosystem.moved",

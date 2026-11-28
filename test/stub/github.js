@@ -5,8 +5,9 @@
 // merge an entry by rewriting it, and POST /graphql answers repository
 // metadata for the aliases the query names. under /mach/api and /mach/raw it
 // answers mach's tags, whose newest release is MACH_TAG, and doc/language at
-// that tag from test/stub/language/. every route but the listing requires the
-// bearer token given.
+// that tag from test/stub/language/. POST /mach/tags/<tag> tags a release, so a
+// test can make one appear while the server runs. every route but the listing
+// requires the bearer token given.
 // usage: node test/stub/github.js <port> <token> <listing.json>
 // it logs one line per request to stdout, so a test can count the calls.
 "use strict";
@@ -19,6 +20,8 @@ const MACH_TAG = "v6.10.0";
 // newest by version, not by name or order, and never a prerelease or a partial one
 const MACH_TAGS = ["v6.9.1", MACH_TAG, "v6.10.0-rc.1", "v6.2.10", "v7", "v10.0", "nightly"];
 const LANGUAGE = path.join(__dirname, "language");
+// the tags doc/language is served at: MACH_TAG and every release tagged since
+const RELEASED = new Set([MACH_TAG]);
 
 const REPOS = {
   "briar-systems/mach": { stars: 137, forks: 5, pushed: "2026-09-27T10:33:26Z", license: { spdxId: "MIT", name: "MIT License" }, release: { tagName: "v6.6.0", publishedAt: "2026-09-28T05:48:18Z" } },
@@ -47,12 +50,13 @@ function mach(url) {
   if (url === "/mach/api/git/matching-refs/tags/v") {
     return json(MACH_TAGS.map((t) => ({ ref: `refs/tags/${t}`, object: { type: "commit" } })));
   }
-  if (url === `/mach/api/contents/doc/language?ref=${MACH_TAG}`) {
+  const listed = /^\/mach\/api\/contents\/doc\/language\?ref=(.+)$/.exec(url);
+  if (listed && RELEASED.has(listed[1])) {
     const files = fs.readdirSync(LANGUAGE).map((name) => ({ name, path: `doc/language/${name}`, type: "file" }));
     return json([...files, { name: "images", path: "doc/language/images", type: "dir" }]);
   }
   const m = /^\/mach\/raw\/([^/]+)\/doc\/language\/([A-Za-z0-9_.-]+)$/.exec(url);
-  if (m && m[1] === MACH_TAG && fs.existsSync(path.join(LANGUAGE, m[2]))) {
+  if (m && RELEASED.has(m[1]) && fs.existsSync(path.join(LANGUAGE, m[2]))) {
     return { type: "text/plain; charset=utf-8", body: fs.readFileSync(path.join(LANGUAGE, m[2])) };
   }
   return null;
@@ -72,10 +76,20 @@ function main() {
         res.end(fs.readFileSync(listing));
         return;
       }
-      if (req.method === "GET" && req.url.startsWith("/mach/")) {
+      if ((req.method === "GET" || req.method === "POST") && req.url.startsWith("/mach/")) {
         if (req.headers.authorization !== `bearer ${token}`) {
           res.writeHead(401, { "content-type": "application/json" });
           res.end('{"message":"Bad credentials"}');
+          return;
+        }
+        const tagged = /^\/mach\/tags\/(v\d+\.\d+\.\d+)$/.exec(req.url);
+        if (req.method === "POST") {
+          if (tagged) {
+            MACH_TAGS.push(tagged[1]);
+            RELEASED.add(tagged[1]);
+          }
+          res.writeHead(tagged ? 204 : 404);
+          res.end();
           return;
         }
         const answer = mach(req.url);

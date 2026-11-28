@@ -19,6 +19,9 @@ const PORT = process.env.STUB_PORT;
 const TOKEN = process.env.STUB_TOKEN;
 const SECRET = process.env.WEBHOOK_SECRET;
 const FIXTURE = path.join(__dirname, "stub", "entries.json");
+// the newest release the docs pages the image holds were built for, as the
+// checkout's own build of them says
+const DOCS = BASE ? require("../public/docs/versions.json")[0] : null;
 
 function request(method, urlPath, headers = {}, body = "") {
   return new Promise((resolve, reject) => {
@@ -84,7 +87,7 @@ test("a cold start with github unreachable serves the unavailable notice", async
   assert.equal(json.status, 503);
   const health = await request("GET", "/healthz", { host: "healthcheck.railway.app" });
   assert.equal(health.status, 200);
-  assert.equal(health.body, "ok\ncatalog_generated none\nllms_version none\n");
+  assert.equal(health.body, `ok\ncatalog_generated none\nllms_version none\ndocs_version ${DOCS}\n`);
 });
 
 test("the stub starts", async () => {
@@ -189,5 +192,5 @@ test("an entry merged into the listing shows once the webhook fires", async () =
 
 test("the health check reports the catalog's age", async () => {
   const res = await request("GET", "/healthz");
-  assert.match(res.body, /^ok\ncatalog_generated \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\ncatalog_age_seconds \d+\ncatalog_stale false\nllms_version none\n$/);
+  assert.match(res.body, /^ok\ncatalog_generated \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\ncatalog_age_seconds \d+\ncatalog_stale false\nllms_version none\ndocs_version [\d.]+\n$/);
 });

@@ -1,0 +1,384 @@
+# the rebuild a new mach release asks the platform for
+#
+# the docs pages are built into the image from the guide of every mach release,
+# so a release tagged after the image was built is missing from them until the
+# image is built again. the llms refresh learns mach's newest release on every
+# run, and when that release is newer than the newest the image's docs hold, it
+# asks railway to deploy the service again through this module. the build
+# fetches mach's tags, so the new image holds the new release.
+#
+# only a release that appears while this process watches is asked for. the
+# newest release at the first look was out before the process looked, so the
+# build that made this image had it in reach: if the docs are still older, the
+# build did not bring them, and asking again would deploy without end. that
+# case is logged once and left to a person.
+#
+# a rebuild is asked for once per release. a request that fails is logged and
+# made again on the next run, and one railway accepted is not repeated, so a
+# build that fails leaves the old deployment serving and asks no more. off the
+# platform, where railway's variables name no service, nothing is asked.
+
+use crypto.contracts;
+use hedge.outbound;
+use hedge_task: hedge.task;
+use http.core.field;
+use http.core.method;
+use json.error;
+use json.parse;
+use json_value:    json.value;
+use laurel_secret: laurel.secret;
+use site.semver;
+use site.text;
+use A: std.allocator;
+use std.allocator.fixed;
+use std.filesystem;
+use io_error: std.io.error;
+use std.print;
+use std.types.bool.bool;
+use std.types.bool.false;
+use std.types.bool.true;
+use std.types.char.char;
+use std.types.error.err;
+use std.types.option.opt;
+use std.types.result.res;
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.view;
+
+val URL_BYTES:     usize = 512;
+val BODY_BYTES:    usize = 512;
+val AUTH_BYTES:    usize = 512;
+val BUILT_BYTES:   usize = 4096;
+val ARENA_BYTES:   usize = 65536;
+val VERSION_BYTES: usize = 32;
+val ID_BYTES:      usize = 64;
+val SAID_BYTES:    usize = 128;
+
+# the mutation that starts a new deployment of the service from its source
+val QUERY: str = "mutation($s:String!,$e:String!){serviceInstanceDeployV2(serviceId:$s,environmentId:$e)}";
+val FIELD: str = "serviceInstanceDeployV2";
+
+pub rec Deployer {
+    # set once at start. off the platform nothing is asked for
+    enabled:     bool;
+    api_url:     [URL_BYTES]u8;
+    api_url_len: usize;
+    body:        [BODY_BYTES]u8;
+    body_len:    usize;
+    secrets:     laurel_secret.Source;
+    # the newest release the image's docs were built for
+    built:      [3]u64;
+    built_text: [VERSION_BYTES]u8;
+    built_len:  usize;
+    # mach's newest release at this process's first look, once it has looked
+    first:  [3]u64;
+    looked: bool;
+    # the release a rebuild was last accepted for, which only the task reads
+    # and writes
+    asked:     [VERSION_BYTES]u8;
+    asked_len: usize;
+    # the request in flight, and what railway said when it refused it
+    headers:    [2]field.Field;
+    auth:       [AUTH_BYTES]u8;
+    said:       [SAID_BYTES]u8;
+    said_len:   usize;
+    heap:       A.Allocator;
+    heap_state: fixed.FixedState;
+    arena:      [ARENA_BYTES]u8;
+}
+
+# where a rebuild is asked for and what the image holds
+pub rec Settings {
+    # railway's graphql api
+    api_url: view.View;
+    # the file build-docs.js writes: the releases the docs were built for, as a
+    # json array of versions, newest first
+    built: view.View;
+    # the service and the environment railway runs this process as, empty off
+    # the platform
+    service:     view.View;
+    environment: view.View;
+}
+
+fun clear_auth(deployer: *Deployer) {
+    var i: usize = 0;
+    for (i < AUTH_BYTES) {
+        deployer.auth[i] = 0;
+        i                = i + 1;
+    }
+}
+
+fun copy(output: *u8, capacity: usize, value: view.View) usize {
+    if (value.len >= capacity) { ret 0; }
+    var i: usize = 0;
+    for (i < value.len) {
+        output[i] = value.data[i]::u8;
+        i         = i + 1;
+    }
+    output[value.len] = 0;
+    ret value.len;
+}
+
+# an id railway names a service or an environment by: letters, digits and `-`,
+# so it is written into the request as it is
+fun id(value: view.View) bool {
+    if (value.len == 0 || value.len >= ID_BYTES) { ret false; }
+    var i: usize = 0;
+    for (i < value.len) {
+        val c: u8 = value.data[i]::u8;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+            || c == '-')) { ret false; }
+        i = i + 1;
+    }
+    ret true;
+}
+
+# the newest release in the file's list, the first of its json array
+fun newest_built(deployer: *Deployer, data: *u8, len: usize) bool {
+    fixed.reset(?deployer.heap_state);
+    val parsed: res[json_value.Value, error.JsonError] = parse.parse(data, len, ?deployer.heap);
+    if (sel parsed.err) { ret false; }
+    var root: json_value.Value = parsed.ok;
+    if (root.kind != json_value.ARRAY || root.count == 0
+        || root.children[0].kind != json_value.STRING) { ret false; }
+    val first: view.View = view.view(root.children[0].str_val::*char, root.children[0].str_len);
+    if (!semver.parse(first, ?deployer.built[0])) { ret false; }
+    deployer.built_len = copy(?deployer.built_text[0], VERSION_BYTES, first);
+    fixed.reset(?deployer.heap_state);
+    ret deployer.built_len != 0;
+}
+
+# reads the releases the image's docs were built for
+fun load_built(deployer: *Deployer, at: view.View) bool {
+    var path: [URL_BYTES]u8;
+    if (copy(?path[0], URL_BYTES, at) == 0) { ret false; }
+    val opened: res[filesystem.File, io_error.Error] = filesystem.open((?path[0])::str);
+    if (sel opened.err) { ret false; }
+    var file:  filesystem.File = opened.ok;
+    var data:  [BUILT_BYTES]u8;
+    var total: usize           = 0;
+    var whole: bool            = false;
+    for (total < BUILT_BYTES) {
+        val got: res[usize, io_error.Error] = filesystem.read(file, ?data[total],
+            BUILT_BYTES - total);
+        if (sel got.err) { brk; }
+        if (got.ok == 0) {
+            whole = true;
+            brk;
+        }
+        total = total + got.ok;
+    }
+    filesystem.close(?file);
+    ret whole && newest_built(deployer, ?data[0], total);
+}
+
+# the request's body: the mutation with the service and the environment
+fun put_body(deployer: *Deployer, settings: Settings) bool {
+    var b: text.Buf = text.buf(?deployer.body[0], BODY_BYTES);
+    text.put_str(?b, "{\"query\":\"");
+    text.put_str(?b, QUERY);
+    text.put_str(?b, "\",\"variables\":{\"s\":\"");
+    text.put(?b, settings.service);
+    text.put_str(?b, "\",\"e\":\"");
+    text.put(?b, settings.environment);
+    text.put_str(?b, "\"}}");
+    if (!text.fits(?b)) { ret false; }
+    deployer.body_len = b.len;
+    ret true;
+}
+
+# reads what the image's docs hold and prepares the request
+# ---
+# deployer: storage, live and in place until the process has stopped
+# settings: where a rebuild is asked for and what the image holds
+# secrets:  the application's secrets, which grant `railway`
+# ret:      false when the list of built releases cannot be read, or the
+#           platform names a service this module cannot ask for
+pub fun start(deployer: *Deployer, settings: Settings, secrets: laurel_secret.Source) bool {
+    if (deployer == nil) { ret false; }
+    deployer.enabled   = false;
+    deployer.looked    = false;
+    deployer.asked_len = 0;
+    deployer.said_len  = 0;
+    deployer.secrets   = secrets;
+    val made: err[A.Error] = fixed.make(?deployer.heap, ?deployer.heap_state,
+        ?deployer.arena[0], ARENA_BYTES);
+    if (sel made.err) { ret false; }
+    if (!load_built(deployer, settings.built)) {
+        print.eprintln("site: the releases the docs were built for could not be read");
+        ret false;
+    }
+    if (settings.service.len == 0 && settings.environment.len == 0) {
+        print.println("site: not on railway, so a new mach release is not rebuilt for");
+        ret true;
+    }
+    deployer.api_url_len = copy(?deployer.api_url[0], URL_BYTES, settings.api_url);
+    if (deployer.api_url_len == 0 || !id(settings.service) || !id(settings.environment)
+        || !put_body(deployer, settings)) {
+        print.eprintln("site: railway's service and environment could not be read");
+        ret false;
+    }
+    deployer.enabled = true;
+    ret true;
+}
+
+# the newest release the image's docs were built for
+pub fun built(deployer: *Deployer) view.View {
+    ret view.view((?deployer.built_text[0])::*char, deployer.built_len);
+}
+
+# takes mach's newest release at this run and says whether to ask for a
+# rebuild: when it appeared after the first look, is newer than the docs the
+# image holds, and no rebuild was accepted for it yet. the first look only
+# records what was already out
+pub fun look(deployer: *Deployer, release: view.View) bool {
+    if (deployer == nil || !deployer.enabled) { ret false; }
+    var parts: [3]u64;
+    if (!semver.parse(release, ?parts[0])) { ret false; }
+    if (!deployer.looked) {
+        deployer.looked   = true;
+        deployer.first[0] = parts[0];
+        deployer.first[1] = parts[1];
+        deployer.first[2] = parts[2];
+        if (semver.newer(?parts[0], ?deployer.built[0])) {
+            var line: [VERSION_BYTES]u8;
+            copy(?line[0], VERSION_BYTES, release);
+            print.eprintlnf(
+                "site: mach {} was out before this deployment looked and its docs hold {}, so no rebuild is asked for",
+                (?line[0])::*u8, (?deployer.built_text[0])::*u8);
+        }
+        ret false;
+    }
+    if (!semver.newer(?parts[0], ?deployer.first[0])
+        || !semver.newer(?parts[0], ?deployer.built[0])) { ret false; }
+    ret !text.same(release, view.view((?deployer.asked[0])::*char, deployer.asked_len));
+}
+
+fun use_token(ctx: ptr, secret: contracts.SecretBytes) bool {
+    val deployer: *Deployer = ctx::*Deployer;
+    ret outbound.secret_header(?deployer.headers[1], text.text("project-access-token"),
+        view.view(nil, 0), secret, ?deployer.auth[0], AUTH_BYTES);
+}
+
+# begins the request on `exchange` for this run
+pub fun begin(deployer: *Deployer, run: *hedge_task.Run, exchange: *outbound.Exchange) bool {
+    clear_auth(deployer);
+    if (laurel_secret.borrow(deployer.secrets, text.text("railway"), use_token,
+        deployer::ptr) != laurel_secret.BORROW_OK) { ret false; }
+    deployer.headers[0] = field.Field{name: text.text("content-type"),
+        value: text.text("application/json"), sensitive: false};
+    var request: outbound.Request = outbound.request(method.POST,
+        view.view((?deployer.api_url[0])::*char, deployer.api_url_len));
+    request.headers      = ?deployer.headers[0];
+    request.header_count = 2;
+    request.body         = view.view((?deployer.body[0])::*char, deployer.body_len);
+    ret hedge_task.begin(run, exchange, request) != outbound.INVALID;
+}
+
+# what railway said of a refusal, kept printable for the log: the message of
+# the first of its `errors`
+fun keep_said(deployer: *Deployer, errors: *json_value.Value) {
+    deployer.said_len = 0;
+    if (errors.kind != json_value.ARRAY || errors.count == 0) { ret; }
+    val message: opt[*json_value.Value] = json_value.value_find(?errors.children[0], "message");
+    if (sel message.none)                       { ret; }
+    if (message.some.kind != json_value.STRING) { ret; }
+    var i: usize = 0;
+    for (i < message.some.str_len && deployer.said_len < SAID_BYTES - 1) {
+        val c: u8 = message.some.str_val[i]::u8;
+        if (c >= ' ' && c <= '~') {
+            deployer.said[deployer.said_len] = c;
+            deployer.said_len                = deployer.said_len + 1;
+        }
+        i = i + 1;
+    }
+}
+
+# whether railway's answer says a deployment was started. a refusal comes back
+# as 200 with `errors`, so the status alone does not say, and what it said is
+# kept for `settle`
+pub fun accepted(deployer: *Deployer, root: *json_value.Value) bool {
+    if (root == nil || root.kind != json_value.OBJECT) { ret false; }
+    val errors: opt[*json_value.Value] = json_value.value_find(root, "errors");
+    if (sel errors.some) {
+        keep_said(deployer, errors.some);
+        ret false;
+    }
+    val data: opt[*json_value.Value] = json_value.value_find(root, "data");
+    if (sel data.none)                       { ret false; }
+    if (data.some.kind != json_value.OBJECT) { ret false; }
+    val started: opt[*json_value.Value] = json_value.value_find(data.some, FIELD);
+    if (sel started.none) { ret false; }
+    ret started.some.kind != json_value.NULL;
+}
+
+# records how the request for `release` ended, once its exchange is finished
+# ---
+# started: whether railway said a deployment was started
+# cause:   the status or the exchange's cause when it did not
+pub fun settle(deployer: *Deployer, release: view.View, started: bool, cause: u64) {
+    clear_auth(deployer);
+    var line: [VERSION_BYTES]u8;
+    copy(?line[0], VERSION_BYTES, release);
+    deployer.said[deployer.said_len] = 0;
+    val said: bool = deployer.said_len != 0;
+    deployer.said_len = 0;
+    if (!started && said) {
+        print.eprintlnf("site: railway refused the rebuild for mach {}: {}", (?line[0])::*u8,
+            (?deployer.said[0])::*u8);
+        ret;
+    }
+    if (!started) {
+        print.eprintlnf("site: the rebuild for mach {} was not started (cause {})",
+            (?line[0])::*u8, cause);
+        ret;
+    }
+    deployer.asked_len = copy(?deployer.asked[0], VERSION_BYTES, release);
+    print.printlnf("site: asked railway to rebuild for mach {}, the docs hold {}",
+        (?line[0])::*u8, (?deployer.built_text[0])::*u8);
+}
+
+test id__only_what_is_safe_in_the_request {
+    if (!id(text.text("3f1c9a52-8b7e-4d0a-9c11-2e6f5a4b3c2d"))) { ret 1; }
+    if (id(text.text("")))                                      { ret 2; }
+    if (id(text.text("a\"b")))                                  { ret 3; }
+    if (id(text.text("a b")))                                   { ret 4; }
+    ret 0;
+}
+
+fun watching(deployer: *Deployer, built: str) {
+    deployer.enabled   = true;
+    deployer.looked    = false;
+    deployer.asked_len = 0;
+    semver.parse(text.text(built), ?deployer.built[0]);
+    deployer.built_len = copy(?deployer.built_text[0], VERSION_BYTES, text.text(built));
+}
+
+test look__only_a_release_that_appears_while_watching {
+    var deployer: Deployer;
+    watching(?deployer, "7.3.0");
+    if (look(?deployer, text.text("7.3.0")))    { ret 1; }
+    if (look(?deployer, text.text("7.3.0")))    { ret 2; }
+    if (look(?deployer, text.text("7.4.0-rc"))) { ret 3; }
+    if (!look(?deployer, text.text("7.3.1")))   { ret 4; }
+    if (!look(?deployer, text.text("7.10.0")))  { ret 5; }
+    deployer.asked_len = copy(?deployer.asked[0], VERSION_BYTES, text.text("7.3.1"));
+    if (look(?deployer, text.text("7.3.1")))  { ret 6; }
+    if (!look(?deployer, text.text("7.3.2"))) { ret 7; }
+    deployer.enabled = false;
+    if (look(?deployer, text.text("7.3.2"))) { ret 8; }
+    if (look(nil, text.text("7.3.2")))       { ret 9; }
+    ret 0;
+}
+
+# a deployment whose docs are behind a release already out is the build that
+# did not bring them: asking again from each new deployment would never end
+test look__never_a_release_out_before_the_first_look {
+    var deployer: Deployer;
+    watching(?deployer, "7.3.0");
+    if (look(?deployer, text.text("7.4.0")))  { ret 1; }
+    if (look(?deployer, text.text("7.4.0")))  { ret 2; }
+    if (look(?deployer, text.text("7.3.9")))  { ret 3; }
+    if (!look(?deployer, text.text("7.4.1"))) { ret 4; }
+    ret 0;
+}
