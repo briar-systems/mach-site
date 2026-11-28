@@ -23,6 +23,7 @@ use laurel.render;
 use laurel_secret: laurel.secret;
 use site.catalog.refresh;
 use site.catalog.snapshot;
+use site.deploy;
 use llms_refresh: site.llms.refresh;
 use site.text;
 use site.web.page;
@@ -48,6 +49,7 @@ val QUERY_BYTES:  usize = 1024;
 pub rec State {
     refresher: *refresh.Refresher;
     llms:      *llms_refresh.Refresher;
+    deployer:  *deploy.Deployer;
     secrets:   laurel_secret.Source;
 }
 
@@ -330,8 +332,8 @@ fun put_llms_health(b: *text.Buf, refresher: *llms_refresh.Refresher) {
     }
 }
 
-# GET /healthz: the process is serving, how old the catalog is, and which
-# release the llms files are for
+# GET /healthz: the process is serving, how old the catalog is, which release
+# the llms files are for, and the newest release the image's docs hold
 pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.Result {
     @slot = nil;
     val state: *State = ctx::*State;
@@ -363,6 +365,9 @@ pub fun health(ctx: ptr, request_context: *context.Context, slot: *ptr) handler.
         }
         or { text.put_str(?b, "catalog_generated none\n"); }
         text.put(?b, llms_health);
+        text.put_str(?b, "docs_version ");
+        text.put(?b, deploy.built(state.deployer));
+        text.put_byte(?b, '\n');
         if (pass == 0 && !arena_text(request_context, ?b)) {
             ret handler.fail(internal("storage was refused"));
         }

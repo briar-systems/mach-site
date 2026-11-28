@@ -117,8 +117,8 @@ jobs:
           MACH_VERSION=${tag#v} node .github/scripts/check-links.js
 
   # the image railway builds: its formatting, its tests, its build, every file
-  # it serves, the catalog and the llms files, then a SIGTERM that must drain
-  # and exit 0
+  # it serves, the catalog and the llms files, the rebuild it asks railway for,
+  # then a SIGTERM that must drain and exit 0
   container:
     runs-on: ubuntu-latest
     steps:
@@ -153,15 +153,26 @@ jobs:
           chmod 777 out/volume
           sed -e 's|^entries_url = .*|entries_url = "http://127.0.0.1:18212/entries.json"|' \
               -e 's|^graphql_url = .*|graphql_url = "http://127.0.0.1:18212/graphql"|' \
-              -e 's|^api_url = .*|api_url = "http://127.0.0.1:18212/mach/api"|' \
+              -e 's|^api_url = "https://api.github.com.*|api_url = "http://127.0.0.1:18212/mach/api"|' \
               -e 's|^raw_url = .*|raw_url = "http://127.0.0.1:18212/mach/raw"|' \
+              -e 's|^api_url = "https://backboard.*|api_url = "http://127.0.0.1:18213/graphql"|' \
               hedge.toml > out/stub.toml
+          # the same, as railway runs it, with docs older than the release the
+          # stub answers and mach's tags read every second, so a release tagged
+          # during the test is noticed within it
+          sed -e 's|^built = .*|built = "built.json"|' -e 's|^period_seconds = .*|period_seconds = 1|' \
+              out/stub.toml > out/railway.toml
+          echo '["6.9.0"]' > out/built.json
+          toml=out/stub.toml
+          railway=
           # the first argument, when given, is the snapshot path the volume keeps
           serve() {
             docker run -d --network host -e LISTEN=127.0.0.1:8080 \
               -e GITHUB_TOKEN=test-token -e ECOSYSTEM_WEBHOOK_SECRET=test-secret \
+              -e RAILWAY_REDEPLOY_TOKEN=test-railway $railway \
               ${1:+-e ECOSYSTEM_SNAPSHOT_PATH="$1"} \
-              -v "$PWD/out/stub.toml:/srv/site/stub.toml:ro" -v "$PWD/out/volume:/data" \
+              -v "$PWD/$toml:/srv/site/stub.toml:ro" -v "$PWD/out/volume:/data" \
+              -v "$PWD/out/built.json:/srv/site/built.json:ro" \
               site /srv/site/stub.toml
           }
           up() {
@@ -194,25 +205,35 @@ jobs:
           # and no llms files until github answers
           cid=$(serve)
           up
-          test "$(curl -sS http://127.0.0.1:8080/healthz)" = "$(printf 'ok\ncatalog_generated none\nllms_version none')"
+          built=$(node -p 'require("./public/docs/versions.json")[0]')
+          test "$(curl -sS http://127.0.0.1:8080/healthz)" = "$(printf 'ok\ncatalog_generated none\nllms_version none\ndocs_version %s' "$built")"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ecosystem.json)" = 503
           for f in llms.txt llms-full.txt; do
             test "$(curl -s -o /dev/null -w '%{http_code} %header{retry-after}' http://127.0.0.1:8080/$f)" = "503 60"
           done
           stop "$cid"
           # with github's stub up from the start, the first refresh serves
-          # mach's newest release
+          # mach's newest release. started as railway starts it, the server
+          # asks railway's stub for nothing while that release is the only one
+          # newer than its docs, and for one rebuild once another is tagged
           node test/stub/github.js 18212 test-token test/stub/entries.json > out/stub.log &
           stub=$!
+          node test/stub/railway.js 18213 test-railway > out/railway.log &
+          rail=$!
           for i in $(seq 1 50); do
-            if curl -s -o /dev/null http://127.0.0.1:18212/; then break; fi
+            if curl -s -o /dev/null http://127.0.0.1:18212/ && curl -s -o /dev/null http://127.0.0.1:18213/; then break; fi
             sleep 0.2
           done
+          toml=out/railway.toml
+          railway="-e RAILWAY_SERVICE_ID=svc-1 -e RAILWAY_ENVIRONMENT_ID=env-1"
           cid=$(serve)
           up
           SITE_URL=http://127.0.0.1:8080 node --test test/llms.test.js
+          SITE_URL=http://127.0.0.1:8080 RAILWAY_STUB=http://127.0.0.1:18213 \
+            GITHUB_STUB=http://127.0.0.1:18212 STUB_TOKEN=test-token BUILT=6.9.0 \
+            SERVICE=svc-1 ENVIRONMENT=env-1 node --test test/deploy.test.js
           stop "$cid"
-          kill "$stub"
+          kill "$stub" "$rail"
 
   gate:
     if: always()

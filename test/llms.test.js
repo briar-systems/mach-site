@@ -233,5 +233,5 @@ test("a HEAD answers as its GET, without the body", SERVER, async () => {
 test("the health check reports the release the llms files are for", SERVER, async () => {
   await ready("/llms.txt");
   const res = await get("/healthz");
-  assert.match(res.body, new RegExp(`\\nllms_version ${RELEASE.replace(/\./g, "\\.")}\\nllms_age_seconds \\d+\\n$`));
+  assert.match(res.body, new RegExp(`\\nllms_version ${RELEASE.replace(/\./g, "\\.")}\\nllms_age_seconds \\d+\\ndocs_version [\\d.]+\\n$`));
 });
