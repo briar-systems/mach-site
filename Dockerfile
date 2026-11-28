@@ -12,9 +12,9 @@
 
 # the mach release, and the sha256 its SHA256SUMS lists for the compiler that
 # builds the server and for the one the playground loads
-ARG MACH_VERSION=7.3.0
-ARG MACH_SHA256=dd92c6c739c78f6a4aeab189bef835e3a56c89fab210cff33d8eb25d015c8798
-ARG MACH_WASM_SHA256=5ab1bf111c650edae0592a3575f17b3a0be1b4c53aa0ebfc8cd6374358ba9517
+ARG MACH_VERSION=7.3.1
+ARG MACH_SHA256=5b9f29b53b2cc0aa756573576b5ac2f89fac4a47df0c91ae39ef7ce22b8b3777
+ARG MACH_WASM_SHA256=e1b7eb94860a1b171da2921084848811d6d70b5d8ad4d7a10bb0a3d04d53e878
 
 FROM debian:bookworm-slim AS build
 ARG MACH_VERSION
