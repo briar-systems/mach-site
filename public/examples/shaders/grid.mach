@@ -1,0 +1,57 @@
+# a ground plane in perspective, its lines kept a pixel wide at every depth by
+# screen-space derivatives
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+# how much of a pixel the nearest line covers, for a coordinate with a line at
+# every whole number
+fun grid_line(coord: f32) f32 {
+    val to_line: f32 = sh.abs(sh.fract(coord - 0.5) - 0.5);
+    # fwidth is how far the coordinate moves across one pixel
+    ret 1.0 - sh.smooth_step(0.0, sh.fwidth(coord) * 1.5, to_line);
+}
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res: f32x2 = frame.resolution;
+    val x:   f32   = (frag_coord[0] - res[0] * 0.5) / res[1];
+    val y:   f32   = (res[1] * 0.56 - frag_coord[1]) / res[1];
+
+    var white: f32 = 0.0;
+    var pink:  f32 = 0.0;
+    if (y < 0.0) {
+        # below the horizon a pixel sees the ground, further off the nearer it is
+        # to the horizon
+        val depth: f32 = 0.4 / -y;
+        val lines: f32 = sh.max(grid_line(x * depth * 2.0), grid_line(depth + frame.time * 0.8));
+        pink = lines * sh.exp(-depth * 0.22);
+    }
+    or {
+        # above it a sun, cut by bands that thicken toward the horizon
+        val sun_y: f32 = y - 0.2;
+        val disc:  f32 = 1.0 - sh.smooth_step(0.24, 0.24 + 1.5 / res[1], sh.length_2(f32x2{x, sun_y}));
+        val band:  f32 = sh.fract(sun_y * 14.0 - frame.time * 0.4);
+        val cut:   f32 = sh.step(0.45 - sun_y * 1.6, band);
+        white = disc * cut;
+    }
+    # the horizon itself
+    pink = sh.max(pink, 1.0 - sh.smooth_step(0.0, 1.5 / res[1], sh.abs(y)));
+
+    val lit: f32 = sh.max(white, pink);
+    out_colour = f32x4{lit, white, lit, 1.0};
+}
