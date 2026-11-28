@@ -4,3 +4,7 @@ dep
 out
 test
 node_modules
+# the playground's compiler and libraries are fetched and packed in the image,
+# so a local build of either never goes in
+public/playground/mach.wasm
+public/playground/libs.json

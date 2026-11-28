@@ -57,6 +57,29 @@ jobs:
       - name: Run the highlighter tests
         run: node --test test/highlight.test.js
 
+  # the examples are built by the compiler the image ships: the release the
+  # Dockerfile pins, built for wasi
+  playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Fetch the playground's compiler
+        run: |
+          set -eu
+          version=$(sed -n 's/^ARG MACH_VERSION=//p' Dockerfile)
+          sum=$(sed -n 's/^ARG MACH_WASM_SHA256=//p' Dockerfile)
+          sh .github/scripts/fetch-compiler.sh "$version" wasm32-wasi "$sum" out/wasm
+          cp out/wasm/mach.wasm public/playground/mach.wasm
+
+      - name: Pack the libraries the playground's compiler builds against
+        run: node .github/scripts/build-playground-libs.js
+
+      - name: Run the playground tests
+        run: node --test test/playground.test.js
+
   llms:
     runs-on: ubuntu-latest
     steps:
@@ -169,7 +192,7 @@ jobs:
 
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, highlight, llms, container]
+    needs: [install-check, bake-version, ecosystem, highlight, playground, llms, container]
     runs-on: ubuntu-latest
     steps:
       - run: exit ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 1 || 0 }}
