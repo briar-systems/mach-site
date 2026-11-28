@@ -1,0 +1,58 @@
+# a julia set: z = z * z + c, repeated until z escapes.
+# hold the pointer down on the picture to choose c
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+val LIMIT: i32 = 96;
+
+# how long z survives, from 0 for never to 1 for the whole limit
+fun survival(start: f32x2, c: f32x2) f32 {
+    var z: f32x2 = start;
+    var i: i32   = 0;
+    for (i < LIMIT) {
+        z = f32x2{z[0] * z[0] - z[1] * z[1], 2.0 * z[0] * z[1]} + c;
+        val r2: f32 = sh.dot_2(z, z);
+        if (r2 > 256.0) {
+            # the fraction of a step past the last whole one, so the bands blend
+            ret (i::f32 + 2.0 - sh.log2(sh.log2(r2))) / LIMIT::f32;
+        }
+        i = i + 1;
+    }
+    ret 0.0;
+}
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res:    f32x2 = frame.resolution;
+    val centre: f32x2 = sh.scale_2(res, 0.5);
+    val pixel:  f32x2 = f32x2{frag_coord[0], frag_coord[1]};
+    val zoom:   f32   = 2.6 / res[1];
+
+    # c circles a point on the edge of the mandelbrot set, where julia sets are
+    # at their most intricate
+    val angle: f32   = frame.time * 0.3;
+    var c:     f32x2 = f32x2{-0.76 + sh.cos(angle) * 0.04, 0.12 + sh.sin(angle) * 0.04};
+    if (frame.pressed > 0.5) {
+        c = sh.scale_2(frame.pointer - centre, zoom);
+    }
+
+    # points that leave at once stay dark, and the ones that linger light up
+    val n:    f32 = survival(sh.scale_2(pixel - centre, zoom), c);
+    val glow: f32 = sh.smooth_step(0.02, 0.45, n);
+    out_colour = f32x4{sh.sqrt(glow), glow * glow, sh.sqrt(glow), 1.0};
+}

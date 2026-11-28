@@ -18,6 +18,8 @@ pin_workers = false
 # default of 100
 [server.limits]
 max_connections_per_peer = 4096
+# covers serving the uncompressed mach.wasm playground binary alongside precompressed variants
+max_body_bytes = 67108864
 
 # a redeploy sends SIGTERM and waits before it kills the process, so the drain
 # and the stop together fit well inside that wait

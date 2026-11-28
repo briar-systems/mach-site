@@ -57,10 +57,49 @@ jobs:
       - name: Run the highlighter tests
         run: node --test test/highlight.test.js
 
+  # the examples are built by the compiler the image ships: the release the
+  # Dockerfile pins, built for wasi
+  playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Fetch the playground's compiler
+        run: |
+          set -eu
+          version=$(sed -n 's/^ARG MACH_VERSION=//p' Dockerfile)
+          sum=$(sed -n 's/^ARG MACH_WASM_SHA256=//p' Dockerfile)
+          sh .github/scripts/fetch-compiler.sh "$version" wasm32-wasi "$sum" out/wasm
+          cp out/wasm/mach.wasm public/playground/mach.wasm
+
+      - name: Pack the libraries the playground's compiler builds against
+        run: node .github/scripts/build-playground-libs.js
+
+      - name: Run the playground tests
+        run: node --test test/playground.test.js
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the docs tests
+        run: node --test test/docs.test.js
+
   llms:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
+      # the link check reads the pages as the site serves them: mach's guide
+      # for each release, as the image build fetches it
+      - name: Build the docs pages
+        run: |
+          set -eu
+          node .github/scripts/fetch-guide.js
+          node .github/scripts/build-docs.js
 
       - name: Run the llms tests
         run: node --test test/llms.test.js
@@ -95,6 +134,14 @@ jobs:
 
       - name: Build the server image
         run: docker build -t site .
+
+      # the serve test compares each page the image serves with the checkout's,
+      # and the llms test builds the templates from the guide the image fetched
+      - name: Build the docs pages the image holds
+        run: |
+          set -eu
+          node .github/scripts/fetch-guide.js
+          node .github/scripts/build-docs.js
 
       # the catalog and the llms files read a local stub of github. the catalog
       # test starts it after checking the cold start without it, and the llms
@@ -169,7 +216,7 @@ jobs:
 
   gate:
     if: always()
-    needs: [install-check, bake-version, ecosystem, highlight, llms, container]
+    needs: [install-check, bake-version, ecosystem, highlight, playground, docs, llms, container]
     runs-on: ubuntu-latest
     steps:
       - run: exit ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 1 || 0 }}

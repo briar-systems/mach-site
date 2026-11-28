@@ -10,7 +10,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { VERSION, mapText, parse } = require("./build-llms.js");
+const { VERSION, mapText } = require("./build-llms.js");
 
 const SITE_HOST = "machlang.org";
 const CONCURRENCY = 8;
@@ -45,14 +45,9 @@ function localFile(root, pathname) {
 const idCache = new Map();
 function ids(file) {
   if (!idCache.has(file)) {
-    const set = new Set();
-    const walk = (n) => {
-      if (typeof n === "string") { return; }
-      if (n.attrs.id) { set.add(n.attrs.id); }
-      n.children.forEach(walk);
-    };
-    walk(parse(fs.readFileSync(file, "utf8")));
-    idCache.set(file, set);
+    // every id attribute in the page, which is all an anchor can name
+    const html = fs.readFileSync(file, "utf8");
+    idCache.set(file, new Set(Array.from(html.matchAll(/\sid="([^"]+)"/g), (m) => m[1])));
   }
   return idCache.get(file);
 }

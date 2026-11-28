@@ -1,0 +1,7 @@
+{
+  "groups": [
+    { "group": "Start", "pages": ["index"] },
+    { "group": "Language", "pages": ["types", "functions"] }
+  ],
+  "moved": { "packs": "functions.html#packs" }
+}

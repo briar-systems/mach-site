@@ -1,0 +1,53 @@
+# two sources of the same wave: where they cancel, the surface never moves.
+# hold the pointer down on the picture to move one of them
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+val WAVES: f32 = 46.0;
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res: f32x2 = frame.resolution;
+    val p:   f32x2 = sh.scale_2(f32x2{frag_coord[0], frag_coord[1]}, 1.0 / res[1]);
+    val mid: f32x2 = f32x2{res[0] * 0.5 / res[1], 0.5};
+
+    val first: f32x2 = mid - f32x2{0.22, 0.0};
+    val orbit: f32   = frame.time * 0.25;
+    var other: f32x2 = mid + f32x2{sh.cos(orbit) * 0.22, sh.sin(orbit) * 0.22};
+    if (frame.pressed > 0.5) {
+        other = sh.scale_2(frame.pointer, 1.0 / res[1]);
+    }
+
+    # the height of the surface: one wave from each source, in step
+    val phase:  f32 = frame.time * 3.0;
+    val near:   f32 = sh.distance_2(p, first) * WAVES;
+    val far:    f32 = sh.distance_2(p, other) * WAVES;
+    val height: f32 = sh.sin(near - phase) + sh.sin(far - phase);
+
+    # how far the surface swings depends only on how much further one source
+    # is than the other
+    val apart:     f32 = (near - far) * 0.5;
+    val amplitude: f32 = sh.abs(sh.cos(apart));
+    val still:     f32 = 1.0 - sh.smooth_step(0.0, sh.fwidth(apart) * 2.0, amplitude);
+
+    # the lines where the surface crosses its rest height, brightest where it
+    # swings furthest
+    val level: f32 = 1.0 - sh.smooth_step(0.0, sh.fwidth(height) * 1.5, sh.abs(height));
+    val white: f32 = level * amplitude * (1.0 - still);
+    out_colour = f32x4{sh.max(white, still), white, sh.max(white, still), 1.0};
+}

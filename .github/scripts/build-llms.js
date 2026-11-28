@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // build the site half of llms.txt and llms-full.txt (llmstxt.org): the templates
 // the server completes for each mach release. llms.txt.in is llms.txt whole, and
-// llms-full.txt.in is llms-full.txt up to its language reference, which is this
-// site's docs/ as markdown. both carry @MACH_VERSION@ wherever the release goes,
-// and the server fills it in and appends mach's doc/language at that release
-// (src/llms/). writes into the directory given, out/llms by default. needs node 20+.
+// llms-full.txt.in is llms-full.txt up to its language reference, which is
+// mach's guide as markdown: the newest release's among those fetch-guide.js
+// laid out. both carry @MACH_VERSION@ wherever the release goes, and the server
+// fills it in and appends mach's doc/language at that release (src/llms/).
+//
+// usage: build-llms.js [output dir] [guides dir]   (out/llms and out/guide). needs node 20+.
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
+const docs = require("./build-docs.js");
 
 const SITE = "https://machlang.org";
 const REPO = "briar-systems/mach";
@@ -22,246 +25,50 @@ const SUMMARY =
   "Mach is a statically typed, compiled, self-hosted systems language with no hidden control flow, " +
   "no hidden allocation, and no type inference.";
 
-// html parsing, scoped to the regular markup of docs/*.html
-
-const VOID = new Set(["br", "img", "meta", "link", "input", "hr", "source", "wbr"]);
-const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", copy: "©", middot: "·", rarr: "→", larr: "←", mdash: "—", ndash: "–", hellip: "…" };
-
-function decode(s) {
-  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === "#") {
-      return String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
-    }
-    const v = ENTITIES[e.toLowerCase()];
-    if (v === undefined) { throw new Error(`unknown html entity ${m}`); }
-    return v;
-  });
-}
-
-function attrs(src) {
-  const out = {};
-  const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
-  let m;
-  while ((m = re.exec(src))) { out[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? m[4] ?? ""); }
-  return out;
-}
-
-// a tree of { tag, attrs, children } and string text nodes. mismatched markup throws,
-// so a broken page fails the build instead of leaking into llms-full.txt
-function parse(html) {
-  const root = { tag: "#root", attrs: {}, children: [] };
-  const stack = [root];
-  const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)|</g;
-  let m;
-  while ((m = re.exec(html))) {
-    const top = stack[stack.length - 1];
-    if (m[0].startsWith("<!--")) { continue; }
-    if (m[4] !== undefined || m[0] === "<") { top.children.push(decode(m[0])); continue; }
-    const tag = m[2].toLowerCase();
-    if (m[1]) {
-      if (top.tag !== tag) { throw new Error(`unbalanced </${tag}> inside <${top.tag}> at offset ${m.index}`); }
-      stack.pop();
-      continue;
-    }
-    const node = { tag, attrs: attrs(m[3]), children: [] };
-    top.children.push(node);
-    if (!VOID.has(tag) && !m[3].trim().endsWith("/")) { stack.push(node); }
-  }
-  if (stack.length !== 1) { throw new Error(`unclosed <${stack[stack.length - 1].tag}>`); }
-  return root;
-}
-
-function classes(node) { return (node.attrs.class || "").split(/\s+/).filter(Boolean); }
-function hasClass(node, c) { return typeof node !== "string" && classes(node).includes(c); }
-
-function find(node, pred) {
-  if (typeof node === "string") { return null; }
-  if (pred(node)) { return node; }
-  for (const c of node.children) {
-    const hit = find(c, pred);
-    if (hit) { return hit; }
-  }
-  return null;
-}
-
-function findAll(node, pred, out = []) {
-  if (typeof node === "string") { return out; }
-  if (pred(node)) { out.push(node); }
-  for (const c of node.children) { findAll(c, pred, out); }
-  return out;
-}
-
-function rawText(node) {
-  return typeof node === "string" ? node : node.children.map(rawText).join("");
-}
-
-function text(node) { return rawText(node).replace(/\s+/g, " ").trim(); }
-
-// html to markdown. links resolve against base (the page's absolute url)
-
-function inline(nodes, base) {
-  let out = "";
-  for (const n of nodes) {
-    if (typeof n === "string") { out += n.replace(/\s+/g, " "); continue; }
-    switch (n.tag) {
-      case "code": out += codeSpan(rawText(n)); break;
-      case "strong": case "b": out += wrap("**", inline(n.children, base)); break;
-      case "em": case "i": out += wrap("*", inline(n.children, base)); break;
-      case "br": out += "\n"; break;
-      case "img": break;
-      case "a": {
-        const label = inline(n.children, base).trim();
-        const href = n.attrs.href ? resolve(n.attrs.href, base) : "";
-        out += href ? `[${label}](${href})` : label;
-        break;
-      }
-      default: out += inline(n.children, base);
-    }
-  }
-  return out;
-}
-
-function wrap(mark, s) {
-  const t = s.trim();
-  if (!t) { return s; }
-  const lead = s.match(/^\s*/)[0];
-  const trail = s.match(/\s*$/)[0];
-  return `${lead}${mark}${t}${mark}${trail}`;
-}
-
-function codeSpan(s) {
-  const runs = s.match(/`+/g) || [];
-  const fence = "`".repeat(Math.max(0, ...runs.map((r) => r.length)) + 1);
-  const pad = s.startsWith("`") || s.endsWith("`") ? " " : "";
-  return `${fence}${pad}${s}${pad}${fence}`;
-}
-
-// a site-relative href becomes an absolute machlang.org url, in-page anchors included
-function resolve(href, base) {
-  return new URL(href, base).href;
-}
-
-function fenceLang(pre) {
-  if (find(pre, (n) => hasClass(n, "toml-key") || hasClass(n, "toml-head"))) { return "toml"; }
-  if (find(pre, (n) => ["kw", "type", "fn", "deco", "mod", "ct"].some((c) => hasClass(n, c)))) { return "mach"; }
-  return "";
-}
-
-function fenced(body, lang) {
-  const runs = body.match(/^`{3,}/gm) || [];
-  const fence = "`".repeat(Math.max(2, ...runs.map((r) => r.length)) + 1);
-  return `${fence}${lang}\n${body.replace(/\n+$/, "")}\n${fence}`;
-}
-
-function table(node, base) {
-  const rows = findAll(node, (n) => n.tag === "tr").map((tr) =>
-    tr.children
-      .filter((c) => typeof c !== "string" && (c.tag === "td" || c.tag === "th"))
-      .map((c) => inline(c.children, base).replace(/\s+/g, " ").trim().replace(/\|/g, "\\|")),
-  );
-  if (!rows.length) { return ""; }
-  const width = Math.max(...rows.map((r) => r.length));
-  const line = (r) => `| ${Array.from({ length: width }, (_, i) => r[i] ?? "").join(" | ")} |`;
-  return [line(rows[0]), `|${" --- |".repeat(width)}`, ...rows.slice(1).map(line)].join("\n");
-}
-
-function list(node, base, depth) {
-  const items = node.children.filter((c) => typeof c !== "string" && c.tag === "li");
-  return items
-    .map((li, i) => {
-      const marker = node.tag === "ol" ? `${i + 1}.` : "-";
-      const pad = "  ".repeat(depth);
-      const nested = li.children.filter((c) => typeof c !== "string" && (c.tag === "ul" || c.tag === "ol"));
-      const own = inline(li.children.filter((c) => !nested.includes(c)), base).replace(/\s+/g, " ").trim();
-      return [`${pad}${marker} ${own}`, ...nested.map((n) => list(n, base, depth + 1))].join("\n");
-    })
-    .join("\n");
-}
-
-// block-level children to markdown blocks. shift demotes headings so a page nests
-// under the section that holds it
-function blocks(nodes, base, shift) {
-  const out = [];
-  let run = [];
-  const flush = () => {
-    const s = inline(run, base).replace(/[ \t]+/g, " ").trim();
-    if (s) { out.push(s); }
-    run = [];
-  };
-  for (const n of nodes) {
-    if (typeof n === "string" || !isBlock(n)) { run.push(n); continue; }
-    flush();
-    const b = block(n, base, shift);
-    if (b) { out.push(b); }
-  }
-  flush();
-  return out.join("\n\n");
-}
-
-const BLOCK = new Set(["p", "div", "pre", "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "section", "nav", "aside", "main", "header", "footer"]);
-function isBlock(n) { return BLOCK.has(n.tag) || (n.tag === "a" && hasClass(n, "card")); }
-
-function block(n, base, shift) {
-  const h = /^h([1-6])$/.exec(n.tag);
-  if (h) { return `${"#".repeat(Math.min(6, Number(h[1]) + shift))} ${inline(n.children, base).trim()}`; }
-  switch (n.tag) {
-    case "p": return inline(n.children, base).replace(/[ \t]+/g, " ").trim();
-    case "pre": return fenced(rawText(n), fenceLang(n));
-    case "ul": case "ol": return list(n, base, 0);
-    case "table": return table(n, base);
-    case "blockquote": return quote(blocks(n.children, base, shift));
-  }
-  if (hasClass(n, "breadcrumb") || hasClass(n, "page-nav") || hasClass(n, "toc")) { return ""; }
-  if (hasClass(n, "cards")) {
-    return n.children.filter((c) => typeof c !== "string").map((c) => block(c, base, shift)).filter(Boolean).join("\n");
-  }
-  if (hasClass(n, "callout")) {
-    const label = find(n, (c) => hasClass(c, "callout-label"));
-    const rest = n.children.filter((c) => c !== label);
-    const body = blocks(rest, base, shift);
-    return quote(label ? `**${text(label)}:** ${body}` : body);
-  }
-  if (n.tag === "a" && hasClass(n, "card")) {
-    const title = find(n, (c) => hasClass(c, "card-title"));
-    const desc = find(n, (c) => hasClass(c, "card-desc"));
-    const href = resolve(n.attrs.href, base);
-    return `- [${title ? text(title) : text(n)}](${href})${desc ? `: ${text(desc)}` : ""}`;
-  }
-  return blocks(n.children, base, shift);
-}
-
-function quote(s) { return s.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n"); }
-
-// the docs pages in sidebar order, each { file, title, group, url, lead, markdown }
-function sitePages(root, shift) {
-  const docs = path.join(root, "docs");
-  const index = parse(fs.readFileSync(path.join(docs, "index.html"), "utf8"));
-  const nav = find(index, (n) => n.tag === "aside" && hasClass(n, "sidebar"));
-  if (!nav) { throw new Error("docs/index.html has no sidebar"); }
+// the docs pages in sidebar order, each { file, title, group, url, lead, markdown }.
+// the pages are markdown already (docs/, which build-docs.js renders for the
+// site), so each is carried as it is, its headings nested under the guide's and
+// its links made absolute
+function sitePages(guides, shift) {
   const pages = [];
-  for (const group of findAll(nav, (n) => hasClass(n, "nav-group"))) {
-    const label = find(group, (n) => hasClass(n, "nav-group-label"));
-    for (const a of findAll(group, (n) => n.tag === "a" && hasClass(n, "nav-link"))) {
-      const file = a.attrs.href;
-      const url = `${SITE}/docs/${file}`;
-      const doc = parse(fs.readFileSync(path.join(docs, file), "utf8"));
-      const main = find(doc, (n) => n.tag === "main");
-      if (!main) { throw new Error(`docs/${file} has no <main>`); }
-      const lead = find(main, (n) => n.tag === "p" && hasClass(n, "lead"));
+  const newest = docs.versions(guides)[0];
+  for (const group of docs.load(path.join(guides, newest), "v" + newest).groups) {
+    for (const p of group.pages) {
+      const url = `${SITE}/docs/${p.slug}.html`;
       pages.push({
-        file,
-        title: text(a),
-        group: label ? text(label) : "",
+        file: `${p.slug}.html`,
+        title: p.title,
+        group: group.group,
         url,
-        lead: lead ? text(lead) : "",
-        markdown: blocks(main.children, url, shift),
+        lead: plain(p.lead),
+        markdown: nested(p.markdown, url, shift),
       });
     }
   }
-  const listed = new Set(pages.map((p) => p.file));
-  const missing = fs.readdirSync(docs).filter((f) => f.endsWith(".html") && !listed.has(f));
-  if (missing.length) { throw new Error(`docs pages missing from the sidebar: ${missing.join(", ")}`); }
   return pages;
+}
+
+// a lead without its markup, for the one line llms.txt gives a page
+function plain(md) {
+  return md.replace(/`/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*/g, "");
+}
+
+// a page's markdown as the guide carries it: every heading `shift` levels
+// deeper, and every link that is relative to the site made absolute
+function nested(md, url, shift) {
+  const deeper = mapProse(md.trim(), (line) => line.replace(/^(#{1,6}) /, (_m, marks) => "#".repeat(marks.length + shift) + " "));
+  return mapText(deeper, (text) => text.replace(/\]\(([^)\s]+)\)/g, (_m, target) => `](${resolve(target, url)})`));
+}
+
+// where a link in a docs page points once the page is read away from the
+// site: the guide's own pages on the site, and the repository at the release
+function resolve(target, url) {
+  const to = docs.link(target, url);
+  if (to.kind === "anchor") { return url + to.hash; }
+  if (to.kind === "page") { return `${SITE}/docs/${to.page}.html${to.hash}`; }
+  if (to.kind === "repo") { return `${REPO_URL}/blob/v${VERSION}/${to.file}${to.hash}`; }
+  if (to.kind === "site") { return SITE + to.path + to.hash; }
+  return to.url + to.hash;
 }
 
 // markdown prose, which check-links.js reads links from
@@ -317,6 +124,7 @@ function llmsTxt(version, pages) {
   ];
   for (const p of pages) { lines.push(`- [${p.title}](${p.url})${p.lead ? `: ${p.lead}` : ""}`); }
   lines.push(
+    `- [Playground](${SITE}/playground/): write Mach in the browser, where the compiler itself builds it for any target, runs programs, draws shaders and lists assembly, SPIR-V and IR`,
     `- [Language reference](${REPO_URL}/tree/${tag}/${LANG_DIR}): the authoritative per-construct reference, with grammar, at the current release`,
     `- [Changelog](${REPO_URL}/blob/${tag}/CHANGELOG.md): every change, release by release`,
     "",
@@ -400,9 +208,9 @@ function llmsFullTxt(version, pages) {
 }
 
 function main() {
-  const root = path.resolve(__dirname, "..", "..", "public");
   const out = path.resolve(process.argv[2] || path.join(__dirname, "..", "..", "out", "llms"));
-  const pages = sitePages(root, 2);
+  const guides = path.resolve(process.argv[3] || path.join(__dirname, "..", "..", "out", "guide"));
+  const pages = sitePages(guides, 2);
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "llms.txt.in"), llmsTxt(VERSION, pages));
   fs.writeFileSync(path.join(out, "llms-full.txt.in"), llmsFullTxt(VERSION, pages));
@@ -418,4 +226,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { VERSION, parse, blocks, mapProse, mapText, llmsTxt, llmsFullTxt, sitePages };
+module.exports = { VERSION, nested, mapProse, mapText, llmsTxt, llmsFullTxt, sitePages };

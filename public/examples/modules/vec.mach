@@ -1,0 +1,15 @@
+# a declaration is private to its file unless it is `pub`
+
+pub rec Vec3 {
+    x: i64;
+    y: i64;
+    z: i64;
+}
+
+pub fun add(a: Vec3, b: Vec3) Vec3 {
+    ret Vec3{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z};
+}
+
+pub fun dot(a: Vec3, b: Vec3) i64 {
+    ret a.x * b.x + a.y * b.y + a.z * b.z;
+}

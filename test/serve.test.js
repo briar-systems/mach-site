@@ -24,8 +24,9 @@ const TYPES = {
   ps1: "text/plain; charset=utf-8",
   svg: "image/svg+xml",
   png: "image/png",
+  wasm: "application/wasm",
 };
-const COMPRESSED = new Set(["html", "css", "js", "json", "txt", "mach", "sh", "ps1", "svg"]);
+const COMPRESSED = new Set(["html", "css", "js", "json", "txt", "mach", "sh", "ps1", "svg", "wasm"]);
 
 // the cache-control hedge.toml assigns a path
 function cacheControl(urlPath) {
@@ -100,13 +101,13 @@ test("a matching etag is answered 304 with its caching", async () => {
 });
 
 test("directories serve their index and a bare directory redirects", async () => {
-  for (const p of ["/", "/docs/"]) {
+  for (const p of ["/", "/docs/", "/playground/"]) {
     const res = await get(p);
     assert.equal(res.status, 200, p);
     assert.equal(res.headers["content-type"], TYPES.html, p);
     assert.deepEqual(res.body, fs.readFileSync(path.join(PUBLIC, p, "index.html")), p);
   }
-  for (const p of ["/docs"]) {
+  for (const p of ["/docs", "/playground"]) {
     const res = await get(p);
     assert.equal(res.status, 301, p);
     assert.equal(res.headers.location, `${p}/`, p);

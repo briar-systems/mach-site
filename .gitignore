@@ -1,2 +1,11 @@
 out/
 node_modules/
+# the playground's compiler and its libraries are built, never committed
+public/playground/mach.wasm
+public/playground/libs.json
+# the docs pages are built from mach's guide by .github/scripts/build-docs.js:
+# the newest release's beside docs.css, and each release's under its minor
+public/docs/*.html
+public/docs/search.js
+public/docs/versions.json
+public/docs/*/

@@ -1,0 +1,76 @@
+# sphere tracing: each pixel's ray walks forward by the distance to the nearest
+# surface, which is the one step that can never pass through it
+
+use sh: shader.math;
+
+rec Frame {
+    resolution: f32x2;
+    time:       f32;
+    delta:      f32;
+    pointer:    f32x2;
+    pressed:    f32;
+}
+
+#[gpu.uniform(0, 0)]
+var frame:      Frame;
+#[gpu.builtin("frag_coord")]
+var frag_coord: f32x4;
+#[gpu.output(0)]
+var out_colour: f32x4;
+
+val STEPS: i32 = 80;
+val FAR:   f32 = 8.0;
+
+fun rotate(p: f32x2, angle: f32) f32x2 {
+    val c: f32 = sh.cos(angle);
+    val s: f32 = sh.sin(angle);
+    ret f32x2{p[0] * c - p[1] * s, p[0] * s + p[1] * c};
+}
+
+# the distance from p to a torus tumbling about two axes
+fun scene(p: f32x3, time: f32) f32 {
+    val xz:   f32x2 = rotate(f32x2{p[0], p[2]}, time * 0.5 + 1.85);
+    val yz:   f32x2 = rotate(f32x2{p[1], xz[1]}, time * 0.35 + 1.8);
+    val ring: f32x2 = f32x2{sh.length_2(f32x2{xz[0], yz[0]}) - 0.72, yz[1]};
+    ret sh.length_2(ring) - 0.27;
+}
+
+# the surface normal: the direction the distance grows fastest in
+fun normal(p: f32x3, time: f32) f32x3 {
+    val e: f32 = 0.001;
+    ret sh.normalize_3(f32x3{
+        scene(p + f32x3{e, 0.0, 0.0}, time) - scene(p - f32x3{e, 0.0, 0.0}, time),
+        scene(p + f32x3{0.0, e, 0.0}, time) - scene(p - f32x3{0.0, e, 0.0}, time),
+        scene(p + f32x3{0.0, 0.0, e}, time) - scene(p - f32x3{0.0, 0.0, e}, time),
+    });
+}
+
+#[gpu.stage("fragment")]
+fun shade() {
+    val res:  f32x2 = frame.resolution;
+    val eye:  f32x3 = f32x3{0.0, 0.0, -3.6};
+    val view: f32x3 = sh.normalize_3(f32x3{
+        (frag_coord[0] - res[0] * 0.5) / res[1],
+        (res[1] * 0.5 - frag_coord[1]) / res[1],
+        1.5,
+    });
+
+    var depth: f32 = 0.0;
+    var i:     i32 = 0;
+    for (i < STEPS && depth < FAR) {
+        val d: f32 = scene(eye + sh.scale_3(view, depth), frame.time);
+        if (d < 0.001) { brk; }
+        depth = depth + d;
+        i     = i + 1;
+    }
+
+    var colour: f32x3 = f32x3{0.0, 0.0, 0.0};
+    if (depth < FAR) {
+        val n:   f32x3 = normal(eye + sh.scale_3(view, depth), frame.time);
+        val key: f32   = sh.max(sh.dot_3(n, sh.normalize_3(f32x3{0.5, 0.8, -0.6})), 0.0);
+        # the rim lights where the surface turns away from the eye
+        val rim: f32 = sh.pow(1.0 - sh.max(-sh.dot_3(n, view), 0.0), 3.0);
+        colour = sh.scale_3(f32x3{1.0, 1.0, 1.0}, key * 0.85 + 0.04) + sh.scale_3(f32x3{1.0, 0.0, 1.0}, rim);
+    }
+    out_colour = f32x4{sh.min(colour[0], 1.0), sh.min(colour[1], 1.0), sh.min(colour[2], 1.0), 1.0};
+}

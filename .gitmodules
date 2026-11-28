@@ -37,3 +37,6 @@
 [submodule "dep/toml"]
 	path = dep/toml
 	url = https://github.com/briar-systems/mach-toml
+[submodule "dep/shader"]
+	path = dep/shader
+	url = https://github.com/briar-systems/mach-shader
