@@ -344,7 +344,7 @@ pre.code { padding: 20px; overflow-x: auto; scrollbar-width: thin; scrollbar-col
 }
 
 @media (max-width: 640px) {
-  .nav-extra { display: none; }
+  .nav-extra, .nav-icons { display: none; }
   .brand { gap: 10px; font-size: 22px; }
   .nav-links { gap: 16px; font-size: 15px; }
   .nav-icons { gap: 4px; }
