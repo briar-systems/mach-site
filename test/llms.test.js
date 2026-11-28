@@ -8,6 +8,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const llms = require("../.github/scripts/build-llms.js");
@@ -20,48 +21,35 @@ const SERVER = { skip: SITE_URL ? false : "set SITE_URL to check a running serve
 // the newest release test/stub/github.js answers
 const RELEASE = "6.10.0";
 
-function md(html) {
-  return llms.blocks(llms.parse(html).children, BASE, 2);
+const docs = require("../.github/scripts/build-docs.js");
+// the two releases the tests build from, and the guide a server under test was
+// built with: what fetch-guide.js laid out before its image was built
+const GUIDES = path.join(__dirname, "guide");
+const SERVED = path.resolve(process.env.GUIDES || path.join(__dirname, "..", "out", "guide"));
+
+function md(source) {
+  return llms.nested(source, BASE, 2);
 }
 
-test("parse refuses unbalanced markup", () => {
-  assert.throws(() => llms.parse("<p><span class=\"ct>^</span></p>"), /unbalanced|unclosed/);
-  assert.throws(() => llms.parse("<div><p>x</div>"), /unbalanced/);
+test("headings nest under the guide's, and code is left alone", () => {
+  assert.equal(md("# Title\n\nLead.\n\n## Part\n\n```sh\n# not a heading\n```"), "### Title\n\nLead.\n\n#### Part\n\n```sh\n# not a heading\n```");
 });
 
-test("headings demote and prose collapses", () => {
-  assert.equal(md("<h1>Title</h1>\n<p>one\n  two</p>"), "### Title\n\none two");
-});
-
-test("code blocks keep their text and pick a fence language", () => {
-  const out = md('<pre class="code"><code><span class="kw">ret</span> a &lt; b;</code></pre>');
-  assert.equal(out, "```mach\nret a < b;\n```");
-  assert.equal(md('<pre class="code"><code>mach build .</code></pre>'), "```\nmach build .\n```");
-  assert.equal(md('<pre class="code"><code><span class="toml-key">id</span> = "x"</code></pre>'), '```toml\nid = "x"\n```');
-});
-
-test("inline markup, links and anchors resolve against the page", () => {
+test("links resolve against the site, and code spans keep theirs", () => {
   assert.equal(
-    md('<p>See <a href="types.html#ints">the <code>i64</code> type</a> and <a href="#x">here</a>, <strong>bold</strong>.</p>'),
-    "See [the `i64` type](https://machlang.org/docs/types.html#ints) and [here](https://machlang.org/docs/page.html#x), **bold**.",
+    md("See [the `i64` type](types.md#ints), [here](#x), [play](https://machlang.org/playground/), [the rules](../language/types.md#casts), [out](https://example.org) and `[not](a.md)`."),
+    "See [the `i64` type](https://machlang.org/docs/types.html#ints), [here](https://machlang.org/docs/page.html#x), [play](https://machlang.org/playground/), [the rules](https://github.com/briar-systems/mach/blob/v@MACH_VERSION@/doc/language/types.md#casts), [out](https://example.org) and `[not](a.md)`.",
   );
 });
 
-test("callouts, tables, and page chrome", () => {
-  assert.equal(md('<div class="callout note"><span class="callout-label">Note</span><p>Careful.</p></div>'), "> **Note:** Careful.");
-  assert.equal(
-    md("<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td><code>x|y</code></td><td>2</td></tr></tbody></table>"),
-    "| a | b |\n| --- | --- |\n| `x\\|y` | 2 |",
-  );
-  assert.equal(md('<div class="breadcrumb">Docs</div><div class="page-nav"><a href="x.html">x</a></div><p>kept</p>'), "kept");
-});
-
-test("every docs page is in the sidebar and converts", () => {
-  const pages = llms.sitePages(ROOT, 2);
-  assert.ok(pages.length > 0);
+test("every page of the newest release's guide is carried, in sidebar order", () => {
+  const pages = llms.sitePages(GUIDES, 2);
+  const nav = JSON.parse(fs.readFileSync(path.join(GUIDES, "7.4.1", "nav.json"), "utf8"));
+  assert.deepEqual(pages.map((p) => p.file), nav.groups.flatMap((g) => g.pages).map((name) => name + ".html"));
   for (const p of pages) {
     assert.match(p.url, /^https:\/\/machlang\.org\/docs\/[a-z-]+\.html$/);
-    assert.match(p.markdown, /^### /m, p.file);
+    assert.match(p.markdown, /^### /, p.file);
+    assert.doesNotMatch(p.lead, /`|\]\(/, p.file);
   }
 });
 
@@ -91,15 +79,17 @@ test("llms-full.txt opens with the rules, then the guide, and ends at the refere
 test("the build writes both templates, with the release left to the server", () => {
   fs.mkdirSync(path.join(__dirname, "..", "out"), { recursive: true });
   const out = fs.mkdtempSync(path.join(__dirname, "..", "out", "llms-"));
-  execFileSync(process.execPath, [path.join(__dirname, "..", ".github", "scripts", "build-llms.js"), out]);
+  execFileSync(process.execPath, [path.join(__dirname, "..", ".github", "scripts", "build-llms.js"), out, GUIDES]);
   const short = fs.readFileSync(path.join(out, "llms.txt.in"), "utf8");
   const full = fs.readFileSync(path.join(out, "llms-full.txt.in"), "utf8");
   fs.rmSync(out, { recursive: true });
-  const pages = llms.sitePages(ROOT, 2);
+  const pages = llms.sitePages(GUIDES, 2);
   assert.equal(short, llms.llmsTxt(llms.VERSION, pages));
   assert.equal(full, llms.llmsFullTxt(llms.VERSION, pages));
   assert.ok(short.includes(`Mach ${llms.VERSION} (https://github.com/briar-systems/mach/releases/tag/v${llms.VERSION})`));
   assert.ok(full.startsWith(`# Mach ${llms.VERSION}: complete reference`));
+  // a link into the repository opens at the release the server fills in
+  assert.ok(full.includes(`https://github.com/briar-systems/mach/blob/v${llms.VERSION}/doc/language/types.md#integers`));
 });
 
 test("links finds link targets and bare urls, never code", () => {
@@ -108,14 +98,28 @@ test("links finds link targets and bare urls, never code", () => {
 });
 
 test("machlang.org links resolve against the checkout and the server's routes", () => {
-  assert.equal(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/llms-full.txt")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/install.sh")), null);
   assert.equal(checkLocal(ROOT, new URL("https://machlang.org/ecosystem.json")), null);
   assert.match(checkLocal(ROOT, new URL("https://machlang.org/ecosystem/nope")), /no file/);
-  assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/nope.html")), /no file/);
-  assert.match(checkLocal(ROOT, new URL("https://machlang.org/docs/types.html#no-such-anchor")), /no id/);
+});
+
+test("a link to a docs page resolves against the pages as they are built", () => {
+  // a checkout in miniature: the routes beside public/, and the docs built into it
+  const site = fs.mkdtempSync(path.join(os.tmpdir(), "mach-site-"));
+  try {
+    fs.copyFileSync(path.join(ROOT, "..", "hedge.toml"), path.join(site, "hedge.toml"));
+    const root = path.join(site, "public");
+    docs.build(GUIDES, path.join(root, "docs"));
+    assert.equal(checkLocal(root, new URL("https://machlang.org/docs/types.html")), null);
+    assert.equal(checkLocal(root, new URL("https://machlang.org/docs/types.html#casts")), null);
+    assert.equal(checkLocal(root, new URL("https://machlang.org/docs/7.3/packs.html#unrolling")), null);
+    assert.match(checkLocal(root, new URL("https://machlang.org/docs/nope.html")), /no file/);
+    assert.match(checkLocal(root, new URL("https://machlang.org/docs/types.html#no-such-anchor")), /no id/);
+  } finally {
+    fs.rmSync(site, { recursive: true, force: true });
+  }
 });
 
 // the server's answer, polling for up to 10 seconds while it has none yet
@@ -202,7 +206,7 @@ test("llms.txt is the site's template for the newest release", SERVER, async () 
   assert.equal(res.status, 200);
   assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
   assert.equal(res.headers["cache-control"], "public, max-age=300");
-  assert.equal(res.body, llms.llmsTxt(RELEASE, llms.sitePages(ROOT, 2)));
+  assert.equal(res.body, llms.llmsTxt(RELEASE, llms.sitePages(SERVED, 2)));
 });
 
 test("llms-full.txt is the site's half, then mach's doc/language at that release", SERVER, async () => {
@@ -210,7 +214,9 @@ test("llms-full.txt is the site's half, then mach's doc/language at that release
   assert.equal(res.status, 200);
   assert.equal(res.headers["content-type"], "text/plain; charset=utf-8");
   assert.equal(res.headers["cache-control"], "public, max-age=300");
-  assert.equal(res.body, llms.llmsFullTxt(RELEASE, llms.sitePages(ROOT, 2)) + REFERENCE);
+  // the template carries the release as a token wherever it goes, a page's link
+  // into mach's repository included, and the server puts the release at each
+  assert.equal(res.body, llms.llmsFullTxt(llms.VERSION, llms.sitePages(SERVED, 2)).replaceAll(llms.VERSION, RELEASE) + REFERENCE);
 });
 
 test("a HEAD answers as its GET, without the body", SERVER, async () => {

@@ -2,12 +2,13 @@
 #
 # build: installs the pinned mach release and fetches the same release built
 # for wasi, realizes the dependencies mach.toml pins and builds the server in
-# release. generate: builds the site's half of llms.txt and llms-full.txt from
-# public/docs/, which the server completes with mach's newest release, and
-# packs the libraries the playground's compiler builds against. static: public/
-# with those libraries and the playground's compiler, precompressed. the final
-# image holds the server, its configuration, public/, the llms templates and
-# the CA bundle, and nothing else.
+# release. generate: fetches mach's guide for every release that has one and
+# builds the docs pages from them, builds the site's half of llms.txt and
+# llms-full.txt from the newest, which the server completes with mach's newest
+# release, and packs the libraries the playground's compiler builds against.
+# static: public/ with what was generated and the playground's compiler,
+# precompressed. the final image holds the server, its configuration, public/,
+# the llms templates and the CA bundle, and nothing else.
 
 # the mach release, and the sha256 its SHA256SUMS lists for the compiler that
 # builds the server and for the one the playground loads
@@ -36,16 +37,25 @@ RUN mach build . --profile release
 COPY hedge.toml ./
 
 FROM node:22-bookworm-slim AS generate
+# a branch to read as a release in place of the tags, as feat/1=7.4.0, to
+# build the site around a guide before its release
+ARG GUIDE=
 WORKDIR /site
-COPY .github/scripts/build-llms.js .github/scripts/build-playground-libs.js .github/scripts/
+# mach's refs name the releases to document. fetched as a build input, so a
+# build after a new tag fetches the guides again and never reuses this layer
+ADD https://github.com/briar-systems/mach.git/info/refs?service=git-upload-pack /refs
+COPY .github/scripts/fetch-guide.js .github/scripts/build-docs.js .github/scripts/build-llms.js .github/scripts/build-playground-libs.js .github/scripts/
 COPY public public
 COPY --from=build /src/dep/std dep/std
 COPY --from=build /src/dep/shader dep/shader
-RUN node .github/scripts/build-llms.js /out \
+RUN node .github/scripts/fetch-guide.js /guide --refs /refs ${GUIDE} \
+    && node .github/scripts/build-docs.js /guide /docs \
+    && node .github/scripts/build-llms.js /out /guide \
     && node .github/scripts/build-playground-libs.js /playground/libs.json
 
 FROM build AS static
 COPY public public
+COPY --from=generate /docs/ public/docs/
 COPY --from=generate /playground/libs.json public/playground/libs.json
 # the playground's compiler is the release itself, built for wasi
 RUN install -m 0644 /opt/wasm/mach.wasm public/playground/mach.wasm

@@ -8,3 +8,8 @@ node_modules
 # so a local build of either never goes in
 public/playground/mach.wasm
 public/playground/libs.json
+# the docs pages are generated in the image, so of public/docs only what is
+# written by hand goes in. a pattern cannot name directories alone
+public/docs/*
+!public/docs/docs.css
+!public/docs/docs.js
